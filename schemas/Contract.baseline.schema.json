@@ -1,0 +1,354 @@
+{
+  "name": "Contract",
+  "type": "object",
+  "rls": {
+    "read": {
+      "$and": [
+        {
+          "user_condition": {
+            "data.is_active": true
+          }
+        },
+        {
+          "$or": [
+            {
+              "user_condition": {
+                "role": "admin"
+              }
+            },
+            {
+              "user_condition": {
+                "data.is_cfo": true
+              }
+            },
+            {
+              "user_condition": {
+                "data.finance_role": "Finance Manager"
+              }
+            },
+            {
+              "user_condition": {
+                "data.finance_role": "Finance Viewer"
+              }
+            },
+            {
+              "user_condition": {
+                "role": "user"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "create": {
+      "user_condition": {
+        "data.is_active": true
+      }
+    },
+    "update": {
+      "$and": [
+        {
+          "user_condition": {
+            "data.is_active": true
+          }
+        },
+        {
+          "$or": [
+            {
+              "user_condition": {
+                "role": "admin"
+              }
+            },
+            {
+              "user_condition": {
+                "data.is_cfo": true
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "delete": {
+      "$and": [
+        {
+          "user_condition": {
+            "data.is_active": true
+          }
+        },
+        {
+          "$or": [
+            {
+              "user_condition": {
+                "role": "admin"
+              }
+            },
+            {
+              "user_condition": {
+                "data.is_cfo": true
+              }
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "properties": {
+    "artist_id": {
+      "type": "string",
+      "description": "Linked artist"
+    },
+    "show_id": {
+      "type": "string",
+      "description": "Linked show (optional)",
+      "indexed": true
+    },
+    "contact_id": {
+      "type": "string",
+      "description": "Linked contact/promoter (optional)"
+    },
+    "contract_template_id": {
+      "type": "string",
+      "indexed": true,
+      "description": "ContractTemplate selected for this contract"
+    },
+    "template_key": {
+      "type": "string",
+      "enum": [
+        "cidony",
+        "nysm",
+        "nysm-es",
+        "aesl-en",
+        "aesl-es"
+      ],
+      "description": "Branded HTML template actually rendered for this contract \u2014 immutable record of which legal wording and language the promoter received."
+    },
+    "legal_entity_id": {
+      "type": "string",
+      "indexed": true,
+      "description": "Billing LegalEntity inherited from the selected ContractTemplate; source of truth for invoicing"
+    },
+    "deposit_percentage": {
+      "type": "number",
+      "default": 50,
+      "description": "Deposit percentage snapshotted from the selected template"
+    },
+    "balance_due_offset_days": {
+      "type": "number",
+      "default": 14,
+      "description": "Days before show date when the balance is due"
+    },
+    "title": {
+      "type": "string",
+      "description": "Contract title"
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "show_agreement",
+        "management",
+        "label",
+        "sponsorship",
+        "merchandise",
+        "other"
+      ],
+      "default": "show_agreement"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "READY",
+        "DISPATCHING",
+        "SENT",
+        "RETURNED",
+        "SIGNED"
+      ],
+      "default": "draft",
+      "indexed": true,
+      "description": "Contract dispatch state machine: draft -> READY -> DISPATCHING -> SENT -> RETURNED -> SIGNED."
+    },
+    "dispatch_lock": {
+      "type": "string",
+      "indexed": true
+    },
+    "dispatch_heartbeat_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "value": {
+      "type": "number"
+    },
+    "currency": {
+      "type": "string",
+      "default": "USD"
+    },
+    "exchange_rate_locked": {
+      "type": "string"
+    },
+    "value_base_eur": {
+      "type": "number"
+    },
+    "commission_rate": {
+      "type": "number"
+    },
+    "commission_amount": {
+      "type": "number"
+    },
+    "start_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "end_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "renewal_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "signed_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "contract_file_url": {
+      "type": "string"
+    },
+    "signed_contract_url": {
+      "type": "string"
+    },
+    "dropbox_folder_url": {
+      "type": "string"
+    },
+    "notes": {
+      "type": "string"
+    },
+    "snapshot_contract_notes": {
+      "type": "string",
+      "description": "Immutable copy of Show.contract_notes as printed into the generated PDF."
+    },
+    "payment_terms": {
+      "type": "string"
+    },
+    "payment_received": {
+      "type": "boolean",
+      "default": false
+    },
+    "contract_hash": {
+      "type": "string"
+    },
+    "dispatched_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "last_dispatched_message_id": {
+      "type": "string"
+    },
+    "last_modified_by_user_id": {
+      "type": "string",
+      "indexed": true,
+      "description": "User ID of the last person to write this contract. Stamped by every contract write path (generation, dispatch, signature, manual upload) so the personal dashboard can surface 'contracts I last touched'. Null on records written before this field existed."
+    },
+    "last_modified_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp of the last write to this contract, stamped alongside last_modified_by_user_id. Drives the 'Pick Up Where You Left Off' recency sort."
+    },
+    "e_signed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "e_signed_by_user_id": {
+      "type": "string"
+    },
+    "e_signed_by_name": {
+      "type": "string"
+    },
+    "snapshot_promoter_name": {
+      "type": "string"
+    },
+    "snapshot_promoter_address": {
+      "type": "string"
+    },
+    "snapshot_promoter_vat": {
+      "type": "string"
+    },
+    "snapshot_agency_name": {
+      "type": "string",
+      "description": "Immutable snapshot of the billing LegalEntity legal name exactly as printed on the generated PDF. Frozen at generation time so later LegalEntity edits never retroactively mutate this contract."
+    },
+    "snapshot_agency_address": {
+      "type": "string",
+      "description": "Immutable snapshot of the billing LegalEntity registered address as printed on the generated PDF."
+    },
+    "snapshot_agency_rut": {
+      "type": "string",
+      "description": "Immutable snapshot of the billing LegalEntity tax ID / RUT / VAT number as printed on the generated PDF."
+    },
+    "snapshot_venue_name": {
+      "type": "string"
+    },
+    "snapshot_venue_address": {
+      "type": "string"
+    },
+    "snapshot_artist_name": {
+      "type": "string"
+    },
+    "snapshot_event_name": {
+      "type": "string"
+    },
+    "snapshot_show_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "snapshot_currency": {
+      "type": "string"
+    },
+    "snapshot_guarantee_fee": {
+      "type": "number"
+    },
+    "snapshot_booking_fee": {
+      "type": "number"
+    },
+    "snapshot_tax_rate": {
+      "type": "number"
+    },
+    "snapshot_taken_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "created_by_org_id": {
+      "type": "string",
+      "indexed": true,
+      "description": "Owning org (elevate/analog). Populated before G2 RLS predicates are applied."
+    },
+    "shared_with_org": {
+      "type": "string",
+      "indexed": true,
+      "description": "Cross-org ACL projection \u2014 the other org granted read access. Null = owning-org only."
+    },
+    "supersedes_contract_id": {
+      "type": "string",
+      "indexed": true,
+      "description": "Prior immutable Contract version replaced by this amendment."
+    },
+    "version_number": {
+      "type": "number",
+      "default": 1,
+      "description": "Monotonic version number within a Show's contract history."
+    },
+    "is_amendment": {
+      "type": "boolean",
+      "default": false
+    },
+    "immutable_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Set when dispatch succeeds; document and economic snapshots may not be edited afterward."
+    }
+  },
+  "required": [
+    "artist_id",
+    "title",
+    "type"
+  ]
+}

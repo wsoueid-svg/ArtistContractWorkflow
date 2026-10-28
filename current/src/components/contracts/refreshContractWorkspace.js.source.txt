@@ -1,0 +1,10 @@
+import { invalidateShowQueries } from '@/lib/showEdit';
+
+// Contract actions update both the show workspace and the cached desk summaries.
+export default function refreshContractWorkspace(client, showId) {
+  return Promise.all([
+    invalidateShowQueries(client, showId),
+    ...['contract-draft', 'show-contracts'].map(key => client.invalidateQueries({ queryKey: [key, showId] })),
+    ...['contract', 'my-deals-shows', 'desk-show-bundle', 'analog-show-finance-context'].map(key => client.invalidateQueries({ queryKey: [key] })),
+  ]);
+}

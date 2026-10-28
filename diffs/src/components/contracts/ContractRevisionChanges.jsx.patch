@@ -1,0 +1,16 @@
+diff --git a/src/components/contracts/ContractRevisionChanges.jsx b/src/components/contracts/ContractRevisionChanges.jsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..bd4329ecf8dda1adc3ba6574a45de2aa7a188cee
+--- /dev/null
++++ b/src/components/contracts/ContractRevisionChanges.jsx
+@@ -0,0 +1,9 @@
++import ClauseChanges from '@/components/contract-lab/ClauseChanges';
++export default function ContractRevisionChanges({document:doc}) {
++  if (!doc.comparison_blocks) return null;
++  const before = doc.comparison_blocks, after = doc.blocks;
++  const ids = [...new Set([...before.map(b=>b.id), ...after.map(b=>b.id)])];
++  const changed = ids.map(id=>({id,old:before.find(b=>b.id===id),next:after.find(b=>b.id===id)})).filter(b=>b.old?.rich_text!==b.next?.rich_text || (b.old && b.next && before.indexOf(b.old)!==after.indexOf(b.next)));
++  const fields = Object.keys(doc.source_snapshot.fields).filter(k=>String(doc.comparison_fields?.[k]??'')!==String(doc.source_snapshot.fields[k]??''));
++  return <details className="rounded-lg border border-border bg-card p-4" data-testid="revision-changes"><summary className="min-h-11 cursor-pointer text-sm font-semibold">Compare with version {doc.comparison_version} • {changed.length} changed blocks</summary><p className="mb-3 text-sm text-muted-foreground">The previous PDF stays unchanged. Protected show and payment details must be corrected at their source.</p>{!changed.length&&!fields.length&&<p className="text-sm">No changes from the previous version yet.</p>}{fields.map(key=><p key={key} className="mb-2 break-words text-sm"><strong>{key.replaceAll('_',' ')}:</strong> {String(doc.comparison_fields?.[key]??'Not recorded')} → {String(doc.source_snapshot.fields[key]??'Not recorded')}</p>)}{changed.map(({id,old,next})=><section key={id} className="my-3 break-words border-t border-border pt-3"><h3 className="mb-2 text-xs font-semibold">{id} • {!old?'Added':!next?'Removed':old.rich_text===next.rich_text?'Moved':'Changed'}</h3><ClauseChanges before={old?.rich_text||''} after={next?.rich_text||''}/></section>)}</details>;
++}
+\ No newline at end of file

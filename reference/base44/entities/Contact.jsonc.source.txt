@@ -1,0 +1,301 @@
+{
+  "name": "Contact",
+  "type": "object",
+  "rls": {
+    "read": {
+      "$and": [
+        {
+          "user_condition": {
+            "data.is_active": true
+          }
+        },
+        {
+          "$or": [
+            {
+              "data.created_by_org_id": "{{user.data.active_org}}"
+            },
+            {
+              "data.shared_with_org": "{{user.data.active_org}}"
+            },
+            {
+              "data.shared_with_org": "both"
+            },
+            {
+              "user_condition": {
+                "role": "admin"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "create": {
+      "user_condition": {
+        "data.is_active": true
+      }
+    },
+    "update": {
+      "user_condition": {
+        "data.is_active": true
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "data.is_active": true
+      }
+    }
+  },
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Contact name"
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "promoter",
+        "venue",
+        "club",
+        "festival",
+        "brand",
+        "label",
+        "agent",
+        "a_and_r",
+        "media",
+        "other"
+      ],
+      "default": "promoter",
+      "indexed": true
+    },
+    "role": {
+      "type": "string"
+    },
+    "agency": {
+      "type": "string",
+      "description": "Deprecated \u2014 hidden from the UI, retained for legacy records."
+    },
+    "geography": {
+      "type": "string",
+      "enum": [
+        "NA",
+        "LATAM",
+        "Europe",
+        "MENA",
+        "APAC"
+      ]
+    },
+    "company": {
+      "type": "string"
+    },
+    "email": {
+      "type": "string"
+    },
+    "phone": {
+      "type": "string"
+    },
+    "contact_persons": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "phone": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "person_roles": {
+      "type": "object",
+      "description": "Role tags per contact person, keyed by the person's lowercase email (or name when no email). Values are arrays drawn from the 18 approved roles.",
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      }
+    },
+    "country": {
+      "type": "string"
+    },
+    "city": {
+      "type": "string"
+    },
+    "address": {
+      "type": "string"
+    },
+    "billing_address": {
+      "type": "object",
+      "properties": {
+        "street": {
+          "type": "string"
+        },
+        "city": {
+          "type": "string"
+        },
+        "postal_code": {
+          "type": "string"
+        },
+        "country": {
+          "type": "string"
+        }
+      }
+    },
+    "vat_tax_id": {
+      "type": "string"
+    },
+    "preferred_language": {
+      "type": "string",
+      "enum": [
+        "en",
+        "es",
+        "fr",
+        "ar"
+      ],
+      "default": "en"
+    },
+    "website": {
+      "type": "string"
+    },
+    "social_media": {
+      "type": "object",
+      "properties": {
+        "instagram": {
+          "type": "string"
+        },
+        "facebook": {
+          "type": "string"
+        },
+        "linkedin": {
+          "type": "string"
+        }
+      }
+    },
+    "notes": {
+      "type": "string"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "rating": {
+      "type": "number",
+      "minimum": 1,
+      "maximum": 5
+    },
+    "last_contact_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "disable_auto_reminders": {
+      "type": "boolean",
+      "default": false
+    },
+    "payment_terms_override_days": {
+      "type": "number"
+    },
+    "default_deal_terms": {
+      "type": "object",
+      "description": "Reusable deal defaults \u2014 copied as a one-time snapshot when this contact is linked to a show",
+      "properties": {
+        "default_deal_type": {
+          "type": "string",
+          "enum": [
+            "flat_fee",
+            "vs_door",
+            "vs_door_guarantee",
+            "percentage"
+          ]
+        },
+        "default_vat_applicable": {
+          "type": "boolean",
+          "default": false
+        },
+        "default_vat_percentage": {
+          "type": "number"
+        },
+        "default_wht_percentage": {
+          "type": "number"
+        },
+        "default_wht_base": {
+          "type": "string",
+          "enum": [
+            "gross_fee",
+            "gross_fee_minus_costs",
+            "gross_fee_minus_costs_minus_booking_fee"
+          ]
+        },
+        "legal_company_name": {
+          "type": "string"
+        },
+        "company_registration_number": {
+          "type": "string"
+        },
+        "billing_address": {
+          "type": "object",
+          "properties": {
+            "street": {
+              "type": "string"
+            },
+            "city": {
+              "type": "string"
+            },
+            "postal_code": {
+              "type": "string"
+            },
+            "country": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "aboss_id": {
+      "type": "string",
+      "description": "aBoss Client Company \u2014 upsert key",
+      "indexed": true
+    },
+    "is_aboss_import": {
+      "type": "boolean",
+      "default": false
+    },
+    "raw_aboss_data": {
+      "type": "object"
+    },
+    "is_deleted": {
+      "type": "boolean",
+      "default": false,
+      "description": "Soft-delete flag. True = logically deleted. Historical Shows, Contracts, and Invoices retain their FK references."
+    },
+    "deleted_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp of soft deletion."
+    },
+    "deleted_by_id": {
+      "type": "string",
+      "description": "User ID who performed the soft delete."
+    },
+    "created_by_org_id": {
+      "type": "string",
+      "indexed": true,
+      "description": "Owning org (elevate/analog). Populated before G2 RLS predicates are applied."
+    },
+    "shared_with_org": {
+      "type": "string",
+      "indexed": true,
+      "description": "Cross-org ACL projection \u2014 the other org granted read access. Null = owning-org only."
+    }
+  },
+  "required": [
+    "name",
+    "type"
+  ]
+}

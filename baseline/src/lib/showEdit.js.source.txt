@@ -1,0 +1,23 @@
+export const deepClone = (value) => {
+  if (value == null) return value;
+  return typeof structuredClone === 'function'
+    ? structuredClone(value)
+    : JSON.parse(JSON.stringify(value));
+};
+
+export const auditStamp = (user, activeOrg) => ({
+  last_modified_by_org_id: activeOrg,
+  last_modified_by_user_id: user?.id,
+  last_modified_at: new Date().toISOString(),
+});
+
+export const invalidateShowQueries = async (queryClient, showId) => {
+  await Promise.all([
+    queryClient.invalidateQueries({ queryKey: ['show', showId] }),
+    queryClient.invalidateQueries({ queryKey: ['show-contracts', showId] }),
+    queryClient.invalidateQueries({ queryKey: ['analog-shows'] }),
+    queryClient.invalidateQueries({ queryKey: ['shows'] }),
+    queryClient.invalidateQueries({ queryKey: ['analog-master-calendar'] }),
+    queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] }),
+  ]);
+};

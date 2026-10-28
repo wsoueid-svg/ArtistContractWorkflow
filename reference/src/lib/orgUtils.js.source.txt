@@ -1,0 +1,53 @@
+/**
+ * Org-level filtering utilities with cross-sharing logic.
+ *
+ * Cross-sharing rule: when an artist exists in Elevate (not an ABOSS stub)
+ * and has ABOSS-imported shows in Analog, those shows — and all their
+ * attached data (logistics, fees, financials, status, venues) — must also
+ * be visible in Elevate.
+ *
+ * - Analog org sees: all analog_push shows (including shows on shared artists)
+ * - Elevate org sees: all non-analog_push shows + analog_push shows whose
+ *   artist is NOT an ABOSS stub (i.e., shared Elevate artists like
+ *   Joseph Capriati, Karretero)
+ */
+
+/**
+ * Build a Set of ABOSS stub artist IDs.
+ * Stub artists exist only in Analog (is_aboss_import = true).
+ * Shared artists (Joseph Capriati) are NOT stubs — they have is_aboss_import = false.
+ */
+export function buildStubArtistIds(allArtists) {
+  return new Set((allArtists || []).filter(a => a.is_aboss_import).map(a => a.id));
+}
+
+/**
+ * Filter shows based on active org with cross-sharing logic.
+ * @param {Array} shows - Raw show list
+ * @param {string} activeOrg - 'analog' or 'elevate'
+ * @param {Set} abossStubArtistIds - Set of ABOSS stub artist IDs
+ * @returns {Array} Filtered shows
+ */
+export function filterShowsForOrg(shows, activeOrg, abossStubArtistIds) {
+  if (activeOrg === 'analog') {
+    return shows.filter(s => s.data_source === 'analog_push');
+  }
+  // Elevate: own shows + ABOSS shows on shared (non-stub) artists
+  return shows.filter(s =>
+    s.data_source !== 'analog_push' || !abossStubArtistIds.has(s.artist_id)
+  );
+}
+
+/**
+ * Tour ownership rule. A tour belongs to Analog when it was explicitly created
+ * in Analog (created_by_org_id 'analog') or it sits on an Analog-only stub
+ * artist. Everything else belongs to Elevate, plus tours explicitly shared with it.
+ * NOTE: Tour.data_source defaults to 'analog_push' for every record, so it must
+ * never be used as an ownership signal.
+ */
+export function tourBelongsToOrg(tour, activeOrg, abossStubArtistIds) {
+  const stubs = abossStubArtistIds || new Set();
+  const isAnalogOwned = tour.created_by_org_id === 'analog' || stubs.has(tour.artist_id);
+  if (activeOrg === 'analog') return isAnalogOwned;
+  return !isAnalogOwned || tour.shared_with_org === 'elevate';
+}

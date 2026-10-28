@@ -1,0 +1,33 @@
+import React from 'react';
+import { ChevronDown } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Checkbox } from '@/components/ui/checkbox';
+import { CONTACT_ROLES } from '@/lib/contactRoles';
+
+// Multi-select role tags for a contact person.
+export default function RoleMultiSelect({ value = [], onChange }) {
+  const toggle = (role) => onChange(value.includes(role) ? value.filter(r => r !== role) : [...value, role]);
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button type="button" className="flex w-full min-h-10 items-center justify-between gap-2 rounded-md border border-input bg-white px-3 py-1.5 text-left text-sm">
+          <span className="flex flex-wrap gap-1">
+            {value.length === 0 && <span className="text-muted-foreground">Roles…</span>}
+            {value.map(r => <span key={r} className="rounded-full bg-yellow-400 px-2 py-0.5 text-[11px] font-medium text-black">{r}</span>)}
+          </span>
+          <ChevronDown className="h-4 w-4 flex-shrink-0 text-gray-400" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-60 p-1.5">
+        <div className="max-h-72 overflow-y-auto">
+          {CONTACT_ROLES.map(role => (
+            <label key={role} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-gray-50">
+              <Checkbox checked={value.includes(role)} onCheckedChange={() => toggle(role)} />
+              {role}
+            </label>
+          ))}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}

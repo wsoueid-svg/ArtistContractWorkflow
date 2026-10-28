@@ -1,0 +1,13 @@
+import React from 'react';
+import { useOrg } from '@/lib/OrgContext';
+import AnalogWorkspace from '@/pages/AnalogWorkspace';
+import Shows from '@/pages/Shows';
+
+/**
+ * OrgAwareShows — renders the Analog workspace (with artist-click filtering)
+ * for Analog org, and the standard Elevate Shows page otherwise.
+ */
+export default function OrgAwareShows() {
+  const { activeOrg } = useOrg();
+  return activeOrg === 'analog' ? <AnalogWorkspace /> : <Shows />;
+}

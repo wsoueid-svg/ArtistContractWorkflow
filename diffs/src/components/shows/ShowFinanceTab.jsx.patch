@@ -1,0 +1,13 @@
+diff --git a/src/components/shows/ShowFinanceTab.jsx b/src/components/shows/ShowFinanceTab.jsx
+index 0a2b1e514bbd4b88611fae3940cff9d53841db5e..f4d778e3f03ad7d78e4aab8422f8f404a85e3bab 100644
+--- a/src/components/shows/ShowFinanceTab.jsx
++++ b/src/components/shows/ShowFinanceTab.jsx
+@@ -177,7 +177,7 @@ export default function ShowFinanceTab({ show }) {
+                   )}
+                 </p>
+                 {contract.contract_file_url && (
+-                  <a href={contract.contract_file_url} target="_blank" rel="noopener noreferrer"
++                  <a href={`/contract-preview?contract=${encodeURIComponent(contract.id)}`} target="_blank" rel="noopener noreferrer"
+                     className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline">
+                     <ExternalLink className="w-3 h-3" /> View Contract PDF
+                   </a>

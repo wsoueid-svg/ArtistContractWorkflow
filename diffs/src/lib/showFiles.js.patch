@@ -1,0 +1,24 @@
+diff --git a/src/lib/showFiles.js b/src/lib/showFiles.js
+index fe543963103f5f0aa05966641d1b63934617a93f..496c7f0dc82a4c80fde9b47b38bb505d7a72d91a 100644
+--- a/src/lib/showFiles.js
++++ b/src/lib/showFiles.js
+@@ -18,8 +18,8 @@ export function buildShowFiles({ show, documents = [], contracts = [], memos = [
+   const add = (key, name, type, date, url) => url && rows.push({ key, name, type, date, url });
+   documents.forEach(d => add(`doc-${d.id}`, d.file_name, /rider/i.test(d.file_name) ? 'Rider' : DOC_TYPE_MAP[d.document_type] || 'Other', d.created_date, d.file_url));
+   contracts.forEach(c => {
+-    add(`ct-${c.id}`, c.title || 'Contract PDF', 'Contract', c.created_date, c.contract_file_url);
+-    add(`cts-${c.id}`, `${c.title || 'Contract'} (signed)`, 'Contract', c.signed_date || c.updated_date, c.signed_contract_url);
++    add(`ct-${c.id}`, c.title || 'Contract PDF', 'Contract', c.created_date, c.contract_file_url ? `/contract-preview?contract=${encodeURIComponent(c.id)}` : null);
++    add(`cts-${c.id}`, `${c.title || 'Contract'} (signed)`, 'Contract', c.signed_date || c.updated_date, c.signed_contract_url ? `/contract-preview?contract=${encodeURIComponent(c.id)}&variant=signed` : null);
+   });
+   memos.forEach(m => {
+     add(`dm-${m.id}`, m.title || 'Deal memo', 'Other', m.created_date, m.memo_file_url);
+@@ -34,6 +34,6 @@ export function buildShowFiles({ show, documents = [], contracts = [], memos = [
+ 
+ /** Opens a file; private URIs are exchanged for a short-lived signed URL first. */
+ export async function openShowFile(url) {
+-  const href = /^https?:\/\//.test(url) ? url : (await base44.integrations.Core.CreateFileSignedUrl({ file_uri: url })).signed_url;
++  const href = url.startsWith('/contract-preview?') || /^https?:\/\//.test(url) ? url : (await base44.integrations.Core.CreateFileSignedUrl({ file_uri: url })).signed_url;
+   window.open(href, '_blank', 'noopener');
+ }
+\ No newline at end of file

@@ -1,0 +1,50 @@
+import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
+import { FileSignature, CalendarX } from 'lucide-react';
+import DealCard, { EmptyRow, StatusSummary } from './DealCard';
+import DealStatusBadge from '@/components/shared/DealStatusBadge';
+import { CONTRACT_STATUS_META } from '@/lib/dealStatus';
+
+const ORDER = ['none', 'READY', 'SENT', 'RETURNED', 'SIGNED'];
+const fmt = (d) => d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : 'TBD';
+
+export default function MyShowsContractCard({ shows = [], contractByShow = {}, artistMap = {}, isLoading, title = 'My Shows • Contracts' }) {
+  const active = shows.filter(s => s.status !== 'cancelled' && s.status !== 'completed');
+  const statusOf = (s) => contractByShow[s.id]?.status || 'none';
+
+  const [filter, setFilter] = useState(null);
+  const summary = ORDER.map(k => ({
+    key: k, label: CONTRACT_STATUS_META[k].label, className: CONTRACT_STATUS_META[k].className,
+    count: active.filter(s => statusOf(s) === k).length,
+  })).filter(i => i.count > 0);
+
+  const rows = active
+    .filter(s => !filter || statusOf(s) === filter)
+    .sort((a, b) => ORDER.indexOf(statusOf(a)) - ORDER.indexOf(statusOf(b)) || (a.date || '').localeCompare(b.date || ''));
+
+  return (
+    <DealCard icon={FileSignature} title={title} count={rows.length} to="/shows" toLabel="All shows">
+      {summary.length > 0 && <StatusSummary items={summary} activeKey={filter} onToggle={k => setFilter(f => f === k ? null : k)} />}
+      {isLoading ? (
+        <div className="p-4 space-y-2">{[1, 2, 3].map(i => <div key={i} className="h-10 skeleton" />)}</div>
+      ) : rows.length === 0 ? (
+        <EmptyRow icon={CalendarX} text="No open shows assigned to you" />
+      ) : (
+        <ul className="max-h-[260px] overflow-y-auto scrollbar-thin">
+          {rows.map(s => (
+            <li key={s.id} className="odd:bg-white even:bg-slate-50">
+              <Link to={`/showdetail?id=${s.id}`} className="flex items-center gap-3 px-4 py-2.5 hover:bg-yellow-50 transition-colors min-h-[52px]">
+                <span className="text-[11px] text-slate-400 tabular-nums w-14 flex-shrink-0">{fmt(s.date)}</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-slate-900 truncate">{artistMap[s.artist_id]?.name || 'Artist'} · {s.event_name}</p>
+                  <p className="text-[11px] text-slate-400 truncate">{[s.venue, s.city, s.country].filter(Boolean).join(', ') || '—'}</p>
+                </div>
+                <DealStatusBadge kind="contract" status={contractByShow[s.id]?.status} />
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+    </DealCard>
+  );
+}

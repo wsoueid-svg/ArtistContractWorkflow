@@ -1,0 +1,28 @@
+import React from 'react';
+import { MapPin } from 'lucide-react';
+
+/**
+ * Reusable venue location chip with clickable Google Maps link.
+ * Works cross-platform: iOS intercepts to offer Apple Maps / Google Maps,
+ * Android opens Google Maps, desktop opens Google Maps in new tab.
+ */
+export default function VenueLink({ venue, city, country, className = '' }) {
+  const parts = [venue, city, country].filter(Boolean);
+  if (parts.length === 0) return null;
+
+  const label = parts.join(', ');
+  const mapUrl = `https://maps.google.com/?q=${encodeURIComponent(parts.join(' '))}`;
+
+  return (
+    <a
+      href={mapUrl}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={`inline-flex items-center gap-1 text-sm text-gray-600 hover:text-yellow-600 underline underline-offset-2 transition-colors ${className}`}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <MapPin className="w-3.5 h-3.5 flex-shrink-0" />
+      <span>{label}</span>
+    </a>
+  );
+}

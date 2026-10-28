@@ -1,0 +1,81 @@
+import React, { useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { base44 } from '@/api/base44Client';
+import { BookmarkPlus, Save, Trash2, Loader2 } from 'lucide-react';
+
+/**
+ * PersonalTemplatePicker — per-user email templates for the dispatch composer.
+ * Templates are private to their creator (is_private + created_by_id).
+ */
+export default function PersonalTemplatePicker({ user, currentBody, subject, onApply }) {
+  const qc = useQueryClient();
+  const [selectedId, setSelectedId] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const { data: templates = [] } = useQuery({
+    queryKey: ['my-email-templates', user?.id],
+    queryFn: () => base44.entities.EmailTemplate.filter({ created_by_id: user.id, is_private: true }, '-updated_date', 50),
+    enabled: !!user?.id,
+  });
+
+  const refresh = () => qc.invalidateQueries({ queryKey: ['my-email-templates', user?.id] });
+
+  const handleSelect = (id) => {
+    setSelectedId(id);
+    const t = templates.find(x => x.id === id);
+    if (t) onApply(t.body);
+  };
+
+  const saveNew = async () => {
+    const name = window.prompt('Template name');
+    if (!name) return;
+    setBusy(true);
+    const created = await base44.entities.EmailTemplate.create({
+      name, type: 'Contract Dispatch', subject: subject || 'Contract', body: currentBody || '', language: 'en', is_private: true,
+    });
+    setSelectedId(created.id);
+    refresh();
+    setBusy(false);
+  };
+
+  const updateSelected = async () => {
+    if (!selectedId) return;
+    setBusy(true);
+    await base44.entities.EmailTemplate.update(selectedId, { body: currentBody || '' });
+    refresh();
+    setBusy(false);
+  };
+
+  const deleteSelected = async () => {
+    if (!selectedId || !window.confirm('Delete this template?')) return;
+    setBusy(true);
+    await base44.entities.EmailTemplate.delete(selectedId);
+    setSelectedId('');
+    refresh();
+    setBusy(false);
+  };
+
+  const btn = 'flex items-center gap-1 h-9 px-2.5 rounded-lg border border-slate-200 text-[11px] font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-40';
+
+  return (
+    <div className="space-y-1.5">
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">My templates</p>
+      <div className="flex flex-wrap items-center gap-1.5">
+        <select value={selectedId} onChange={e => handleSelect(e.target.value)}
+          className="h-9 flex-1 min-w-[160px] rounded-lg border border-slate-200 bg-white px-2 text-xs text-slate-700 outline-none">
+          <option value="">{templates.length ? 'Choose a template…' : 'No personal templates yet'}</option>
+          {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+        </select>
+        <button type="button" onClick={saveNew} disabled={busy} className={btn} title="Save current message as a new template">
+          {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <BookmarkPlus className="w-3.5 h-3.5" />} Save as new
+        </button>
+        <button type="button" onClick={updateSelected} disabled={busy || !selectedId} className={btn} title="Overwrite selected template with current message">
+          <Save className="w-3.5 h-3.5" /> Update
+        </button>
+        <button type="button" onClick={deleteSelected} disabled={busy || !selectedId} className={`${btn} hover:text-red-600`} aria-label="Delete template">
+          <Trash2 className="w-3.5 h-3.5" />
+        </button>
+      </div>
+    </div>
+  );
+}

@@ -1,0 +1,35 @@
+// Canonical colour palette for the deal lifecycle — shared by the dashboard,
+// show detail, finance tab and the shows table so every stage reads the same.
+
+export const CONTRACT_STATUS_META = {
+  none:     { label: 'No contract', className: 'bg-gray-100 text-gray-500' },
+  draft:    { label: 'Draft',       className: 'bg-gray-100 text-gray-600' },
+  READY:    { label: 'Ready',       className: 'bg-blue-100 text-blue-700' },
+  DISPATCHING: { label: 'Sending', className: 'bg-blue-100 text-blue-700' },
+  SENT:     { label: 'Sent',        className: 'bg-violet-100 text-violet-700' },
+  RETURNED: { label: 'Returned',    className: 'bg-orange-100 text-orange-700' },
+  SIGNED:   { label: 'Signed',      className: 'bg-green-100 text-green-700' },
+};
+
+// Mirrors the Finance Hub invoice palette
+export const INVOICE_STATUS_META = {
+  none:                      { label: 'No invoice',     className: 'bg-gray-100 text-gray-500' },
+  Draft:                     { label: 'Draft',          className: 'bg-gray-100 text-gray-600' },
+  'Pending Holded Approval': { label: 'Pending Holded', className: 'bg-amber-100 text-amber-700' },
+  Sent:                      { label: 'Sent',           className: 'bg-blue-100 text-blue-700' },
+  Viewed:                    { label: 'Viewed',         className: 'bg-purple-100 text-purple-700' },
+  'Partially Paid':          { label: 'Partially Paid', className: 'bg-orange-100 text-orange-700' },
+  Paid:                      { label: 'Paid',           className: 'bg-green-100 text-green-700' },
+  Overdue:                   { label: 'Overdue',        className: 'bg-red-100 text-red-700' },
+  Disputed:                  { label: 'Disputed',       className: 'bg-yellow-100 text-yellow-700' },
+  Cancelled:                 { label: 'Cancelled',      className: 'bg-gray-100 text-gray-400' },
+  'Needs Review':            { label: 'Needs Review',   className: 'bg-pink-100 text-pink-700' },
+};
+
+export const CONF_STATUS_META = {
+  unlinked: { label: 'No thread', className: 'bg-gray-100 text-gray-500' },
+  linked:   { label: 'Linked',    className: 'bg-emerald-100 text-emerald-700' },
+};
+
+export const contractMeta = (status) => CONTRACT_STATUS_META[status] || CONTRACT_STATUS_META.none;
+export const invoiceMeta = (status) => INVOICE_STATUS_META[status] || INVOICE_STATUS_META.none;

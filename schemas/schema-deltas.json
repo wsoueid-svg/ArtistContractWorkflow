@@ -1,0 +1,889 @@
+{
+  "Contract": {
+    "added_properties": {
+      "content_hash": {
+        "type": "string",
+        "description": "Approved canonical document hash"
+      },
+      "pdf_hash": {
+        "type": "string",
+        "description": "SHA-256 of generated PDF bytes; equals legacy contract_hash"
+      },
+      "draft_id": {
+        "type": "string",
+        "description": "Reference to frozen generated ContractDraft"
+      },
+      "draft_revision_no": {
+        "type": "integer"
+      },
+      "master_content_version": {
+        "type": "string"
+      },
+      "rendered_template_key": {
+        "type": "string"
+      },
+      "needs_resend": {
+        "type": "boolean",
+        "default": false
+      },
+      "generation_lock": {
+        "type": "string",
+        "description": "Generator-owned READY/draft reservation; dispatch cannot claim draft status"
+      }
+    },
+    "removed_properties": {},
+    "modified_properties": {
+      "show_id": {
+        "before": {
+          "type": "string",
+          "description": "Linked show (optional)",
+          "indexed": true
+        },
+        "after": {
+          "type": "string",
+          "description": "Linked show (optional)"
+        }
+      },
+      "contract_template_id": {
+        "before": {
+          "type": "string",
+          "indexed": true,
+          "description": "ContractTemplate selected for this contract"
+        },
+        "after": {
+          "type": "string",
+          "description": "ContractTemplate selected for this contract"
+        }
+      },
+      "template_key": {
+        "before": {
+          "type": "string",
+          "enum": [
+            "cidony",
+            "nysm",
+            "nysm-es",
+            "aesl-en",
+            "aesl-es"
+          ],
+          "description": "Branded HTML template actually rendered for this contract — immutable record of which legal wording and language the promoter received."
+        },
+        "after": {
+          "type": "string",
+          "enum": [
+            "cidony",
+            "nysm",
+            "nysm-es",
+            "aesl-en",
+            "aesl-es"
+          ],
+          "description": "Branded HTML template actually rendered"
+        }
+      },
+      "legal_entity_id": {
+        "before": {
+          "type": "string",
+          "indexed": true,
+          "description": "Billing LegalEntity inherited from the selected ContractTemplate; source of truth for invoicing"
+        },
+        "after": {
+          "type": "string",
+          "description": "Billing LegalEntity inherited from selected template"
+        }
+      },
+      "deposit_percentage": {
+        "before": {
+          "type": "number",
+          "default": 50,
+          "description": "Deposit percentage snapshotted from the selected template"
+        },
+        "after": {
+          "type": "number",
+          "default": 50
+        }
+      },
+      "balance_due_offset_days": {
+        "before": {
+          "type": "number",
+          "default": 14,
+          "description": "Days before show date when the balance is due"
+        },
+        "after": {
+          "type": "number",
+          "default": 14
+        }
+      },
+      "title": {
+        "before": {
+          "type": "string",
+          "description": "Contract title"
+        },
+        "after": {
+          "type": "string"
+        }
+      },
+      "status": {
+        "before": {
+          "type": "string",
+          "enum": [
+            "draft",
+            "READY",
+            "DISPATCHING",
+            "SENT",
+            "RETURNED",
+            "SIGNED"
+          ],
+          "default": "draft",
+          "indexed": true,
+          "description": "Contract dispatch state machine: draft -> READY -> DISPATCHING -> SENT -> RETURNED -> SIGNED."
+        },
+        "after": {
+          "type": "string",
+          "enum": [
+            "draft",
+            "READY",
+            "DISPATCHING",
+            "SENT",
+            "RETURNED",
+            "SIGNED"
+          ],
+          "default": "draft"
+        }
+      },
+      "dispatch_lock": {
+        "before": {
+          "type": "string",
+          "indexed": true
+        },
+        "after": {
+          "type": "string"
+        }
+      },
+      "contract_file_url": {
+        "before": {
+          "type": "string"
+        },
+        "after": {
+          "type": "string",
+          "description": "Private file URI for new contracts; legacy public URLs are read-only compatibility references."
+        }
+      },
+      "snapshot_contract_notes": {
+        "before": {
+          "type": "string",
+          "description": "Immutable copy of Show.contract_notes as printed into the generated PDF."
+        },
+        "after": {
+          "type": "string"
+        }
+      },
+      "last_modified_by_user_id": {
+        "before": {
+          "type": "string",
+          "indexed": true,
+          "description": "User ID of the last person to write this contract. Stamped by every contract write path (generation, dispatch, signature, manual upload) so the personal dashboard can surface 'contracts I last touched'. Null on records written before this field existed."
+        },
+        "after": {
+          "type": "string"
+        }
+      },
+      "last_modified_at": {
+        "before": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp of the last write to this contract, stamped alongside last_modified_by_user_id. Drives the 'Pick Up Where You Left Off' recency sort."
+        },
+        "after": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "snapshot_agency_name": {
+        "before": {
+          "type": "string",
+          "description": "Immutable snapshot of the billing LegalEntity legal name exactly as printed on the generated PDF. Frozen at generation time so later LegalEntity edits never retroactively mutate this contract."
+        },
+        "after": {
+          "type": "string"
+        }
+      },
+      "snapshot_agency_address": {
+        "before": {
+          "type": "string",
+          "description": "Immutable snapshot of the billing LegalEntity registered address as printed on the generated PDF."
+        },
+        "after": {
+          "type": "string"
+        }
+      },
+      "snapshot_agency_rut": {
+        "before": {
+          "type": "string",
+          "description": "Immutable snapshot of the billing LegalEntity tax ID / RUT / VAT number as printed on the generated PDF."
+        },
+        "after": {
+          "type": "string"
+        }
+      },
+      "created_by_org_id": {
+        "before": {
+          "type": "string",
+          "indexed": true,
+          "description": "Owning org (elevate/analog). Populated before G2 RLS predicates are applied."
+        },
+        "after": {
+          "type": "string"
+        }
+      },
+      "shared_with_org": {
+        "before": {
+          "type": "string",
+          "indexed": true,
+          "description": "Cross-org ACL projection — the other org granted read access. Null = owning-org only."
+        },
+        "after": {
+          "type": "string"
+        }
+      },
+      "supersedes_contract_id": {
+        "before": {
+          "type": "string",
+          "indexed": true,
+          "description": "Prior immutable Contract version replaced by this amendment."
+        },
+        "after": {
+          "type": "string"
+        }
+      },
+      "version_number": {
+        "before": {
+          "type": "number",
+          "default": 1,
+          "description": "Monotonic version number within a Show's contract history."
+        },
+        "after": {
+          "type": "number",
+          "default": 1
+        }
+      },
+      "immutable_at": {
+        "before": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Set when dispatch succeeds; document and economic snapshots may not be edited afterward."
+        },
+        "after": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "required_before": [
+      "artist_id",
+      "title",
+      "type"
+    ],
+    "required_after": [
+      "artist_id",
+      "title",
+      "type"
+    ],
+    "rls_before": {
+      "read": {
+        "$and": [
+          {
+            "user_condition": {
+              "data.is_active": true
+            }
+          },
+          {
+            "$or": [
+              {
+                "user_condition": {
+                  "role": "admin"
+                }
+              },
+              {
+                "user_condition": {
+                  "data.is_cfo": true
+                }
+              },
+              {
+                "user_condition": {
+                  "data.finance_role": "Finance Manager"
+                }
+              },
+              {
+                "user_condition": {
+                  "data.finance_role": "Finance Viewer"
+                }
+              },
+              {
+                "user_condition": {
+                  "role": "user"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "create": {
+        "user_condition": {
+          "data.is_active": true
+        }
+      },
+      "update": {
+        "$and": [
+          {
+            "user_condition": {
+              "data.is_active": true
+            }
+          },
+          {
+            "$or": [
+              {
+                "user_condition": {
+                  "role": "admin"
+                }
+              },
+              {
+                "user_condition": {
+                  "data.is_cfo": true
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "delete": {
+        "$and": [
+          {
+            "user_condition": {
+              "data.is_active": true
+            }
+          },
+          {
+            "$or": [
+              {
+                "user_condition": {
+                  "role": "admin"
+                }
+              },
+              {
+                "user_condition": {
+                  "data.is_cfo": true
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "rls_after": {
+      "read": {
+        "$or": [
+          {
+            "user_condition": {
+              "role": "admin"
+            }
+          },
+          {
+            "$and": [
+              {
+                "user_condition": {
+                  "role": "user",
+                  "data.is_active": true
+                }
+              },
+              {
+                "$or": [
+                  {
+                    "created_by_id": "{{user.id}}"
+                  },
+                  {
+                    "data.created_by_org_id": {
+                      "$in": "{{user.data.org_access}}"
+                    }
+                  },
+                  {
+                    "data.shared_with_org": {
+                      "$in": "{{user.data.org_access}}"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "create": {
+        "user_condition": {
+          "collaborator_role": "editor"
+        }
+      },
+      "update": {
+        "user_condition": {
+          "collaborator_role": "editor"
+        }
+      },
+      "delete": {
+        "user_condition": {
+          "collaborator_role": "editor"
+        }
+      }
+    }
+  },
+  "ContractAuditLog": {
+    "added_properties": {},
+    "removed_properties": {},
+    "modified_properties": {
+      "user_id": {
+        "before": {
+          "type": "string",
+          "description": "User ID who performed the e-signature"
+        },
+        "after": {
+          "type": "string",
+          "description": "User ID who recorded the confirmation"
+        }
+      },
+      "user_email": {
+        "before": {
+          "type": "string",
+          "description": "Email of the signing user"
+        },
+        "after": {
+          "type": "string",
+          "description": "Email of the confirming user"
+        }
+      },
+      "user_name": {
+        "before": {
+          "type": "string",
+          "description": "Full name of the signing user"
+        },
+        "after": {
+          "type": "string",
+          "description": "Full name of the confirming user"
+        }
+      },
+      "ip_address": {
+        "before": {
+          "type": "string",
+          "description": "IP address captured at time of signature"
+        },
+        "after": {
+          "type": "string",
+          "description": "IP address captured at confirmation time"
+        }
+      },
+      "contract_hash": {
+        "before": {
+          "type": "string",
+          "description": "SHA-256 hash of the contract PDF content at signing time"
+        },
+        "after": {
+          "type": "string",
+          "description": "SHA-256 hash of the contract PDF content at confirmation time"
+        }
+      },
+      "signed_at": {
+        "before": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp of the e-signature"
+        },
+        "after": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the signature was confirmed"
+        }
+      },
+      "signature_method": {
+        "before": {
+          "type": "string",
+          "enum": [
+            "e_sign",
+            "manual_signed",
+            "revert_signed"
+          ],
+          "description": "How the action was recorded: native e-sign, manual signature override, or a signature revert."
+        },
+        "after": {
+          "type": "string",
+          "enum": [
+            "e_sign",
+            "manual_signed",
+            "revert_signed",
+            "staff_confirmation"
+          ],
+          "description": "Historical e_sign entries are retained; new internal confirmations are staff_confirmation."
+        }
+      }
+    },
+    "required_before": [
+      "contract_id",
+      "user_id",
+      "contract_hash",
+      "action",
+      "signed_at"
+    ],
+    "required_after": [
+      "contract_id",
+      "user_id",
+      "contract_hash",
+      "action",
+      "signed_at"
+    ],
+    "rls_before": null,
+    "rls_after": {
+      "read": {
+        "$or": [
+          {
+            "user_condition": {
+              "role": "admin"
+            }
+          },
+          {
+            "data.user_id": "{{user.id}}"
+          }
+        ]
+      },
+      "create": {
+        "user_condition": {
+          "collaborator_role": "editor"
+        }
+      },
+      "update": {
+        "user_condition": {
+          "collaborator_role": "editor"
+        }
+      },
+      "delete": {
+        "user_condition": {
+          "collaborator_role": "editor"
+        }
+      }
+    }
+  },
+  "ContractDraft": {
+    "added_properties": {
+      "show_id": {
+        "type": "string"
+      },
+      "contract_id": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "template_id": {
+        "type": "string"
+      },
+      "template_key": {
+        "type": "string"
+      },
+      "legal_entity_id": {
+        "type": "string"
+      },
+      "master_content_version": {
+        "type": "string"
+      },
+      "source_snapshot": {
+        "type": "object"
+      },
+      "blocks": {
+        "type": "array",
+        "items": {
+          "type": "object"
+        }
+      },
+      "content_hash": {
+        "type": "string"
+      },
+      "revision_no": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "parent_draft_id": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "status": {
+        "type": "string",
+        "enum": [
+          "editing",
+          "approved",
+          "generating",
+          "generated"
+        ]
+      },
+      "approved_by": {
+        "type": "string"
+      },
+      "approved_at": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "updated_by": {
+        "type": "string"
+      },
+      "lock_token": {
+        "type": "string"
+      },
+      "generated_at": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "target_contract_version": {
+        "type": "integer"
+      }
+    },
+    "removed_properties": {},
+    "modified_properties": {},
+    "required_before": [],
+    "required_after": [
+      "show_id",
+      "template_id",
+      "template_key",
+      "legal_entity_id",
+      "master_content_version",
+      "source_snapshot",
+      "blocks",
+      "content_hash",
+      "revision_no",
+      "status",
+      "lock_token"
+    ],
+    "rls_before": null,
+    "rls_after": {
+      "read": {
+        "$or": [
+          {
+            "data.approved_by": "{{user.id}}"
+          },
+          {
+            "user_condition": {
+              "role": "admin"
+            }
+          }
+        ]
+      },
+      "create": {
+        "user_condition": {
+          "role": "admin"
+        }
+      },
+      "update": {
+        "user_condition": {
+          "role": "admin"
+        }
+      },
+      "delete": {
+        "user_condition": {
+          "role": "admin"
+        }
+      }
+    }
+  },
+  "ContractRedline": {
+    "added_properties": {
+      "show_id": {
+        "type": "string"
+      },
+      "contract_id": {
+        "type": "string"
+      },
+      "version_number": {
+        "type": "integer"
+      },
+      "file_uri": {
+        "type": "string"
+      },
+      "file_name": {
+        "type": "string"
+      },
+      "file_mime": {
+        "type": "string"
+      },
+      "file_size": {
+        "type": "integer"
+      },
+      "uploaded_by_id": {
+        "type": "string"
+      },
+      "uploaded_by_name": {
+        "type": "string"
+      },
+      "review_status": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "reviewed",
+          "incorporated",
+          "declined"
+        ],
+        "default": "pending"
+      },
+      "review_notes": {
+        "type": "string"
+      },
+      "reviewed_by_id": {
+        "type": "string"
+      },
+      "reviewed_by_name": {
+        "type": "string"
+      },
+      "reviewed_at": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "review_revision": {
+        "type": "integer",
+        "default": 0
+      }
+    },
+    "removed_properties": {},
+    "modified_properties": {},
+    "required_before": [],
+    "required_after": [
+      "show_id",
+      "contract_id",
+      "version_number",
+      "file_uri",
+      "file_name",
+      "uploaded_by_id",
+      "review_status"
+    ],
+    "rls_before": null,
+    "rls_after": {
+      "read": {
+        "user_condition": {
+          "role": "admin"
+        }
+      },
+      "create": {
+        "user_condition": {
+          "role": "admin"
+        }
+      },
+      "update": {
+        "user_condition": {
+          "role": "admin"
+        }
+      },
+      "delete": {
+        "user_condition": {
+          "role": "admin"
+        }
+      }
+    }
+  },
+  "User": {
+    "added_properties": {},
+    "removed_properties": {},
+    "modified_properties": {
+      "is_active": {
+        "before": {
+          "type": "boolean",
+          "default": true,
+          "description": "Master access toggle."
+        },
+        "after": {
+          "type": "boolean",
+          "default": true,
+          "description": "Master access toggle.",
+          "rls": {
+            "update": {
+              "user_condition": {
+                "collaborator_role": "editor"
+              }
+            }
+          }
+        }
+      },
+      "org_access": {
+        "before": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "elevate",
+              "analog"
+            ]
+          },
+          "default": [
+            "analog"
+          ],
+          "description": "Organizations this user may access."
+        },
+        "after": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "elevate",
+              "analog"
+            ]
+          },
+          "default": [
+            "analog"
+          ],
+          "description": "Organizations this user may access.",
+          "rls": {
+            "update": {
+              "user_condition": {
+                "collaborator_role": "editor"
+              }
+            }
+          }
+        }
+      },
+      "finance_role": {
+        "before": {
+          "type": "string",
+          "enum": [
+            "Finance Manager",
+            "Finance Viewer"
+          ]
+        },
+        "after": {
+          "type": "string",
+          "enum": [
+            "Finance Manager",
+            "Finance Viewer"
+          ],
+          "rls": {
+            "update": {
+              "user_condition": {
+                "collaborator_role": "editor"
+              }
+            }
+          }
+        }
+      },
+      "is_cfo": {
+        "before": {
+          "type": "boolean",
+          "default": false
+        },
+        "after": {
+          "type": "boolean",
+          "default": false,
+          "rls": {
+            "update": {
+              "user_condition": {
+                "collaborator_role": "editor"
+              }
+            }
+          }
+        }
+      }
+    },
+    "required_before": [],
+    "required_after": [],
+    "rls_before": null,
+    "rls_after": null
+  }
+}

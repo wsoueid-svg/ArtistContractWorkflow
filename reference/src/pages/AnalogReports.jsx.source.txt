@@ -1,0 +1,273 @@
+import React, { useMemo, useState } from 'react';
+import { Navigate, useSearchParams } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import { base44 } from '@/api/base44Client';
+import { useOrg } from '@/lib/OrgContext';
+import { useAuth } from '@/lib/AuthContext';
+import useMyAgent from '@/hooks/useMyAgent';
+import useBookingAgentsDirectory from '@/hooks/useBookingAgentsDirectory';
+import useAnalogReportAggregates from '@/hooks/useAnalogReportAggregates';
+import useMyVolumeAlerts from '@/hooks/useMyVolumeAlerts';
+import { resolveAnalogStaffScope } from '@/lib/analogStaffScope';
+import { decorateReport, filterReportShows } from '@/lib/analogReportData';
+import { readReportFilters, reportFilterParam, reportPeriodLabel } from '@/lib/analogReportState';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import PageHeader from '@/components/shared/PageHeader';
+import AnalogReportFilters from '@/components/analog/reports/AnalogReportFilters';
+import ReportFiltersSheet from '@/components/analog/reports/ReportFiltersSheet';
+import { useIsMobile } from '@/hooks/useMobileViewport';
+import AnalogReportKPIs from '@/components/analog/reports/AnalogReportKPIs';
+import AnalogArtistBreakdown from '@/components/analog/reports/AnalogArtistBreakdown';
+import AnalogTourBreakdown from '@/components/analog/reports/AnalogTourBreakdown';
+import AnalogPaymentBreakdown from '@/components/analog/reports/AnalogPaymentBreakdown';
+import AgentHubTab from '@/components/analog/reports/AgentHubTab';
+import AnalogComparisonToggle from '@/components/analog/reports/AnalogComparisonToggle';
+import AnalogFilterSummary from '@/components/analog/reports/AnalogFilterSummary';
+import RosterPortfolioSection from '@/components/analog/reports/RosterPortfolioSection';
+import GlassCard from '@/components/analog/reports/glass/GlassCard';
+import TrendTab from '@/components/analog/reports/glass/TrendTab';
+import ArtistVolumeChart from '@/components/analog/reports/glass/ArtistVolumeChart';
+import TabFilterSelect from '@/components/analog/reports/glass/TabFilterSelect';
+import ArtistVolumeCards from '@/components/analog/reports/alerts/ArtistVolumeCards';
+import CreateAlertModal from '@/components/analog/reports/alerts/CreateAlertModal';
+import AlertsTab from '@/components/analog/reports/alerts/AlertsTab';
+import TruncationBanner from '@/components/analog/reports/TruncationBanner';
+import { buildRosterInsights } from '@/lib/rosterPortfolio';
+import { getBookingFee, getPaymentStatus, PAYMENT_STATUS_CONFIG } from '@/components/analog/reports/analogReportUtils';
+
+const DEFAULT_FILTERS = {
+  dateFrom: '', dateTo: '', preset: '', artist: 'all', tour: 'all',
+  status: 'all', payment: 'all', agent: 'all', currency: 'all',
+};
+const RAW_TABS = ['agents', 'tours', 'payment'];
+const TAB_CLASS = 'flex-shrink-0 rounded-lg data-[state=active]:bg-black data-[state=active]:text-yellow-400 text-sm font-semibold min-h-[44px] md:min-h-0';
+
+export default function AnalogReports() {
+  const isMobile = useIsMobile();
+  const { activeOrg } = useOrg();
+  const { user } = useAuth();
+  const { data: myAgent = null, isLoading: isLoadingAgent } = useMyAgent(Boolean(user && user.role !== 'admin'));
+  const scope = useMemo(() => resolveAnalogStaffScope(user, myAgent), [user, myAgent]);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const filters = useMemo(() => readReportFilters(searchParams, DEFAULT_FILTERS), [searchParams]);
+  const activeTab = searchParams.get('tab') || 'overview';
+  const [idleWindow, setIdleWindow] = useState('this_month');
+  const [alertArtistId, setAlertArtistId] = useState(null);
+  const rosterAgentId = scope.isAdmin ? (searchParams.get('rosterAgent') || 'all') : scope.myAgentId;
+  const granularity = searchParams.get('granularity') || 'month';
+  const compareYoY = searchParams.get('chartYoY') === '1';
+  const comparisonMode = searchParams.get('compare') || 'previous';
+  const boundedRange = Boolean(filters.dateFrom && filters.dateTo);
+
+  const updateParams = updates => setSearchParams(previous => {
+    const next = new URLSearchParams(previous);
+    Object.entries(updates).forEach(([key, value]) => value ? next.set(key, value) : next.delete(key));
+    return next;
+  }, { replace: true });
+  const setFilter = (key, value) => {
+    const updates = typeof key === 'object' ? key : { [key]: value };
+    updateParams(Object.fromEntries(Object.entries(updates).map(([filterKey, filterValue]) => [reportFilterParam(filterKey), filterValue === DEFAULT_FILTERS[filterKey] ? '' : filterValue])));
+  };
+  const setViewParam = (key, value, defaultValue) => updateParams({ [key]: value === defaultValue ? '' : value });
+  const clearFilters = () => setSearchParams({}, { replace: true });
+
+  // Phase 1: KPIs + charts come pre-aggregated from the server.
+  const { data: agg, isLoading: isLoadingAgg } = useAnalogReportAggregates({
+    filters, compare: comparisonMode, granularity, chartYoY: compareYoY && boundedRange,
+    isAdmin: scope.isAdmin, enabled: Boolean(user),
+  });
+  const artists = agg?.artistOptions || [];
+  const { data: myAlerts = [] } = useMyVolumeAlerts(user?.id);
+  const watchedIds = useMemo(() => new Set(myAlerts.filter(a => a.is_active !== false).flatMap(a => a.artist_ids || [])), [myAlerts]);
+
+  // Transitional raw bundle — ONLY for the deferred Phase-2 tabs (Agents/Tours/Payment + leaderboard).
+  const reportAgentId = scope.isAdmin ? null : scope.myAgentId;
+  const { data: reportResponse, isFetching: isLoadingRaw } = useQuery({
+    queryKey: ['analog-report-shows', reportAgentId, filters.dateFrom, filters.dateTo],
+    enabled: RAW_TABS.includes(activeTab) && Boolean(user && (scope.isAdmin || (!isLoadingAgent && reportAgentId))),
+    queryFn: () => base44.functions.invoke('getShowsForOrg', {
+      ...(reportAgentId ? { agent_id: reportAgentId } : {}),
+      ...(filters.dateFrom ? { date_from: filters.dateFrom } : {}),
+      ...(filters.dateTo ? { date_to: filters.dateTo } : {}),
+      include_leaderboard: scope.isAdmin,
+    }).then(response => response.data),
+  });
+  const shows = useMemo(() => decorateReport(reportResponse), [reportResponse]);
+  const filteredShows = useMemo(() => filterReportShows(shows, filters), [shows, filters]);
+
+  const { data: allTours = [] } = useQuery({ queryKey: ['tours', 'all'], enabled: activeTab === 'tours', queryFn: () => base44.entities.Tour.list('-start_date', 200) });
+  const tours = useMemo(() => {
+    const allowed = scope.isAdmin ? null : new Set(shows.map(show => show.tour_id).filter(Boolean));
+    const artistIds = new Set(artists.map(a => a.id));
+    return (allTours || []).filter(t => allowed ? allowed.has(t.id) : artistIds.has(t.artist_id));
+  }, [allTours, artists, shows, scope.isAdmin]);
+  const { data: bookingAgents = [] } = useBookingAgentsDirectory();
+  const { data: commissionReport } = useQuery({
+    queryKey: ['agent-commission-report', 'breakdown', scope.isAdmin ? 'all' : scope.myAgentId],
+    enabled: activeTab === 'agents' && Boolean(scope.isAdmin || scope.myAgentId), retry: false,
+    queryFn: () => base44.functions.invoke('agentCommissionReport', scope.isAdmin ? {} : { agent_id: scope.myAgentId }).then(response => response.data),
+  });
+  const commissionByAgent = useMemo(() => Object.fromEntries((commissionReport?.agent_summaries || []).map(item => [item.agentId, item])), [commissionReport]);
+  const { data: rosterBundle, isFetching: isLoadingRoster } = useQuery({
+    queryKey: ['roster-portfolio', rosterAgentId, idleWindow, filters.dateFrom, filters.dateTo],
+    enabled: activeTab === 'artists' && Boolean(user && rosterAgentId),
+    queryFn: () => base44.functions.invoke('getRosterPortfolio', {
+      agent_id: rosterAgentId, idle_window: idleWindow,
+      ...(filters.dateFrom ? { date_from: filters.dateFrom } : {}),
+      ...(filters.dateTo ? { date_to: filters.dateTo } : {}),
+    }).then(response => response.data),
+  });
+
+  const artistMap = useMemo(() => Object.fromEntries(artists.map(a => [a.id, a])), [artists]);
+  const tourMap = useMemo(() => Object.fromEntries(tours.map(t => [t.id, t])), [tours]);
+  const bookingAgentMap = useMemo(() => Object.fromEntries(bookingAgents.map(ba => [ba.id, ba])), [bookingAgents]);
+  const reportingAgents = useMemo(() => bookingAgents.filter(a => (a.agent_type || 'booking') !== 'logistics'), [bookingAgents]);
+
+  const agentBreakdown = useMemo(() => {
+    const map = {};
+    filteredShows.forEach(show => {
+      const bookingIds = (show.responsible_agent_ids || []).filter(id =>
+        (bookingAgentMap[id]?.agent_type || 'booking') !== 'logistics' && (scope.isAdmin || id === scope.myAgentId));
+      const agentIds = bookingIds.length > 0 ? bookingIds : ['unassigned'];
+      const share = bookingIds.length > 0 ? 1 / bookingIds.length : 1;
+      agentIds.forEach(agentId => {
+        const e = map[agentId] ||= { agentId, agentName: agentId === 'unassigned' ? 'Unassigned' : (bookingAgentMap[agentId]?.name || 'Unknown'), shows: 0, confirmed: 0, paid: 0, feeByCurrency: {} };
+        e.shows += 1;
+        if (show.status === 'confirmed' || show.status === 'completed') e.confirmed += 1;
+        if (getPaymentStatus(show) === 'paid') e.paid += 1;
+        const ccy = show.currency || 'EUR';
+        e.feeByCurrency[ccy] = (e.feeByCurrency[ccy] || 0) + (getBookingFee(show) * share);
+      });
+    });
+    return Object.values(map).map(e => ({
+      ...e,
+      paymentRate: e.shows > 0 ? (e.paid / e.shows) * 100 : 0,
+      commissionRateBps: commissionByAgent[e.agentId]?.commissionRateBps || 0,
+      earnedCommissionEur: (commissionByAgent[e.agentId]?.accruedBaseEurCents || 0) / 100,
+    })).sort((a, b) => b.shows - a.shows);
+  }, [filteredShows, bookingAgentMap, scope.isAdmin, scope.myAgentId, commissionByAgent]);
+
+  const tourBreakdown = useMemo(() => {
+    const map = {};
+    filteredShows.forEach(show => {
+      if (!show.tour_id) return;
+      const e = map[show.tour_id] ||= { tourId: show.tour_id, tourName: tourMap[show.tour_id]?.name || 'Unknown Tour', artistName: artistMap[tourMap[show.tour_id]?.artist_id]?.name || '—', shows: 0, minDate: null, maxDate: null, feeByCurrency: {} };
+      e.shows += 1;
+      const ccy = show.currency || 'EUR';
+      e.feeByCurrency[ccy] = (e.feeByCurrency[ccy] || 0) + getBookingFee(show);
+      if (show.date) {
+        if (!e.minDate || show.date < e.minDate) e.minDate = show.date;
+        if (!e.maxDate || show.date > e.maxDate) e.maxDate = show.date;
+      }
+    });
+    return Object.values(map).sort((a, b) => b.shows - a.shows);
+  }, [filteredShows, tourMap, artistMap]);
+
+  const countBy = pick => Object.entries(filteredShows.reduce((m, s) => { const k = pick(s); m[k] = (m[k] || 0) + 1; return m; }, {})).map(([name, value]) => ({ name, value }));
+  const paymentBreakdown = useMemo(() => countBy(getPaymentStatus), [filteredShows]); // eslint-disable-line react-hooks/exhaustive-deps
+  const statusBreakdown = useMemo(() => countBy(s => s.status || 'pending'), [filteredShows]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const rosterFilteredShows = useMemo(() => filterReportShows(decorateReport(rosterBundle), filters), [rosterBundle, filters]);
+  const rosterInsights = useMemo(() => buildRosterInsights(rosterFilteredShows, rosterBundle?.artists || [], rosterBundle?.contacts || []), [rosterFilteredShows, rosterBundle]);
+
+  const leaderboard = useMemo(() => (reportResponse?.leaderboard || []).map(row => {
+    const financial = agentBreakdown.find(agent => agent.agentId === row.agentId);
+    return { ...row, ...(scope.isAdmin ? { feeByCurrency: financial?.feeByCurrency || {} } : {}) };
+  }), [reportResponse, agentBreakdown, scope.isAdmin]);
+
+  const filterChips = useMemo(() => {
+    const chips = [];
+    if (filters.dateFrom || filters.dateTo) chips.push({ key: 'date', label: filters.preset ? filters.preset.replaceAll('_', ' ') : `Date: ${filters.dateFrom || '…'} – ${filters.dateTo || '…'}` });
+    if (filters.artist !== 'all') chips.push({ key: 'artist', label: `Artist: ${artistMap[filters.artist]?.name || 'Selected'}` });
+    if (filters.status !== 'all') chips.push({ key: 'status', label: `Status: ${filters.status}` });
+    if (scope.isAdmin && filters.agent !== 'all') chips.push({ key: 'agent', label: `Agent: ${bookingAgentMap[filters.agent]?.name || 'Selected'}` });
+    if (filters.tour !== 'all') chips.push({ key: 'tour', label: `Tour: ${filters.tour === 'none' ? 'No Tour' : tourMap[filters.tour]?.name || 'Selected'}` });
+    if (filters.payment !== 'all') chips.push({ key: 'payment', label: `Payment: ${filters.payment.replaceAll('_', ' ')}` });
+    return chips;
+  }, [filters, artistMap, tourMap, bookingAgentMap, scope.isAdmin]);
+  const removeFilterChip = key => key === 'date' ? setFilter({ dateFrom: '', dateTo: '', preset: '' }) : setFilter(key, DEFAULT_FILTERS[key]);
+  const periodLabel = reportPeriodLabel(filters.dateFrom, filters.dateTo);
+
+  if (activeOrg && activeOrg !== 'analog') return <Navigate to="/reports" replace />;
+
+  const kpis = agg?.kpis;
+  const comparisonEnabled = boundedRange && Boolean(agg?.baselineKpis);
+  const rawSpinner = <div className="flex justify-center py-12"><div className="h-6 w-6 animate-spin rounded-full border-4 border-gray-200 border-t-yellow-400" /></div>;
+
+  return (
+    <div className="studio-reports space-y-4">
+      <PageHeader eyebrow="Analytics" title="Analog Reports" subtitle="Track shows booked, booking fees earned and payment status" />
+
+      {isLoadingAgg && !agg ? rawSpinner : (
+        <>
+          {/* Global row — only filters that apply to the KPI cards */}
+          <div className="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-3">
+            {isMobile ? (
+              <ReportFiltersSheet filters={filters} setFilter={setFilter} artists={artists} bookingAgents={reportingAgents} showAgent={scope.isAdmin}
+                activeCount={filterChips.length} resultCount={kpis?.totalShows || 0} onClear={clearFilters} />
+            ) : (
+              <AnalogReportFilters filters={filters} setFilter={setFilter} artists={artists} bookingAgents={reportingAgents} showAgent={scope.isAdmin} />
+            )}
+            <AnalogComparisonToggle value={comparisonMode} onChange={value => setViewParam('compare', value, 'previous')} disabled={!boundedRange} />
+          </div>
+          <AnalogFilterSummary count={kpis?.totalShows || 0} chips={filterChips} onRemove={removeFilterChip} onClear={clearFilters} />
+
+          {agg?.truncated && <TruncationBanner reason={agg.truncationReason} />}
+          {kpis && <AnalogReportKPIs kpis={kpis} bookingFeeByCurrency={kpis.feeByCurrency} baselineKpis={agg.baselineKpis} comparisonMode={comparisonMode} comparisonEnabled={comparisonEnabled} />}
+
+          <Tabs value={activeTab} onValueChange={value => setViewParam('tab', value, 'overview')}>
+            <TabsList className="bg-gray-100 p-1 rounded-xl gap-1 h-auto w-full justify-start overflow-x-auto flex-nowrap md:flex-wrap md:w-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              <TabsTrigger value="overview" className={TAB_CLASS}>Trend</TabsTrigger>
+              <TabsTrigger value="agents" className={TAB_CLASS}>Agents</TabsTrigger>
+              <TabsTrigger value="artists" className={TAB_CLASS}>Artists</TabsTrigger>
+              <TabsTrigger value="tours" className={TAB_CLASS}>Tours</TabsTrigger>
+              <TabsTrigger value="payment" className={TAB_CLASS}>Payment</TabsTrigger>
+              <TabsTrigger value="alerts" className={TAB_CLASS}>Alerts</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="overview" className="mt-4">
+              <TrendTab agg={agg} granularity={granularity} setGranularity={g => setViewParam('granularity', g, 'month')}
+                compareYoY={compareYoY} toggleYoY={() => setViewParam('chartYoY', compareYoY ? '' : '1', '')} boundedRange={boundedRange} period={periodLabel} />
+            </TabsContent>
+            <TabsContent value="agents" className="mt-4">
+              {isLoadingRaw && !reportResponse ? rawSpinner : <AgentHubTab agentBreakdown={agentBreakdown} leaderboard={leaderboard} showFinancials={scope.isAdmin} myAgentId={scope.myAgentId} />}
+            </TabsContent>
+            <TabsContent value="artists" className="mt-4 space-y-4">
+              <RosterPortfolioSection insights={rosterInsights} idleArtists={rosterBundle?.idleArtists || []} idleWindow={idleWindow} setIdleWindow={setIdleWindow}
+                loading={isLoadingRoster} isAdmin={scope.isAdmin} agents={rosterBundle?.agentOptions || []} agentId={rosterAgentId || 'all'}
+                setAgentId={value => setViewParam('rosterAgent', value, 'all')} period={periodLabel} />
+              <GlassCard title="Show Volume by Artist" subtitle={`Top 5 + Other · ${periodLabel}`}>
+                <ArtistVolumeChart volume={agg?.artistVolume} granularity={granularity} height={isMobile ? 200 : 260} />
+              </GlassCard>
+              <GlassCard title="Top Artists" subtitle="Get notified when forward volume drops">
+                <ArtistVolumeCards rows={(agg?.artistBreakdown || []).slice(0, 8)} watchedIds={watchedIds} onNotify={setAlertArtistId} showFees={agg?.financeVisible} />
+              </GlassCard>
+              <AnalogArtistBreakdown data={agg?.artistBreakdown || []} />
+            </TabsContent>
+            <TabsContent value="tours" className="mt-4">
+              <GlassCard title="Tours" actions={
+                <TabFilterSelect value={filters.tour} onChange={v => setFilter('tour', v)} allLabel="All Tours"
+                  options={[{ value: 'none', label: 'No Tour (Standalone)' }, ...tours.map(t => ({ value: t.id, label: t.name }))]} />
+              }>
+                {isLoadingRaw && !reportResponse ? rawSpinner : <AnalogTourBreakdown data={tourBreakdown} />}
+              </GlassCard>
+            </TabsContent>
+            <TabsContent value="payment" className="mt-4">
+              <GlassCard title="Payments" actions={
+                <TabFilterSelect value={filters.payment} onChange={v => setFilter('payment', v)} allLabel="All Payments"
+                  options={Object.entries(PAYMENT_STATUS_CONFIG).map(([value, c]) => ({ value, label: c.label }))} />
+              }>
+                {isLoadingRaw && !reportResponse ? rawSpinner : <AnalogPaymentBreakdown paymentData={paymentBreakdown} statusData={statusBreakdown} period={periodLabel} />}
+              </GlassCard>
+            </TabsContent>
+            <TabsContent value="alerts" className="mt-4">
+              <AlertsTab userId={user?.id} artistOptions={artists} />
+            </TabsContent>
+          </Tabs>
+
+          <CreateAlertModal open={Boolean(alertArtistId)} onClose={() => setAlertArtistId(null)} artists={artists} initialArtistId={alertArtistId} userId={user?.id} />
+        </>
+      )}
+    </div>
+  );
+}

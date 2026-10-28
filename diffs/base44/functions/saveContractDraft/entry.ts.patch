@@ -1,0 +1,48 @@
+diff --git a/base44/functions/saveContractDraft/entry.ts b/base44/functions/saveContractDraft/entry.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..3503c4ff7e30a7943880b6afd23335d192f652f1
+--- /dev/null
++++ b/base44/functions/saveContractDraft/entry.ts
+@@ -0,0 +1,41 @@
++import { createClientFromRequest } from 'npm:@base44/sdk@0.8.53';
++import { draftAccess, loadContractSource, buildContractDocument, validateDraftBlocks, contentHash } from '../../shared/contractDocument.ts';
++import { currentContract, assertContractMutable, validateParent } from '../../shared/contractLifecycle.ts';
++import { nextContractVersion, revisionContext } from '../../shared/contractRevisionContext.ts';
++export default async function(req) {
++  try {
++    const base44=createClientFromRequest(req),user=await base44.auth.me();
++    if(!user) return Response.json({error:'Unauthorized'},{status:401});
++    const body=await req.json(); const show=await draftAccess(base44,user,body.show_id);
++    const current=await currentContract(base44,show);
++    assertContractMutable(current,body.force_amendment===true);
++    const svc=base44.asServiceRole.entities.ContractDraft;
++    let prior=null,master,source,parent=null;
++    if(body.draft_id) {
++      prior=await svc.get(body.draft_id);
++      if(prior.show_id!==show.id) return Response.json({error:'Draft belongs to another Show'},{status:403});
++      if(['generated','generating'].includes(prior.status)) return Response.json({error:'This draft is locked. Reopen to create a new draft revision.'},{status:409});
++      parent=await validateParent(base44,show,current,prior.parent_draft_id);
++      source=await loadContractSource(base44,show,prior.template_id,body.fields||prior.source_snapshot.fields);
++    } else {
++      parent=await validateParent(base44,show,current,body.parent_draft_id);
++      source=await loadContractSource(base44,show,parent?.template_id||body.template_id,body.fields);
++    }
++    if(current?.contract_file_url&&parent?.id!==current.draft_id) return Response.json({error:'Create Amendment from the issued revision before saving.'},{status:409});
++    master=await buildContractDocument(source);
++    if(body.master_content_version!==master.master_content_version) return Response.json({error:'Master wording changed; reopen the document'},{status:409});
++    const blocks=validateDraftBlocks(body.blocks,master.blocks);
++    const patch={show_id:show.id,contract_id:prior?.contract_id||show.contract_id||null,template_id:master.template_id,template_key:master.template_key,legal_entity_id:master.legal_entity_id,master_content_version:master.master_content_version,source_snapshot:source,blocks,content_hash:await contentHash(blocks),revision_no:(prior?.revision_no||0)+1,parent_draft_id:parent?.id||null,target_contract_version:nextContractVersion(current),status:'approved',approved_by:user.id,approved_at:new Date().toISOString(),updated_by:user.id,lock_token:crypto.randomUUID()};
++    let saved;
++    if(prior) {
++      // Database compare-and-swap, same updateMany mechanism as dispatch READY -> DISPATCHING.
++      const result=await svc.updateMany({id:prior.id,show_id:show.id,revision_no:body.expected_revision_no,lock_token:body.expected_lock_token,status:{$in:['editing','approved']}},{$set:patch});
++      if(result?.updated!==1) return Response.json({error:'Another tab saved a newer revision. Your browser copy is retained. Compare or reload before saving.'},{status:409});
++      saved={...prior,...patch};
++    } else {
++      if(Number(body.expected_revision_no)!==0) return Response.json({error:'Invalid initial revision'},{status:409});
++      saved=await svc.create(patch);
++    }
++    return Response.json({draft:{...saved,...(await revisionContext(base44,show,saved)),master_blocks:master.blocks,required_inputs:master.required_inputs,approved_by_name:user.full_name||user.id,force_amendment:body.force_amendment===true}});
++  } catch(error) { return Response.json({error:error.message},{status:error.status||500}); }
++}
+\ No newline at end of file

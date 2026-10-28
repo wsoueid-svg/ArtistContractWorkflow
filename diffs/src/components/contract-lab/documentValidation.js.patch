@@ -1,0 +1,31 @@
+diff --git a/src/components/contract-lab/documentValidation.js b/src/components/contract-lab/documentValidation.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..a2ecd5f9477ff49ad19e803f2e7adeb2bd549241
+--- /dev/null
++++ b/src/components/contract-lab/documentValidation.js
+@@ -0,0 +1,24 @@
++const plain = html => new DOMParser().parseFromString(html || '', 'text/html').body.textContent || '';
++const placeholder = /\{\{[^}]*\}\}|\[\s*(?:[●•]|insert\b[^\]]*|todo\b[^\]]*|tbd\b[^\]]*|tbc\b[^\]]*|placeholder\b[^\]]*|month|date|name)\s*\]|_{2,}/gi;
++const validDate = value => /^\d{4}-\d{2}-\d{2}$/.test(value || '') && Number.isFinite(Date.parse(value+'T00:00:00Z')) && new Date(value+'T00:00:00Z').toISOString().slice(0,10)===value;
++export default function documentValidation(doc) {
++  const f=doc.source_snapshot?.fields || {}, source=doc.source_snapshot || {}, issues=[];
++  const add=(id,label,step=3,blockId=null)=>issues.push({id,label,step,blockId});
++  for(const [key,label,step] of [['company_name','Company name',0],['company_address','Company address',0],['company_vat','Company tax ID',0],['company_signatory','Promoter signatory',3],['agency_signatory','Agency signatory',3],['artist_name','Artist name',1],['event_name','Event name',1],['venue','Venue',1],['country','Country',1]]) if(!String(f[key]||'').trim())add(key,`${label} is missing.`,step);
++  for(const [key,label,step] of [['contract_date','Contract date',3],['date_of_show','Show date',1],['advance_due','Deposit due date',2],['balance_due','Balance due date',2]]) if(!validDate(f[key]))add(key,`${label} is missing or invalid.`,step);
++  if(Number(f.booking_fee)>0&&!validDate(f.booking_fee_due))add('booking_fee_due','Booking fee due date is missing or invalid.',2);
++  for(const key of ['booking_fee','advance_amount','balance_amount']) if(f[key]===null||f[key]===''||f[key]===undefined||!Number.isFinite(Number(f[key]))||Number(f[key])<0)add(key,`${key.replaceAll('_',' ')} must be a non-negative amount.`,2,'economics');
++  for(const key of ['advance_pct','balance_pct']) if(!Number.isFinite(Number(f[key]))||Number(f[key])<0||Number(f[key])>100)add(key,'Payment percentages must be between 0 and 100.',2,'economics');
++  if(f.currency!==(source.show?.currency||source.legalEntity?.default_currency||'EUR'))add('currency','Contract currency must match the Show deal.',1,'economics');
++  for(const block of doc.blocks || []) {
++    const text=plain(block.rich_text), hits=text.match(placeholder);
++    if(hits)add(`placeholder-${block.id}`,`Replace ${[...new Set(hits)].join(', ')} before generating.`,3,block.id);
++    if(!['protected','economics'].includes(block.kind)) {
++      const content=block.kind==='appendix'?text.replace(/^Appendix: [^\n]*?(?=\n|$)/,'').trim():text.trim();
++      const body=block.kind==='appendix'?plain(block.rich_text.replace(/^<p><strong>Appendix: [\s\S]*?<\/strong><\/p>/,'')).trim():content;
++      if(!body)add(`empty-${block.id}`,`Write this ${block.kind} or remove it.`,3,block.id);
++    }
++  }
++  for(const input of doc.required_inputs || [])add(input,`Complete ${String(input).replaceAll('_',' ')}.`,3);
++  return issues;
++}
+\ No newline at end of file

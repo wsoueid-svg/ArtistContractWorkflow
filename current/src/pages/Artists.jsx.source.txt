@@ -1,0 +1,247 @@
+import React, { useState } from 'react';
+import { base44 } from '@/api/base44Client';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useOrgArtists, useOrgShows } from '../hooks/useOrgData';
+import { useQuery } from '@tanstack/react-query';
+import { Link, useNavigate } from 'react-router-dom';
+import { createPageUrl } from '../utils';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Plus, Search, Music2, Calendar, DollarSign, Trash2 } from 'lucide-react';
+import { toast } from 'sonner';
+import ArtistForm from '../components/artists/ArtistForm';
+import ArtistOnboardingWizard from '../components/artists/ArtistOnboardingWizard';
+import DeleteArtistDialog from '../components/artists/DeleteArtistDialog';
+import AnalogArtistMatchDialog from '../components/artists/AnalogArtistMatchDialog';
+import { useOrg } from '../lib/OrgContext';
+import PageHeader from '@/components/shared/PageHeader';
+import ArtistRosterCard from '@/components/artists/ArtistRosterCard';
+import { invalidateArtistQueries } from '@/lib/artistQueries';
+
+export default function Artists() {
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showForm, setShowForm] = useState(false);
+  const [editingArtist, setEditingArtist] = useState(null);
+  const [deletingArtist, setDeletingArtist] = useState(null);
+  const [matchData, setMatchData] = useState(null);
+  const [isClaiming, setIsClaiming] = useState(false);
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
+
+  const { activeOrg } = useOrg();
+  const { artists, stubArtistIds, isLoading } = useOrgArtists('-created_date');
+  const { shows } = useOrgShows(stubArtistIds);
+  const { data: me } = useQuery({ queryKey: ['roster-current-user'], queryFn: () => base44.auth.me() });
+  const revenueEligible = me?.role === 'admin' || me?.is_cfo === true || ['Finance Manager', 'Finance Viewer'].includes(me?.finance_role) || (activeOrg === 'analog' && me?.analog_role === 'agent');
+  const { data: revenue = {} } = useQuery({
+    queryKey: ['roster-revenue', activeOrg, me?.id],
+    queryFn: async () => (await base44.functions.invoke('getRosterRevenue', {})).data.revenue,
+    enabled: !!me && revenueEligible,
+  });
+
+  const createMutation = useMutation({
+    mutationFn: (data) => base44.entities.Artist.create(data),
+    onSuccess: (created) => {
+      invalidateArtistQueries(queryClient, created?.id);
+      setShowForm(false);
+      setEditingArtist(null);
+    },
+    onError: () => toast.error('Could not create the artist. Please try again.'),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }) => base44.entities.Artist.update(id, data),
+    onSuccess: (_updated, variables) => {
+      invalidateArtistQueries(queryClient, variables?.id);
+      setShowForm(false);
+      setEditingArtist(null);
+    },
+    onError: () => toast.error('Could not update the artist. Please try again.'),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (artist) => base44.entities.Artist.update(artist.id, {
+      status: 'archived',
+      archived_at: new Date().toISOString(),
+    }),
+    onSuccess: (_result, artist) => {
+      invalidateArtistQueries(queryClient, artist?.id);
+      setDeletingArtist(null);
+    },
+  });
+
+  const handleSubmit = async (data) => {
+    if (editingArtist) {
+      updateMutation.mutate({ id: editingArtist.id, data });
+    } else {
+      // When creating in Elevate, check for matching Analog artists to claim
+      if (activeOrg === 'elevate' && data.name?.trim()) {
+        try {
+          const res = await base44.functions.invoke('claimAnalogArtist', { name: data.name });
+          if (res.data?.matches?.length > 0) {
+            setMatchData({ matches: res.data.matches, show_count: res.data.show_count, tour_count: res.data.tour_count, formData: data });
+            return;
+          }
+        } catch (e) {
+          console.error('Analog match check failed:', e);
+        }
+      }
+      return createMutation.mutateAsync({ ...data, org: activeOrg, created_by_org_id: activeOrg });
+    }
+  };
+
+  const handleClaimMatch = async (matchId) => {
+    setIsClaiming(true);
+    try {
+      const res = await base44.functions.invoke('claimAnalogArtist', {
+        action: 'claim',
+        name: matchData.formData.name,
+        form_data: matchData.formData,
+        artist_id: matchId,
+      });
+      if (res.data?.claimed) {
+        const claimedName = matchData.matches[0]?.name || matchData.formData?.name || 'Artist';
+        toast.success(`Claimed "${claimedName}" — all shows and tours are now visible in Elevate.`);
+        invalidateArtistQueries(queryClient, matchId);
+        queryClient.invalidateQueries({ queryKey: ['shows'] });
+        setMatchData(null);
+        setShowForm(false);
+        setEditingArtist(null);
+      }
+    } catch (e) {
+      toast.error('Could not claim artist. Please try again.');
+    } finally {
+      setIsClaiming(false);
+    }
+  };
+
+  const handleDeclineMatch = () => {
+    createMutation.mutate({ ...matchData.formData, org: 'elevate', created_by_org_id: 'elevate' });
+    setMatchData(null);
+    setShowForm(false);
+    setEditingArtist(null);
+  };
+
+  const filteredArtists = artists.filter((artist) =>
+    artist.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    artist.stage_name?.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const safeDate = (d) => { const dt = new Date(d); return isNaN(dt) ? null : dt; };
+
+  const getArtistStats = (artistId) => {
+    const artistShows = shows.filter((s) => s.artist_id === artistId);
+    const now = new Date();
+    const upcomingShows = artistShows.filter((s) => {
+      const d = safeDate(s.date);
+      return d && d >= now && s.status === 'confirmed';
+    }).length;
+    return { upcomingShows };
+  };
+
+  const statusColors = {
+    active: 'bg-green-100 text-green-700 border-green-300',
+    inactive: 'bg-gray-100 text-gray-700 border-gray-300',
+    on_tour: 'bg-yellow-100 text-yellow-700 border-yellow-300',
+    in_studio: 'bg-blue-100 text-blue-700 border-blue-300',
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <PageHeader
+        title="Artists"
+        subtitle={`${artists.length} artists in roster`}
+        actions={
+          <Button
+            onClick={() => {
+              setEditingArtist(null);
+              setShowForm(true);
+            }}
+            className={`font-semibold min-h-[44px] ${
+              activeOrg === 'analog'
+                ? 'bg-yellow-400 text-black hover:bg-yellow-300'
+                : 'bg-black text-yellow-400 hover:bg-gray-900'
+            }`}
+          >
+            <Plus className="w-5 h-5 mr-1.5" aria-hidden="true" />
+            <span className="hidden sm:inline">Add Artist</span>
+            <span className="sm:hidden">Add</span>
+          </Button>
+        }
+      />
+
+      {/* Search */}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4 pointer-events-none" aria-hidden="true" />
+        <Input
+          placeholder="Search artists…"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="h-11 pl-9 border-slate-200 focus:border-yellow-400"
+        />
+      </div>
+
+      {/* Artist Form / Onboarding Wizard Modal */}
+      {showForm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+            {editingArtist ? (
+              <div className="overflow-y-auto">
+                <ArtistForm
+                  artist={editingArtist}
+                  onSubmit={handleSubmit}
+                  onCancel={() => { setShowForm(false); setEditingArtist(null); }}
+                />
+              </div>
+            ) : (
+              <ArtistOnboardingWizard
+                onSubmit={handleSubmit}
+                onCancel={() => { setShowForm(false); setEditingArtist(null); }}
+              />
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Analog Artist Match Dialog — shown when creating an Elevate artist that matches an Analog artist */}
+      {matchData && (
+        <AnalogArtistMatchDialog
+          matchData={matchData}
+          onClaim={() => handleClaimMatch(matchData.matches[0].id)}
+          onDecline={handleDeclineMatch}
+          onCancel={() => setMatchData(null)}
+          isClaiming={isClaiming}
+        />
+      )}
+
+      <div className="flex items-center justify-between gap-3 text-sm text-slate-500">
+        <span>{filteredArtists.length} {filteredArtists.length === 1 ? 'artist' : 'artists'} shown</span>
+        {searchQuery && <Button variant="ghost" onClick={() => setSearchQuery('')} className="min-h-[44px]">Clear search</Button>}
+      </div>
+
+      {isLoading ? (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">{[1, 2, 3, 4, 5, 6].map(item => <div key={item} className="h-56 animate-pulse rounded-2xl border border-slate-200 bg-slate-100" />)}</div>
+      ) : filteredArtists.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-slate-300 py-16 text-center"><Music2 className="mx-auto mb-3 h-10 w-10 text-slate-300" /><p className="font-medium text-slate-700">No artists found</p><p className="mt-1 text-sm text-slate-500">Try a different search or add an artist to this roster.</p></div>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {filteredArtists.map((artist) => {
+            const stats = getArtistStats(artist.id);
+            return <ArtistRosterCard key={artist.id} artist={artist} upcomingShows={stats.upcomingShows} canViewRevenue={revenueEligible && Object.prototype.hasOwnProperty.call(revenue, artist.id)} revenue={revenue[artist.id]?.amount} onOpen={() => navigate(createPageUrl(`ArtistProfile?id=${artist.id}`))} onEdit={() => { setEditingArtist(artist); setShowForm(true); }} onDelete={() => setDeletingArtist(artist)} />;
+          })}
+        </div>
+      )}
+      {/* Delete Confirmation Dialog */}
+      <DeleteArtistDialog
+        artist={deletingArtist}
+        open={!!deletingArtist}
+        onClose={() => setDeletingArtist(null)}
+        onConfirm={() => deleteMutation.mutate(deletingArtist)}
+        isDeleting={deleteMutation.isPending}
+      />
+    </div>
+  );
+}

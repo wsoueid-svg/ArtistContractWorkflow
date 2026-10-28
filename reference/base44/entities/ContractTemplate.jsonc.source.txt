@@ -1,0 +1,219 @@
+{
+  "name": "ContractTemplate",
+  "type": "object",
+  "rls": {
+    "read": {
+      "$and": [
+        {
+          "user_condition": {
+            "data.is_active": true
+          }
+        },
+        {
+          "$or": [
+            {
+              "user_condition": {
+                "role": "admin"
+              }
+            },
+            {
+              "user_condition": {
+                "data.is_cfo": true
+              }
+            },
+            {
+              "user_condition": {
+                "data.finance_role": "Finance Manager"
+              }
+            },
+            {
+              "user_condition": {
+                "data.finance_role": "Finance Viewer"
+              }
+            },
+            {
+              "user_condition": {
+                "role": "user"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "create": {
+      "$and": [
+        {
+          "user_condition": {
+            "data.is_active": true
+          }
+        },
+        {
+          "$or": [
+            {
+              "user_condition": {
+                "role": "admin"
+              }
+            },
+            {
+              "user_condition": {
+                "data.is_cfo": true
+              }
+            },
+            {
+              "user_condition": {
+                "data.finance_role": "Finance Manager"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "update": {
+      "$and": [
+        {
+          "user_condition": {
+            "data.is_active": true
+          }
+        },
+        {
+          "$or": [
+            {
+              "user_condition": {
+                "role": "admin"
+              }
+            },
+            {
+              "user_condition": {
+                "data.is_cfo": true
+              }
+            },
+            {
+              "user_condition": {
+                "data.finance_role": "Finance Manager"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "delete": {
+      "$and": [
+        {
+          "user_condition": {
+            "data.is_active": true
+          }
+        },
+        {
+          "$or": [
+            {
+              "user_condition": {
+                "role": "admin"
+              }
+            },
+            {
+              "user_condition": {
+                "data.is_cfo": true
+              }
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Template name, e.g. Panama Standard Template"
+    },
+    "legal_entity_id": {
+      "type": "string",
+      "indexed": true,
+      "description": "Billing LegalEntity stamped on every Contract created from this template"
+    },
+    "contract_type": {
+      "type": "string",
+      "enum": [
+        "show_agreement",
+        "management",
+        "label",
+        "sponsorship",
+        "merchandise",
+        "other"
+      ],
+      "default": "show_agreement"
+    },
+    "default_terms": {
+      "type": "object",
+      "properties": {
+        "deposit_percentage": {
+          "type": "number",
+          "default": 50
+        },
+        "balance_due_offset_days": {
+          "type": "number",
+          "default": 14
+        },
+        "payment_terms": {
+          "type": "string"
+        }
+      }
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true
+    },
+    "template_key": {
+      "type": "string",
+      "enum": [
+        "cidony",
+        "nysm",
+        "nysm-es",
+        "aesl-en",
+        "aesl-es"
+      ],
+      "description": "Exact visual and language contract renderer selected by this template."
+    },
+    "language": {
+      "type": "string",
+      "enum": [
+        "en",
+        "es"
+      ],
+      "description": "Contract document language fixed by the selected template."
+    },
+    "agency_signatory_name": {
+      "type": "string",
+      "description": "Default agency signatory printed by this contract template."
+    },
+    "template_file_uri": {
+      "type": "string",
+      "description": "Private storage URI for the approved source contract document."
+    },
+    "template_file_name": {
+      "type": "string",
+      "description": "System-generated display name for the approved source document."
+    },
+    "template_file_mime": {
+      "type": "string",
+      "description": "Server-verified MIME type of the approved source document."
+    },
+    "template_file_uploaded_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp of the latest approved source document replacement."
+    },
+    "template_file_uploaded_by_id": {
+      "type": "string",
+      "description": "Admin or CFO user who last replaced the source document."
+    },
+    "template_file_version": {
+      "type": "number",
+      "default": 0,
+      "description": "Monotonic source-document replacement version."
+    }
+  },
+  "required": [
+    "name",
+    "legal_entity_id"
+  ]
+}

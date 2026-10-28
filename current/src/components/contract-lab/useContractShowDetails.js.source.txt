@@ -1,0 +1,27 @@
+import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { base44 } from '@/api/base44Client';
+import { useAuth } from '@/lib/AuthContext';
+import { useOrg } from '@/lib/OrgContext';
+import { auditStamp, invalidateShowQueries } from '@/lib/showEdit';
+import contractError from '@/components/contract-lab/contractErrors';
+
+export default function useContractShowDetails(editor) {
+  const [field, setField] = useState(null), [saving, setSaving] = useState(false), [error, setError] = useState('');
+  const queryClient = useQueryClient(), { user } = useAuth(), { activeOrg } = useOrg();
+  const open = name => { if (!saving && !editor.saving && !editor.frozen && !editor.recovery && !editor.comparison) { setError(''); setField(name); } };
+  const save = async values => {
+    if (saving || editor.saving || editor.frozen) return;
+    setSaving(true); setError('');
+    const doc = editor.doc;
+    try {
+      await base44.entities.Show.update(doc.show_id, { venue: values.venue.trim(), country: values.country, ...auditStamp(user, activeOrg) });
+      void invalidateShowQueries(queryClient, doc.show_id);
+      const { data } = await base44.functions.invoke('getContractDraft', { show_id: doc.show_id, template_id: doc.template_id, fields: doc.source_snapshot.fields, build: true, force_amendment: doc.force_amendment === true });
+      editor.refreshSource(data.draft);
+      setField(null);
+    } catch (caught) { setError(contractError(caught)); }
+    finally { setSaving(false); }
+  };
+  return { field, saving, error, open, save, close: () => { if (!saving) setField(null); } };
+}

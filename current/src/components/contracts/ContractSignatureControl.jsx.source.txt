@@ -1,0 +1,75 @@
+import React, { useState } from 'react';
+import { base44 } from '@/api/base44Client';
+import { Button } from '@/components/ui/button';
+import { Loader2, ShieldCheck, ChevronDown, PenLine, Undo2, CheckCircle2 } from 'lucide-react';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+
+const COPY = {
+  signed: { title: 'Record signature confirmation?', body: 'Confirm only after checking the agreement was signed outside this app. This records your staff account, time and the PDF hash; it does not collect the promoter’s electronic signature or alter the PDF.', confirm: 'Record confirmation' },
+  manual_signed: { title: 'Mark as signed (manual)?', body: 'Use this when the promoter returned a signed copy outside the app. Your account, the time and a hash of the document are recorded.', confirm: 'Confirm' },
+  revert_signed: { title: 'Revert this signature?', body: 'The contract returns to Returned status. The revert is recorded in the audit log.', confirm: 'Revert' },
+};
+
+export default function ContractSignatureControl({ contract, onChange }) {
+  const [pending, setPending] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  if (!contract?.contract_file_url) return null;
+  const isSigned = contract.status === 'SIGNED';
+  const canManual = ['SENT', 'RETURNED'].includes(contract.status);
+  if(!isSigned&&!canManual)return <p className="text-sm text-muted-foreground">Send this contract before recording a signature confirmation.</p>;
+
+  const run = async () => {
+    const action = pending;
+    setPending(null); setLoading(true); setError(null);
+    try {
+      const res = await base44.functions.invoke('signContract', { contract_id: contract.id, action });
+      if (res.data?.error) setError(res.data.error); else onChange?.();
+    } catch (e) {
+      setError(e?.response?.data?.error || e.message || 'Could not update the signature');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div>
+      {isSigned ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs text-green-700">
+            <CheckCircle2 className="h-4 w-4" />Signed{contract.e_signed_by_name ? ` · by ${contract.e_signed_by_name}` : ''}
+          </span>
+          <Button size="sm" variant="outline" disabled={loading} onClick={() => setPending('revert_signed')} className="min-h-[44px] text-xs">
+            {loading ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <Undo2 className="mr-1 h-3 w-3" />}Revert signature
+          </Button>
+        </div>
+      ) : (
+        <div className="inline-flex">
+          <Button size="sm" disabled={loading} onClick={() => setPending('signed')} className={`min-h-[44px] bg-emerald-600 text-xs text-white hover:bg-emerald-700 ${canManual ? 'rounded-r-none' : ''}`}>
+            {loading ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <ShieldCheck className="mr-1 h-3 w-3" />}Record signature confirmation
+          </Button>
+          {canManual && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="sm" disabled={loading} aria-label="More signing options" className="min-h-[44px] min-w-[44px] rounded-l-none border-l border-emerald-700 bg-emerald-600 px-2 text-white hover:bg-emerald-700"><ChevronDown className="h-4 w-4" /></Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => setPending('manual_signed')} className="min-h-[44px] text-xs"><PenLine className="mr-2 h-3 w-3" />Mark as signed (manual)</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+        </div>
+      )}
+      <AlertDialog open={!!pending} onOpenChange={(open) => !open && setPending(null)}>
+        {pending && (
+          <AlertDialogContent>
+            <AlertDialogHeader><AlertDialogTitle>{COPY[pending].title}</AlertDialogTitle><AlertDialogDescription>{COPY[pending].body}</AlertDialogDescription></AlertDialogHeader>
+            <AlertDialogFooter><AlertDialogCancel className="min-h-[44px]">Cancel</AlertDialogCancel><AlertDialogAction onClick={run} className="min-h-[44px]">{COPY[pending].confirm}</AlertDialogAction></AlertDialogFooter>
+          </AlertDialogContent>
+        )}
+      </AlertDialog>
+      {error && <p className="mt-1 text-xs text-red-500">{error}</p>}
+    </div>
+  );
+}

@@ -1,0 +1,198 @@
+/**
+ * calcDeal — the single source of truth for Analog deal economics.
+ *
+ * BOTH the contract generator (generateSmartContract) and the invoice generator
+ * (generateShowFinancialDrafts) must derive their numbers from this module so the
+ * two documents can never diverge. All money is handled as INTEGER CENTS.
+ *
+ * Composition:
+ *   - dealCardTerms.computeDealTerms  -> deposit / balance split
+ *   - taxCalculator.calculateInvoiceTaxes -> VAT treatment per part
+ *   - WHT computation per Show.deal_wht_base (added here)
+ */
+
+import { computeDealTerms, toCents, fromCents } from './dealCardTerms.ts';
+import { calculateInvoiceTaxes } from './taxCalculator.ts';
+
+export type DealPartType = 'BOOKING_FEE' | 'DEPOSIT' | 'BALANCE' | 'FULL_FEE';
+
+const nowIso = () => new Date().toISOString();
+
+/** Balance due date: showDate - offsetDays, never in the past. */
+function balanceDueDate(showDate?: string, offsetDays = 14) {
+  if (!showDate) return nowIso();
+  const target = new Date(`${showDate}T00:00:00.000Z`);
+  target.setUTCDate(target.getUTCDate() - Math.max(0, Number(offsetDays || 0)));
+  return new Date(Math.max(Date.now(), target.getTime())).toISOString();
+}
+
+/** Total WHT in cents per the show's configured withholding base. */
+export function computeWhtCents(show: any, deal: { dealValueCents: number; bookingFeeCents: number }) {
+  if (!show?.deal_subject_to_wht) return 0;
+  if (show.wht_amount_fixed != null) return Math.max(0, toCents(show.wht_amount_fixed));
+
+  const costsCents = (show.cost_items || []).reduce(
+    (sum: number, item: any) => sum + toCents(item?.amount),
+    0,
+  );
+
+  let baseCents = show.gross_fee != null ? toCents(show.gross_fee) : deal.dealValueCents;
+  if (show.deal_wht_base === 'gross_fee_minus_costs') baseCents -= costsCents;
+  if (show.deal_wht_base === 'gross_fee_minus_costs_minus_booking_fee') {
+    baseCents -= costsCents + deal.bookingFeeCents;
+  }
+
+  const rate = Math.max(0, Number(show.withholding_tax_rate || 0));
+  return Math.round(Math.max(0, baseCents) * rate / 100);
+}
+
+/** EUR per one native-currency unit. Foreign -> EUR multiplies; EUR is always 1. */
+function eurRate(show: any, currency: string): number | null {
+  if (currency === 'EUR') return 1;
+  const rate = Number(show?.exchange_rate_locked);
+  return Number.isFinite(rate) && rate > 0 ? rate : null;
+}
+
+const toEur = (cents: number, rate: number | null) =>
+  rate === null ? null : Math.round(cents * rate);
+
+/** Consistent money rendering for PDF templates and UI previews. */
+export function formatCents(cents: unknown, currency = 'EUR') {
+  const value = fromCents(Number(cents || 0));
+  return `${currency} ${value.toLocaleString('en-IE', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
+/**
+ * Compute the full deal breakdown for a show.
+ * Returns integer-cent totals, base-EUR equivalents, and the invoiceable parts[].
+ */
+export function computeDealBreakdown(opts: {
+  show: any;
+  legalEntity: any;
+  contact: any;
+  depositPct?: unknown;
+  balanceDueOffsetDays?: unknown;
+}) {
+  const { show, legalEntity, contact } = opts;
+  const currency = String(show?.currency || legalEntity?.default_currency || 'EUR').toUpperCase();
+  const depositPct = Math.min(100, Math.max(0, Number(opts.depositPct ?? show?.deposit_percentage ?? 0)));
+  const offsetDays = Number(opts.balanceDueOffsetDays ?? show?.balance_due_offset_days ?? 14);
+
+  const deal = computeDealTerms({
+    guarantee: show?.guarantee_fee,
+    bookingFee: show?.booking_fee_amount_fixed,
+    bookingFeeRate: show?.booking_fee_rate,
+    bookingFeeBase: show?.gross_fee ?? show?.guarantee_fee,
+    bookingFeeType: show?.booking_fee_type,
+    depositPct,
+  });
+
+  const whtRate = Math.max(0, Number(show?.withholding_tax_rate || 0));
+  const totalWhtCents = computeWhtCents(show, deal);
+
+  // The artist fee is what the deposit/balance schedule applies to; an exclusive
+  // agency booking fee is invoiced as its own part.
+  const bookingFeeCents = (show?.booking_fee_type || 'exclusive') === 'exclusive' ? deal.bookingFeeCents : 0;
+  const artistFeeCents = deal.dealValueCents - bookingFeeCents;
+
+  const warnings: string[] = [];
+  const rawParts: Array<{ type: DealPartType; feeCents: number; dueDate: string }> = [];
+
+  if (depositPct > 0) {
+    if (bookingFeeCents > 0) {
+      rawParts.push({ type: 'BOOKING_FEE', feeCents: bookingFeeCents, dueDate: nowIso() });
+    }
+    const depositCents = Math.round(artistFeeCents * depositPct / 100);
+    rawParts.push({ type: 'DEPOSIT', feeCents: depositCents, dueDate: nowIso() });
+    rawParts.push({
+      type: 'BALANCE',
+      feeCents: artistFeeCents - depositCents,
+      dueDate: balanceDueDate(show?.date, offsetDays),
+    });
+  } else {
+    rawParts.push({
+      type: 'FULL_FEE',
+      feeCents: deal.dealValueCents,
+      dueDate: balanceDueDate(show?.date, offsetDays),
+    });
+  }
+
+  // WHT is withheld from the artist fee — allocate balance-first, overflow to deposit.
+  const whtAllocation = new Map<DealPartType, number>();
+  let remainingWht = totalWhtCents;
+  for (const type of ['BALANCE', 'DEPOSIT', 'FULL_FEE'] as DealPartType[]) {
+    if (remainingWht <= 0) break;
+    const part = rawParts.find(p => p.type === type);
+    if (!part) continue;
+    const applied = Math.min(remainingWht, part.feeCents);
+    whtAllocation.set(type, applied);
+    remainingWht -= applied;
+  }
+  if (remainingWht > 0) {
+    warnings.push(
+      `Withholding tax of ${formatCents(totalWhtCents, currency)} exceeds the artist fee. ${formatCents(remainingWht, currency)} could not be allocated; finance review required.`,
+    );
+  }
+
+  const rate = eurRate(show, currency);
+  const parts = rawParts.map(part => {
+    const tax = calculateInvoiceTaxes({ legalEntity, contact, taxableAmountCents: part.feeCents });
+    const whtCents = whtAllocation.get(part.type) || 0;
+    const cashCents = Math.max(0, part.feeCents + tax.vat_amount_cents - whtCents);
+    return {
+      type: part.type,
+      feeCents: part.feeCents,
+      vatRate: tax.vat_rate,
+      vatTreatment: tax.vat_treatment,
+      vatAmountCents: tax.vat_amount_cents,
+      whtCents,
+      cashCents,
+      dueDate: part.dueDate,
+      taxConfiguration: { ...tax, taxable_amount_cents: part.feeCents },
+      baseEurCents: toEur(cashCents, rate),
+    };
+  });
+
+  const subtotalCents = deal.dealValueCents;
+  const vatAmountCents = parts.reduce((sum, part) => sum + part.vatAmountCents, 0);
+  const allocatedWhtCents = parts.reduce((sum, part) => sum + part.whtCents, 0);
+  const totalPayableCents = subtotalCents + vatAmountCents - allocatedWhtCents;
+  const headlineTax = calculateInvoiceTaxes({ legalEntity, contact, taxableAmountCents: subtotalCents });
+
+  return {
+    currency,
+    exchangeRateLocked: rate === 1 ? null : (rate === null ? null : String(rate)),
+    depositPct,
+    balanceDueOffsetDays: offsetDays,
+
+    guaranteeCents: deal.guaranteeCents,
+    bookingFeeCents: deal.bookingFeeCents,
+    dealValueCents: deal.dealValueCents,
+    artistFeeCents,
+    depositCents: parts.find(p => p.type === 'DEPOSIT')?.feeCents ?? 0,
+    balanceCents: parts.find(p => p.type === 'BALANCE')?.feeCents ?? 0,
+
+    whtRate,
+    whtAmountCents: allocatedWhtCents,
+    totalWhtCents,
+
+    vatTreatment: headlineTax.vat_treatment,
+    vatRate: headlineTax.vat_rate,
+    vatAmountCents,
+    vatReason: headlineTax.reason,
+
+    subtotalCents,
+    totalPayableCents,
+
+    subtotalBaseEurCents: toEur(subtotalCents, rate),
+    vatBaseEurCents: toEur(vatAmountCents, rate),
+    whtBaseEurCents: toEur(allocatedWhtCents, rate),
+    totalPayableBaseEurCents: toEur(totalPayableCents, rate),
+
+    parts,
+    warnings,
+  };
+}

@@ -1,0 +1,21 @@
+diff --git a/base44/shared/pdfshift.ts b/base44/shared/pdfshift.ts
+index 46e8f32187bc7d429c5093226cbd16b0c8959410..2a54f00dfd28a2691ca772c9034eb0946ab289f8 100644
+--- a/base44/shared/pdfshift.ts
++++ b/base44/shared/pdfshift.ts
+@@ -17,7 +17,7 @@ export const MAX_PDF_BYTES = 10 * 1024 * 1024;
+  * Convert an HTML string to PDF bytes.
+  * Throws an Error carrying `status` when PDFShift rejects the request.
+  */
+-export async function htmlToPdf(html: string, opts: { footerHtml?: string; sandbox?: boolean } = {}) {
++export async function htmlToPdf(html: string, opts: { footerHtml?: string; headerHtml?: string; sandbox?: boolean } = {}) {
+   const apiKey = secrets.get('PDFSHIFT_API_KEY');
+   if (!apiKey) {
+     const err: any = new Error('PDFSHIFT_API_KEY is not configured — cannot render the contract PDF.');
+@@ -32,6 +32,7 @@ export async function htmlToPdf(html: string, opts: { footerHtml?: string; sandb
+     use_print: true,
+   };
+   if (opts.sandbox) payload.sandbox = true;
++  if (opts.headerHtml) payload.header = { source: opts.headerHtml, height: 100 };
+   if (opts.footerHtml) {
+     payload.footer = { source: opts.footerHtml, height: 40 };
+   }

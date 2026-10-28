@@ -1,0 +1,83 @@
+import { useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { base44 } from '@/api/base44Client';
+import useBookingAgentsDirectory from '@/hooks/useBookingAgentsDirectory';
+
+/**
+ * useMyDeals — everything the personal dashboard needs for the logged-in user:
+ * their shows (as logistics or booking agent, or creator), the contract and
+ * invoice bound to each, open tasks, and unassigned CONF threads.
+ */
+export default function useMyDeals() {
+  const { data: user } = useQuery({ queryKey: ['me'], queryFn: () => base44.auth.me() });
+
+  const { data: agents = [] } = useBookingAgentsDirectory();
+
+  const { data: shows = [], isLoading: showsLoading } = useQuery({
+    queryKey: ['my-deals-shows'],
+    queryFn: () => base44.entities.Show.list('-date', 2000),
+  });
+
+  const { data: contracts = [] } = useQuery({
+    queryKey: ['contracts', 'all'],
+    queryFn: () => base44.entities.Contract.list('-updated_date', 2000).catch(() => []),
+    staleTime: 60 * 1000,
+  });
+
+  const { data: invoices = [] } = useQuery({
+    queryKey: ['invoices', 'all'],
+    queryFn: () => base44.entities.Invoice.list('-updated_date', 2000).catch(() => []),
+    staleTime: 60 * 1000,
+  });
+
+  const { data: tasks = [] } = useQuery({
+    queryKey: ['my-open-tasks', user?.id],
+    queryFn: () => base44.entities.Task.filter({ assigned_to: user.id, status: { $in: ['todo', 'in_progress'] } }, 'due_date', 50),
+    enabled: !!user?.id,
+  });
+
+  const { data: confThreads = [], isLoading: confLoading, refetch: refetchConf } = useQuery({
+    queryKey: ['conf-threads', 'unassigned', user?.id],
+    queryFn: () => base44.functions.invoke('listConfThreads', {}).then(response => response.data.threads || []),
+    enabled: Boolean(user?.id),
+  });
+
+  const { data: artists = [] } = useQuery({
+    queryKey: ['artists', 'names'],
+    queryFn: () => base44.entities.Artist.list('name', 500),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const myAgent = useMemo(() => {
+    if (!user) return null;
+    return agents.find(a => a.is_self === true) || null;
+  }, [agents, user]);
+
+  const myShows = useMemo(() => shows.filter(s =>
+    (myAgent && ((s.logistics_agent_ids || []).includes(myAgent.id) || s.logistics_agent_id === myAgent.id || (s.responsible_agent_ids || []).includes(myAgent.id))) ||
+    (user && s.created_by_id === user.id)
+  ), [shows, myAgent, user]);
+
+  const contractByShow = useMemo(() => {
+    const m = {}; contracts.forEach(c => { if (c.show_id && !m[c.show_id]) m[c.show_id] = c; }); return m;
+  }, [contracts]);
+  const invoiceByShow = useMemo(() => {
+    const m = {}; invoices.forEach(i => { if (i.show_id && !i.is_deleted && !m[i.show_id]) m[i.show_id] = i; }); return m;
+  }, [invoices]);
+  const artistMap = useMemo(() => {
+    const m = {}; artists.forEach(a => { m[a.id] = a; }); return m;
+  }, [artists]);
+  const agentMap = useMemo(() => {
+    const m = {}; agents.forEach(a => { m[a.id] = a; }); return m;
+  }, [agents]);
+
+  const canViewInvoices = !!user && (user.role === 'admin' || user.is_cfo === true ||
+    ['Finance Manager', 'Finance Viewer'].includes(user.finance_role));
+
+  return {
+    user, myAgent, myShows, contractByShow, invoiceByShow, tasks, confThreads, artists, artistMap, agentMap,
+    canViewInvoices, isLoading: showsLoading, confLoading, refetchConf,
+    // Unfiltered sets — the admin Org View scopes these itself.
+    shows, contracts, invoices, agents,
+  };
+}

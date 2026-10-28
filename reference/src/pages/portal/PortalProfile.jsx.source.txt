@@ -1,0 +1,112 @@
+import React from 'react';
+import { Music2, Utensils, Plane, FileText, Mail, Phone, ShieldAlert } from 'lucide-react';
+import { usePortal } from '@/lib/portal/PortalContext';
+import PortalSection, { PortalRow } from '@/components/portal/PortalSection';
+import PortalDocumentList from '@/components/portal/PortalDocumentList';
+
+/** Read-only artist profile: preferences, frequent flyer, document vault. */
+export default function PortalProfile() {
+  const { profile, vaultDocuments, permissions, user } = usePortal();
+
+  if (!profile) return null;
+
+  const prefs = profile.preferences || {};
+  const contact = profile.contact_info || {};
+
+  return (
+    <div className="space-y-4">
+      {/* Identity */}
+      <div className="rounded-2xl bg-slate-900 p-4">
+        <div className="flex items-center gap-3">
+          <span className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-slate-800">
+            {profile.photo_url
+              ? <img src={profile.photo_url} alt="" className="h-full w-full object-cover" />
+              : <Music2 className="h-6 w-6 text-yellow-400" aria-hidden="true" />}
+          </span>
+          <div className="min-w-0">
+            <h1 className="truncate text-lg font-bold text-white">{profile.name}</h1>
+            {profile.legal_name && profile.legal_name !== profile.name && (
+              <p className="truncate text-xs text-slate-400">{profile.legal_name}</p>
+            )}
+            {user?.email && <p className="truncate text-[11px] text-slate-500">{user.email}</p>}
+          </div>
+        </div>
+        {profile.genres?.length > 0 && (
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            {profile.genres.map((g) => (
+              <span key={g} className="rounded-full bg-yellow-400 px-2 py-0.5 text-[10px] font-bold text-black">{g}</span>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {profile.bio && (
+        <PortalSection title="Bio">
+          <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700">{profile.bio}</p>
+        </PortalSection>
+      )}
+
+      {(contact.email || contact.phone || contact.emergency_contact) && (
+        <PortalSection icon={Mail} title="Contact">
+          <PortalRow
+            label="Email"
+            value={contact.email ? <a href={`mailto:${contact.email}`} className="text-yellow-600 underline">{contact.email}</a> : null}
+          />
+          <PortalRow
+            label="Phone"
+            value={contact.phone ? <a href={`tel:${contact.phone}`} className="text-yellow-600 underline">{contact.phone}</a> : null}
+          />
+          <PortalRow label="Emergency" value={contact.emergency_contact} />
+          <PortalRow
+            label="Emergency phone"
+            value={contact.emergency_phone ? <a href={`tel:${contact.emergency_phone}`} className="text-yellow-600 underline">{contact.emergency_phone}</a> : null}
+          />
+        </PortalSection>
+      )}
+
+      {Object.values(prefs).some(Boolean) && (
+        <PortalSection icon={Utensils} title="Preferences & Rider">
+          <PortalRow label="Dietary" value={prefs.dietary} />
+          <PortalRow label="Hotel" value={prefs.hotel_preferences} />
+          <PortalRow label="Transport" value={prefs.transportation_notes} />
+          {prefs.technical_rider && (
+            <div className="pt-2">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Technical rider</p>
+              <p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">{prefs.technical_rider}</p>
+            </div>
+          )}
+        </PortalSection>
+      )}
+
+      {profile.frequent_flyer?.length > 0 && (
+        <PortalSection icon={Plane} title="Frequent Flyer">
+          {profile.frequent_flyer.map((ff, idx) => (
+            <PortalRow
+              key={idx}
+              label={ff.airline || 'Airline'}
+              value={[ff.number, ff.tier].filter(Boolean).join(' · ')}
+              mono
+            />
+          ))}
+        </PortalSection>
+      )}
+
+      {permissions.can_view_documents ? (
+        <PortalSection icon={FileText} title="My Documents">
+          <PortalDocumentList
+            documents={vaultDocuments}
+            emptyLabel="No documents shared yet. Passports, visas and riders appear here."
+          />
+        </PortalSection>
+      ) : (
+        <PortalSection icon={ShieldAlert} title="My Documents">
+          <p className="py-1 text-xs italic text-slate-400">Document access isn’t enabled for your account.</p>
+        </PortalSection>
+      )}
+
+      <p className="px-1 pb-2 text-center text-[10px] text-slate-400">
+        This portal is read-only. Contact your agent to change any detail.
+      </p>
+    </div>
+  );
+}

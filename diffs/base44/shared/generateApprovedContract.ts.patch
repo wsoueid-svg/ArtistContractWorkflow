@@ -1,0 +1,68 @@
+diff --git a/base44/shared/generateApprovedContract.ts b/base44/shared/generateApprovedContract.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..880f8e35a0f2d73fdc3c4180d5628bd0add52d9a
+--- /dev/null
++++ b/base44/shared/generateApprovedContract.ts
+@@ -0,0 +1,61 @@
++import { draftAccess } from './contractDocument.ts';
++import { currentContract, assertContractMutable, validateParent } from './contractLifecycle.ts';
++import { prepareDraftRender } from './contractDraftRender.ts';
++import { htmlToPdf } from './pdfshift.ts';
++import { AccessError } from './assertShowAccess.ts';
++import { nextContractVersion } from './contractRevisionContext.ts';
++
++export async function generateApprovedContract(base44,user,body,sha256Hex) {
++  const svc=base44.asServiceRole.entities;
++  const show=await draftAccess(base44,user,body.show_id);
++  const current=await currentContract(base44,show);
++  assertContractMutable(current,body.force_amendment===true);
++  const draft=await svc.ContractDraft.get(body.draft_id);
++  if(draft.show_id!==show.id||draft.template_id!==body.contract_template_id)throw new AccessError('Draft does not match Show/template',403);
++  const issued=['SENT','RETURNED'].includes(current?.status);
++  const parent=await validateParent(base44,show,current,draft.parent_draft_id);
++  if(current?.contract_file_url&&!parent)throw new AccessError('Start a revision from the current generated contract before generating another PDF.',409);
++  const {source,rendered}=await prepareDraftRender(base44,show,draft,body.expected_content_hash);
++  const {fields:f,breakdown,template,legalEntity}=source;
++  const token=crypto.randomUUID();let reserved=false,createdId=null,committed=false,frozen=false,linkedShow=false,boundUrl=null;
++  const claim=await svc.ContractDraft.updateMany({id:draft.id,status:'approved',content_hash:body.expected_content_hash,revision_no:draft.revision_no,lock_token:draft.lock_token},{$set:{status:'generating',lock_token:token}});
++  if(claim.updated!==1)throw new AccessError('Stale content hash or draft is already generating. Reopen and review.',409);
++  try {
++    if(current) {
++      const claimContract=await svc.Contract.updateMany({id:current.id,status:current.status,$and:[{$or:[{generation_lock:{$exists:false}},{generation_lock:''},{generation_lock:null}]},{$or:[{dispatch_lock:{$exists:false}},{dispatch_lock:''},{dispatch_lock:null}]}]},{$set:{generation_lock:token}});
++      if(claimContract.updated!==1)throw new AccessError('Contract status changed or dispatching; generation rejected.',409);
++      reserved=true;
++    }
++    const bytes=await htmlToPdf(rendered.html,{headerHtml:rendered.headerHtml,footerHtml:rendered.footerHtml,sandbox:body.sandbox===true&&user.role==='admin'});
++    const pdfHash=await sha256Hex(bytes);
++    const file=new File([new Blob([bytes],{type:'application/pdf'})],`contract_${draft.template_key}_${show.id}_r${draft.revision_no}.pdf`,{type:'application/pdf'});
++    const {file_uri:file_url}=await base44.asServiceRole.integrations.Core.UploadPrivateFile({file});
++    boundUrl=file_url;
++    // External rendering may take time. Recheck sources and issued status before binding any artifact.
++    const freshShow=await draftAccess(base44,user,show.id);
++    const after=await currentContract(base44,freshShow);
++    if((after?.id||null)!==(current?.id||null))throw new AccessError('Current contract changed while rendering. Reopen and review.',409);
++    if(current&&(after.generation_lock!==token||after.status!==current.status||after.dispatch_lock))throw new AccessError('Contract status or generation reservation changed; reopen and review.',409);
++    await prepareDraftRender(base44,freshShow,{...draft,status:'approved'},body.expected_content_hash);
++    const patch={artist_id:show.artist_id,show_id:show.id,contact_id:show.contract_contact_id||show.client_contact_id||show.contact_id,contract_template_id:template.id,template_key:draft.template_key,rendered_template_key:draft.template_key,legal_entity_id:legalEntity.id,title:`Contract • ${f.artist_name} @ ${f.event_name}`,type:template.contract_type||'show_agreement',status:'draft',generation_lock:token,contract_file_url:file_url,contract_hash:pdfHash,pdf_hash:pdfHash,content_hash:draft.content_hash,draft_id:draft.id,draft_revision_no:draft.revision_no,master_content_version:draft.master_content_version,currency:f.currency,value:breakdown.dealValueCents/100,deposit_percentage:breakdown.depositPct,balance_due_offset_days:breakdown.balanceDueOffsetDays,snapshot_artist_name:f.artist_name,snapshot_event_name:f.event_name,snapshot_show_date:f.date_of_show,snapshot_venue_name:f.venue,snapshot_promoter_name:f.company_name,snapshot_promoter_address:f.company_address,snapshot_promoter_vat:f.company_vat,snapshot_agency_name:f.agency_name,snapshot_agency_address:f.agency_address,snapshot_agency_rut:f.agency_rut,snapshot_currency:f.currency,snapshot_guarantee_fee:breakdown.guaranteeCents,snapshot_booking_fee:breakdown.bookingFeeCents,snapshot_tax_rate:breakdown.vatRate,snapshot_contract_notes:f.contract_notes||'',snapshot_taken_at:new Date().toISOString(),version_number:nextContractVersion(current),is_amendment:issued||!!current?.is_amendment,needs_resend:issued||!!current?.needs_resend,last_modified_by_user_id:user.id,last_modified_at:new Date().toISOString(),created_by_org_id:show.created_by_org_id};
++    if(current)patch.supersedes_contract_id=current.id;
++    const created=await svc.Contract.create(patch),contractId=created.id;createdId=created.id;
++    const freeze=await svc.ContractDraft.updateMany({id:draft.id,status:'generating',lock_token:token},{$set:{status:'generated',contract_id:contractId,generated_at:new Date().toISOString()}});
++    if(freeze.updated!==1)throw new AccessError('Draft generation lock changed.',409);frozen=true;
++    const linked=await svc.Show.updateMany({id:show.id,updated_date:freshShow.updated_date},{$set:{contract_id:contractId,contract_url:file_url,legal_entity_id:legalEntity.id,deposit_percentage:breakdown.depositPct,balance_due_offset_days:breakdown.balanceDueOffsetDays}});
++    if(linked.updated!==1)throw new AccessError('Show changed while binding the PDF. Reopen and review.',409);
++    linkedShow=true;
++    const ready=await svc.Contract.updateMany({id:contractId,status:'draft',generation_lock:token},{$set:{status:'READY',generation_lock:''}});
++    if(ready.updated!==1)throw new AccessError('PDF stored but final status could not be completed. Administrator review required.',409);
++    committed=true;
++    return {success:true,file_url,contract_id:contractId,contract_template_id:template.id,legal_entity_id:legalEntity.id,template_key:draft.template_key,content_hash:draft.content_hash,pdf_hash:pdfHash,draft_revision_no:draft.revision_no,version_number:patch.version_number,language:rendered.lang,warnings:breakdown.warnings};
++  } finally {
++    if(!committed) {
++      if(linkedShow)await svc.Show.updateMany({id:show.id,contract_id:createdId||current?.id,contract_url:boundUrl},{$set:{contract_id:show.contract_id||null,contract_url:show.contract_url||null,legal_entity_id:show.legal_entity_id||null,deposit_percentage:show.deposit_percentage??null,balance_due_offset_days:show.balance_due_offset_days??null}});
++      if(createdId)await svc.Contract.delete(createdId);
++
++      await svc.ContractDraft.updateMany({id:draft.id,lock_token:token,status:frozen?'generated':'generating'},{$set:{status:'approved',contract_id:draft.contract_id||null,lock_token:draft.lock_token},$unset:{generated_at:''}});
++    }
++    if(reserved)await svc.Contract.updateMany({id:current.id,generation_lock:token},{$set:{generation_lock:''}});
++  }
++}
+\ No newline at end of file

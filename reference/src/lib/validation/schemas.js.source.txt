@@ -1,0 +1,166 @@
+/**
+ * schemas.js — Centralized Zod validation schemas (Single Source of Truth).
+ *
+ * These schemas define the canonical shape of all data entering the system.
+ * They are used by:
+ *  - Frontend forms (for immediate UX feedback)
+ *  - Backend functions (for defense-in-depth server-side validation)
+ *
+ * TypeScript types are derived from these schemas using z.infer, ensuring
+ * the data model and validation rules are never out of sync.
+ *
+ * IMPORTANT: Backend functions CANNOT import this file (Deno sandbox limitation).
+ * They must inline the equivalent Zod schema. This file is the canonical reference.
+ */
+
+import { z } from 'zod';
+
+// ─── Shared Primitives ───────────────────────────────────────────────────────
+
+const uuidSchema = z.string().uuid('Invalid ID format.');
+const emailSchema = z.string().email('Invalid email address.').max(254).toLowerCase().trim();
+const urlSchema = z.string().url('Invalid URL.').max(2048).refine(
+  (val) => !/^(javascript|data|file|vbscript):/i.test(val),
+  'Dangerous URL scheme detected.'
+);
+const optionalString = (max = 500) => z.string().trim().max(max).optional().or(z.literal(''));
+const positiveNumber = z.number().min(0, 'Value cannot be negative.').max(1e9, 'Value is unreasonably large.');
+
+// ─── Show Schema ──────────────────────────────────────────────────────────────
+
+export const showSchema = z.object({
+  artist_id: z.string().uuid('Artist is required.'),
+  tour_id: uuidSchema.optional().or(z.literal('')),
+  contract_id: uuidSchema.optional().or(z.literal('')),
+  event_name: z.string().trim().min(1, 'Event name is required.').max(200),
+  venue: optionalString(200),
+  city: optionalString(100),
+  country: optionalString(100),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format.'),
+  time: z.string().regex(/^\d{2}:\d{2}$/, 'Time must be in HH:MM format.').optional().or(z.literal('')),
+  capacity: positiveNumber.optional(),
+  ticket_price: positiveNumber.optional(),
+  guarantee_fee: positiveNumber.optional(),
+  currency: z.enum(['EUR', 'USD', 'GBP']).default('EUR'),
+  status: z.enum(['confirmed', 'pending', 'cancelled', 'completed']).default('pending'),
+  flyer_url: optionalString(2048),
+  flyer_approved: z.boolean().default(false),
+  visa_required: z.boolean().default(false),
+  visa_status: z.enum(['not_needed', 'pending', 'approved', 'denied']).default('not_needed'),
+  contact_person: optionalString(200),
+  contact_email: z.string().email('Invalid contact email.').max(254).toLowerCase().trim().optional().or(z.literal('')),
+  contact_phone: optionalString(30),
+  notes: z.string().trim().max(5000).optional().or(z.literal('')),
+  booking_fee_rate: positiveNumber.max(100, 'Rate cannot exceed 100%.').optional(),
+  withholding_tax_rate: positiveNumber.max(100, 'Rate cannot exceed 100%.').optional(),
+  commission_rate: positiveNumber.max(100, 'Rate cannot exceed 100%.').optional(),
+});
+
+// ─── Contact Schema ───────────────────────────────────────────────────────────
+
+export const contactSchema = z.object({
+  name: z.string().trim().min(1, 'Name is required.').max(200),
+  type: z.enum(['promoter', 'venue', 'club', 'brand', 'label', 'agent', 'a_and_r', 'media', 'other']).default('promoter'),
+  email: z.string().email('Invalid email.').max(254).toLowerCase().trim().optional().or(z.literal('')),
+  phone: optionalString(30),
+  company: optionalString(200),
+  country: optionalString(100),
+  city: optionalString(100),
+  address: optionalString(500),
+  website: urlSchema.optional().or(z.literal('')),
+  notes: z.string().trim().max(5000).optional().or(z.literal('')),
+  vat_tax_id: optionalString(50),
+});
+
+// ─── Artist Schema ────────────────────────────────────────────────────────────
+
+export const artistSchema = z.object({
+  name: z.string().trim().min(1, 'Artist name is required.').max(200),
+  stage_name: optionalString(200),
+  bio: z.string().trim().max(10000).optional().or(z.literal('')),
+  photo_url: urlSchema.optional().or(z.literal('')),
+  press_kit_url: urlSchema.optional().or(z.literal('')),
+  status: z.enum(['active', 'inactive', 'on_tour', 'in_studio', 'archived']).default('active'),
+  genres: z.array(z.string().trim().max(50)).max(20).optional().default([]),
+});
+
+// ─── Invoice Schema ───────────────────────────────────────────────────────────
+
+export const invoiceSchema = z.object({
+  invoice_number: z.string().trim().min(1).max(100),
+  legal_entity_id: uuidSchema,
+  client_id: uuidSchema.optional(),
+  client_name: z.string().trim().max(200).optional(),
+  issue_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  due_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  subtotal: positiveNumber,
+  tax_amount: positiveNumber,
+  total: positiveNumber,
+  currency: z.enum(['EUR', 'USD', 'GBP']).default('EUR'),
+  status: z.enum(['Draft', 'Sent', 'Viewed', 'Partially Paid', 'Paid', 'Overdue', 'Disputed', 'Cancelled', 'Needs Review']).default('Draft'),
+  payment_terms: z.enum(['Net 7', 'Net 15', 'Net 30', 'Net 60', 'Custom']).default('Net 30'),
+  notes: z.string().trim().max(5000).optional().or(z.literal('')),
+});
+
+// ─── Public Form Submission Schema ────────────────────────────────────────────
+
+export const publicFormSubmissionSchema = z.object({
+  token: z.string().trim().min(1, 'Token is required.').max(256),
+  submitter_name: z.string().trim().max(200).optional().or(z.literal('')),
+  submitter_email: z.string().email('Invalid email.').max(254).toLowerCase().trim().optional().or(z.literal('')),
+  answers: z.record(z.string(), z.union([
+    z.string().trim().max(5000),
+    z.number(),
+    z.boolean(),
+  ])).refine(
+    (val) => Object.keys(val).length <= 100,
+    'Too many form fields.'
+  ),
+});
+
+// ─── Webhook Payload Schemas ──────────────────────────────────────────────────
+
+export const invoiceWebhookPayloadSchema = z.object({
+  sender_email: z.string().email().max(254).toLowerCase().trim().optional().or(z.literal('')),
+  sender_name: z.string().trim().max(200).optional().or(z.literal('')),
+  raw_email_body: z.string().min(1, 'raw_email_body is required.').max(100000, 'Email body too large.'),
+  message_id: z.string().trim().max(500).optional().or(z.literal('')),
+});
+
+// ─── Org Gate Schema ──────────────────────────────────────────────────────────
+
+export const orgGateSchema = z.object({
+  activeOrg: z.enum(['elevate', 'analog'], {
+    errorMap: () => ({ message: 'Invalid organization identifier.' }),
+  }),
+});
+
+// ─── Helper: Safe Parse ───────────────────────────────────────────────────────
+
+/**
+ * validateData — Parses data against a Zod schema and returns a structured result.
+ * @param {z.ZodSchema} schema
+ * @param {unknown} data
+ * @returns {{ success: boolean, data?: any, error?: string, fieldErrors?: Record<string,string> }}
+ */
+export const validateData = (schema, data) => {
+  const result = schema.safeParse(data);
+  if (result.success) {
+    return { success: true, data: result.data };
+  }
+
+  // Flatten Zod errors into a field-error map
+  const fieldErrors = {};
+  for (const issue of result.error.issues) {
+    const field = issue.path.join('.') || '_';
+    if (!fieldErrors[field]) {
+      fieldErrors[field] = issue.message;
+    }
+  }
+
+  return {
+    success: false,
+    error: Object.values(fieldErrors)[0] || 'Validation failed.',
+    fieldErrors,
+  };
+};

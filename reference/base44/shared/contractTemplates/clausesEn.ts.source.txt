@@ -1,0 +1,132 @@
+import { OFFICIAL_TERMS_CIDONY_EN, OFFICIAL_TERMS_EN } from './officialTerms.ts';
+
+/**
+ * English legal clause bodies for the Analog artist engagement contract.
+ *
+ * These strings are the VERBATIM operative text migrated from the previous
+ * jsPDF generator — do not paraphrase them. Templates cidony, nysm and aesl-en
+ * all consume this module so the English legal wording can never diverge
+ * between branded entities.
+ */
+
+export const PREAMBLE_EN =
+  'It is hereby agreed that the Company/Promoter engages the Artist and the Artist hereby accepts the Engagement to appear and perform in his/her/their usual entertainment ("the Performance") at the Event/s, the Venue/s, on the Date/s, for the Duration, and at the Artist Fee/s and (if applicable) Booking Fee (all as defined in the Schedule below) and subject to the Conditions below and the Rider attached to this Engagement Contract. The Engagement Contract shall comprise the Schedule, Terms and Conditions and Rider attached here to which supersedes the Confirmation of Booking Form previously issued by Analog.';
+
+export const WHT_CLAUSE_EN =
+  'If the promoter needs to apply the WHT to the artist fee, it must be agreed before signing the contract. Establishing the percentage to apply on said rate. It cannot be modified after the signing of the contract.';
+
+export const WHT_PROOF_EN =
+  'In this case, the artist will send to the promoter the invoice corresponding to their fees with the agreed rate, less the WHT. The promoter undertakes to deliver to the Artist the proof of payment, of said withholdings within a period not exceeding two months. Any tax withholding tax or lien derived from the performance of the artist will be paid by the promoter.';
+
+export const BILLING_NOTE_EN =
+  'All artwork related material must follow identical billing, as approved by management from offset. Artist/Management have the right to terminate performance if billing requirements are not met.';
+
+export const PAYMENT_TAIL_EN = [
+  'Failure by the Company to comply with this payment schedule shall constitute a material breach of this Engagement Contract entitling the Artist to terminate immediately without prior notice.',
+  'The invoice for fee shall be sent in addition to this engagement contract.',
+];
+
+export const VAT_NOTE_EN =
+  'VAT will be added to all agreed artist fees if required and in accordance with the legislation of the country where the performance takes place.';
+
+export const TRANSFER_NOTE_EN =
+  '**When making the transfer, remember to mark the option "OUR" in the transfer type options**';
+
+export const EXPENSES_INTRO_EN =
+  '(h) Expenses / Additional Matters: In addition Company shall pay for and/or provide (as applicable) the following at its own expense and at no expense to the Artist:';
+
+export const EXPENSE_ITEMS_EN = [
+  '(i) Technical & Hospitality (Per the Terms and Conditions below plus as per attached Rider)',
+  '(j) Hotel Accommodation (As per attached Rider)',
+  '(k) Ground Transport and Flights (Per the Terms and Conditions below plus as per attached Rider)',
+  '(l) Guest List (As per the attached Rider)',
+  '(m) Adequate Insurance and Security (Per the Terms and Conditions below)',
+  '(n) Work Permits, Visas, Certificates of Sponsorship and PCR tests (Per the Terms and Conditions below)',
+];
+
+export const TERMS_EN = OFFICIAL_TERMS_EN;
+export const TERMS_CIDONY_EN = OFFICIAL_TERMS_CIDONY_EN;
+
+export const RIDER_EN: Array<[string, string]> = [
+  ['1. RIDER:', 'This Rider forms part of and shall be deemed incorporated into the Engagement Contract to which it is attached and must be signed and returned with the Engagement Contract. In the event of a conflict between this Rider and the Engagement Contract the Engagement Contract shall prevail.'],
+  ['2. DRESSING ROOM:', 'One well-lit, ventilated dressing room with a full length mirror, comfortable seating, towels and lavatory facilities for sole use of Artist. Room must be clean, secure, lockable and keys kept in possession of Artist or representative.'],
+  ['3. HOSPITALITY:', `The Company needs to provide the Artist with enough beverages alcoholic and non-alcoholic, before, during and after the performance of the Artist.
+The Company is obligated to bill 75 EUR in the artist room and 75 EUR in the tour manager room.
+
+The Company agrees to supply the following at no cost to the Artist:
+1 x bottle Dom Perignon Champagne
+2x bottle Clase Azul Reposado Tequila
+1x bottle of Belvedere or Grey Goose vodka (2L)
+15 x premium bottled beer
+4x mixed Kombucha
+Ginger shots (2L)
+6 x bottled sparkling water
+6 x non alcoholic beers
+4x organic coconut water
+Tonic Water / Cranberry Juice / Soda Water / Red Bull
+Industry standard selection of mixers
+
+Any additional hospitality will be available to the Artist on request thereafter.`],
+  ['4. HOTEL REQUIREMENTS:', `* Accommodation must be 1 x Suite and 1 x double-bedded room, 5-star standard or above only (no exceptions), located close to the venue, and inclusive of breakfast.
+* All hotel bookings require prior written approval from the Tour Manager without exception.
+* A charge of 75 EUR must be billed to the artist's room and 75 EUR to the Tour Manager's room.
+* Hotel must provide reliable in-room wireless internet.
+* If late checkout cannot be guaranteed when required, an additional night's stay must be covered at the promoter's expense.
+* Accepted brands: Banyan Tree, Marriott (5-star), Four Seasons, Park Hyatt, Hilton (5-star), Intercontinental (5-star), Starwood (5-star), Rosewood, W Hotel, Mandarin Oriental, Waldorf Astoria, Six Senses.`],
+  ['5. GUEST LIST:', 'The Artist shall have the right to fifteen [15] guests who can gain entrance to the venue free of charge and hands over the guest list to the Company no later than the door time. Music business personnel will have free admission without being included on the Artists guest list.'],
+  ['7. TECHNICAL REQUIREMENTS:', `The following to be supplied at no cost to the Artist:
+- 3 x Pioneer CDJ3000
+- Pioneer DJM V10
+- 2 x International Power Strip
+- 3 x Clean, White Hand-towels (must be inside the DJ booth)
+- 1 x Industrial Fan (must be inside the DJ booth)
+
+The Artist shall provide:
+- 1 x Native Instruments X1 Controller
+- 1 x Native Instruments F1 Controller
+- 1 x Laptop
+
+- The Company must ensure each of the CDJ's as well as the DJM Mixer is updated with the latest firmware.
+- The Company agrees to supply a qualified sound engineer at all times during the performance and to have the stage set at least 30 minutes before the time of performance.
+- NO SMOKING allowed in the DJ Booth at any time during the performance.
+- Visuals supplied by management MUST be used at all times throughout the Artist's performance.
+
+SOUND: Sound system should be suitable to the venue size and capacity, with 50% of the power allocated to Bass and Sub frequencies. Accepted sound systems include D&B, L'Acoustics; any other systems should only be used with written approval from management.`],
+  ['8. GROUND TRANSPORT:', 'Ground Transport must be a Mercedes 500 or similar standard with a driver engaged or employed directly by the Company from and between airport, hotel and venue. The Company shall bear the costs of excess baggage incurred in the transportation of records or other equipment of the Artist. A reserved car parking space will be provided by the Company adjacent to the venue.'],
+];
+
+export const LABELS_EN = {
+  docKind: 'CONFIRMATION OF ARTIST',
+  headline: 'Artist Engagement Contract',
+  dated: 'Dated',
+  between: 'Between',
+  and: 'And',
+  schedule: 'Schedule',
+  scheduleIntro: '1. The Artist agrees to undertake the Performance as follows:',
+  eventName: '(a) EVENT NAME/TITLE:',
+  venueCountry: '(b) VENUE/S, CITY & COUNTRY:',
+  dates: '(c) DATE/S:',
+  timing: '(d) TIMING/DURATION:',
+  billing: '(e) BILLING REQUIREMENTS:',
+  whtHeading: '(f) Withholding Tax (WHT)',
+  considerationHeading: '(g) CONSIDERATION: The Company shall pay the following:',
+  terms: 'Terms and Conditions',
+  riderHeading: 'Between the Company of the one part and the Artist of the other',
+  notesHeading: 'Additional Agreed Terms',
+  signatureIntro:
+    'I/we the undersigned acknowledge that I/we have read the above Schedule and Terms and Conditions and the attached rider agree that they will be adhered to in full.',
+  colDescription: 'Description',
+  colDue: 'Due',
+  colSubtotal: 'Subtotal',
+  colVat: 'VAT',
+  colWht: 'WHT',
+  colTotal: 'Total',
+  totalSubtotal: 'Subtotal',
+  totalVat: 'VAT',
+  totalWht: 'WHT withheld',
+  totalGrand: 'Total payable',
+  bookingFeeRow: 'Booking Fee (non-returnable and non-refundable)',
+  depositRow: 'Advance Payment (non-returnable and non-refundable)',
+  balanceRow: 'Balance Payment (non-returnable and non-refundable)',
+  fullFeeRow: 'Artist Fee (non-returnable and non-refundable)',
+};

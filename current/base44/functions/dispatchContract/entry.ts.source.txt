@@ -1,0 +1,309 @@
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
+import { waitUntil } from 'base44:runtime';
+import MailComposer from 'npm:nodemailer@6.9.16/lib/mail-composer/index.js';
+import { assertShowAccess, canDispatchContracts } from '../../shared/assertShowAccess.ts';
+import { gmailGet, getMailboxEmail, header } from '../../shared/gmailThread.ts';
+import { contractFileUrl } from '../../shared/contractFiles.ts';
+import { currentContract } from '../../shared/contractLifecycle.ts';
+
+const MAX_PDF_BYTES = 10 * 1024 * 1024;
+const CONNECTOR_ID = '6a9851f6298f03badb17ca43';
+
+class DispatchError extends Error {
+  constructor(message, status) {
+    super(message);
+    this.status = status;
+  }
+}
+
+function bytesToBase64Url(bytes) {
+  let binary = '';
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+async function timedFetch(url, options, timeoutMs) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } catch (error) {
+    if (error?.name === 'AbortError') throw new DispatchError('The request timed out. The dispatch lock was retained for human verification.', 408);
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+const MAX_RIDERS = 5;
+
+// Riders are passed as references, never raw URLs, so a caller can only attach
+// documents that belong to this show/artist or a file they uploaded privately.
+async function loadRiders(base44, show, riders) {
+  const svc = base44.asServiceRole;
+  if (!Array.isArray(riders) || riders.length === 0) return [];
+  if (riders.length > MAX_RIDERS) throw new DispatchError(`At most ${MAX_RIDERS} rider attachments are allowed`, 400);
+  const out = [];
+  for (const rider of riders) {
+    let source = null;
+    let name = rider?.filename || 'rider.pdf';
+    if (rider?.source === 'vault') {
+      const doc = await svc.entities.ArtistDocument.get(rider.id).catch(() => null);
+      if (!doc || doc.artist_id !== show.artist_id) throw new DispatchError('A vault rider does not belong to this artist', 403);
+      source = doc.file_url; name = rider.filename || doc.file_name;
+    } else if (rider?.source === 'show') {
+      const doc = await svc.entities.ShowDocument.get(rider.id).catch(() => null);
+      if (!doc || doc.show_id !== show.id) throw new DispatchError('A show document does not belong to this show', 403);
+      source = doc.file_url; name = rider.filename || doc.file_name;
+    } else if (rider?.source === 'upload') {
+      if (!rider.file_uri || /^https?:/i.test(rider.file_uri)) throw new DispatchError('Uploaded riders must be private files', 400);
+      source = rider.file_uri;
+    } else {
+      throw new DispatchError('Unknown rider source', 400);
+    }
+    if (!source) throw new DispatchError(`Rider "${name}" has no file`, 422);
+    const url = /^https?:/i.test(source)
+      ? source
+      : (await svc.integrations.Core.CreateFileSignedUrl({ file_uri: source, expires_in: 300 })).signed_url;
+    const response = await timedFetch(url, {}, 15000);
+    if (!response.ok) throw new DispatchError(`Could not download rider "${name}"`, 502);
+    out.push({ filename: String(name).replace(/[^\w.\- ]/g, '_'), content: new Uint8Array(await response.arrayBuffer()) });
+  }
+  return out;
+}
+
+async function buildRawMessage({ to, cc, subject, emailBody, fileName, pdfBytes, riders = [], replyAnchor, references, includeThreadHeaders }) {
+  const headers = includeThreadHeaders && replyAnchor
+    ? { 'In-Reply-To': replyAnchor, References: references || replyAnchor }
+    : undefined;
+  const composer = new MailComposer({
+    to,
+    cc: cc.length ? cc.join(', ') : undefined,
+    subject,
+    html: `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;white-space:pre-wrap">${String(emailBody || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>`,
+    headers,
+    attachments: [
+      { filename: fileName, content: pdfBytes, contentType: 'application/pdf' },
+      ...riders.map((rider) => ({ filename: rider.filename, content: rider.content })),
+    ],
+  });
+  const compiled = await composer.compile().build();
+  return bytesToBase64Url(new Uint8Array(compiled));
+}
+
+async function latestReplyContext(accessToken, threadId) {
+  if (!threadId) return { replyAnchor: null, references: '' };
+  const thread = await gmailGet(accessToken, `threads/${encodeURIComponent(threadId)}?format=metadata&metadataHeaders=Message-ID&metadataHeaders=References&metadataHeaders=In-Reply-To`);
+  const messages = thread.messages || [];
+  const last = messages[messages.length - 1];
+  const replyAnchor = header(last, 'Message-ID') || null;
+  const references = [header(last, 'References'), header(last, 'In-Reply-To'), replyAnchor].filter(Boolean).join(' ');
+  return { replyAnchor, references };
+}
+
+async function sendGmail(accessToken, raw, threadId) {
+  const payload = { raw };
+  if (threadId) payload.threadId = threadId;
+  const response = await timedFetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  }, 20000);
+  const text = await response.text();
+  let data = {};
+  try { data = text ? JSON.parse(text) : {}; } catch (_error) { data = {}; }
+  return { ok: response.ok, status: response.status, text, data };
+}
+
+export default async function(req) {
+  let base44 = null;
+  let contractId = null;
+  let lockAcquired = false;
+  let gmailStarted = false;
+  let gmailAccepted = false;
+  let gmailDefinitiveFailure = false;
+  let dispatchAttempt = null;
+  let idempotencyKey = null;
+
+  try {
+    base44 = createClientFromRequest(req);
+    const user = await base44.auth.me();
+    if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+
+    const body = await req.json();
+    const { show_id, contract_id, to, cc = [], subject, body: emailBody, attachment_name, idempotency_key, rider_attachments = [] } = body;
+    idempotencyKey = String(idempotency_key || '').trim();
+    if (!show_id || !contract_id || !idempotencyKey) {
+      return Response.json({ error: 'show_id, contract_id and idempotency_key are required' }, { status: 400 });
+    }
+    if (!to || !subject) {
+      return Response.json({ error: 'Recipient and subject are required' }, { status: 400 });
+    }
+
+    const { show } = await assertShowAccess(base44, show_id, user);
+    if (!await canDispatchContracts(base44, user, show)) {
+      return Response.json({ error: 'You do not have permission to dispatch this contract. Only the show creator, assigned logistics agents, or Admin/Finance can dispatch.' }, { status: 403 });
+    }
+
+    const svc = base44.asServiceRole.entities;
+    const contract = await svc.Contract.get(contract_id).catch(() => null);
+    if (!contract || contract.show_id !== show_id) {
+      return Response.json({ error: 'Contract not found for this show' }, { status: 404 });
+    }
+    contractId = contract.id;
+    if (show.contract_id !== contractId || (await currentContract(base44,show))?.id !== contractId || contract.generation_lock) return Response.json({error:'Only the current contract can be dispatched, and not during revision generation.'},{status:409});
+    if (!contract.contract_file_url) return Response.json({ error: 'The current Contract version has no generated PDF' }, { status: 422 });
+
+    const priorAttempts = await svc.ContractDispatchAttempt.filter({ idempotency_key: idempotencyKey }, '-created_date', 1);
+    dispatchAttempt = priorAttempts[0] || null;
+    if (dispatchAttempt?.sender_user_id !== undefined && dispatchAttempt.sender_user_id !== user.id) return Response.json({ error: 'Dispatch key belongs to another user' }, { status: 403 });
+    if (dispatchAttempt?.status === 'ACCEPTED') {
+      return Response.json({ success: true, idempotent: true, gmail_thread_id: dispatchAttempt.gmail_thread_id, message_id: dispatchAttempt.gmail_message_id, contract_id: contractId });
+    }
+    if (dispatchAttempt && ['SENDING', 'UNCERTAIN'].includes(dispatchAttempt.status)) {
+      return Response.json({ error: 'This dispatch may already have reached Gmail. Review the existing attempt before retrying.', uncertain: true }, { status: 409 });
+    }
+
+    try {
+      const lockResult = await svc.Contract.updateMany(
+        { id: contractId, status: 'READY', updated_date: contract.updated_date, $or: [{generation_lock:{$exists:false}},{generation_lock:''},{generation_lock:null}] },
+        { $set: { status: 'DISPATCHING', dispatch_lock: idempotencyKey, dispatch_heartbeat_at: new Date().toISOString() } }
+      );
+      if (lockResult?.updated !== 1) throw new Error('not acquired');
+      lockAcquired = true;
+    } catch (_error) {
+      return Response.json({ error: 'Contract dispatch is already in progress or is not ready' }, { status: 409 });
+    }
+
+    const authorizedPdfUrl = await contractFileUrl(base44, contract.contract_file_url);
+    const head = await timedFetch(authorizedPdfUrl, { method: 'HEAD' }, 8000).catch((error) => {
+      if (error?.status === 408) throw error;
+      return null;
+    });
+    const declaredSize = Number(head?.headers?.get('content-length') || 0);
+    if (declaredSize > MAX_PDF_BYTES) throw new DispatchError('Contract PDF exceeds the 10MB dispatch limit', 413);
+
+    const pdfResponse = await timedFetch(authorizedPdfUrl, {}, 15000);
+    if (!pdfResponse.ok) throw new DispatchError('Could not download the contract PDF', 502);
+    const pdfBytes = new Uint8Array(await pdfResponse.arrayBuffer());
+    if (pdfBytes.byteLength > MAX_PDF_BYTES) throw new DispatchError('Contract PDF exceeds the 10MB dispatch limit', 413);
+    const riders = await loadRiders(base44, show, rider_attachments);
+    const totalBytes = riders.reduce((sum, rider) => sum + rider.content.byteLength, pdfBytes.byteLength);
+    if (totalBytes > MAX_PDF_BYTES) throw new DispatchError('Contract plus riders exceed the 10MB total attachment limit', 413);
+
+    let accessToken = null;
+    try {
+      const connection = await base44.asServiceRole.connectors.getCurrentAppUserConnection(CONNECTOR_ID);
+      accessToken = connection?.accessToken || null;
+    } catch (_error) {
+      accessToken = null;
+    }
+    if (!accessToken) throw new DispatchError('Gmail is not connected. Connect Gmail in Settings → Integrations before dispatching contracts.', 409);
+    const senderEmail = await getMailboxEmail(accessToken);
+    if (!dispatchAttempt) {
+      dispatchAttempt = await svc.ContractDispatchAttempt.create({
+        idempotency_key: idempotencyKey, show_id, contract_id: contractId, contract_hash: contract.contract_hash || '',
+        sender_user_id: user.id, sender_email: senderEmail, to_email: to, cc_emails: cc,
+        subject, status: 'PREPARED', started_at: new Date().toISOString()
+      });
+    } else {
+      await svc.ContractDispatchAttempt.update(dispatchAttempt.id, { status: 'PREPARED', failure_message: null });
+    }
+
+    const ccList = (Array.isArray(cc) ? cc : []).map((value) => String(value || '').trim()).filter(Boolean);
+    const threadId = show.active_thread_id || show.gmail_thread_id || null;
+    const { replyAnchor, references } = await latestReplyContext(accessToken, threadId);
+    const fileName = (attachment_name || 'contract.pdf').replace(/[^\w.\-]/g, '_');
+
+    const threadedRaw = await buildRawMessage({ to, cc: ccList, subject, emailBody, fileName, pdfBytes, riders, replyAnchor, references, includeThreadHeaders: true });
+    await svc.ContractDispatchAttempt.update(dispatchAttempt.id, { status: 'SENDING' });
+    gmailStarted = true;
+    const attempt = threadId ? 'thread-id' : 'new-thread';
+    const sent = await sendGmail(accessToken, threadedRaw, threadId);
+    if (!sent.ok) {
+      gmailDefinitiveFailure = true;
+      throw new DispatchError(`Gmail send failed without changing threads: ${sent.text.slice(0, 300)}`, 502);
+    }
+    gmailAccepted = true;
+
+    const newThreadId = sent.data.threadId || threadId || null;
+    await svc.ContractDispatchAttempt.update(dispatchAttempt.id, {
+      status: 'ACCEPTED', gmail_thread_id: newThreadId, gmail_message_id: sent.data.id || '', completed_at: new Date().toISOString()
+    });
+    let sentMessageId = '';
+    try {
+      const metaResponse = await timedFetch(
+        `https://gmail.googleapis.com/gmail/v1/users/me/messages/${sent.data.id}?format=metadata&metadataHeaders=Message-ID`,
+        { headers: { Authorization: `Bearer ${accessToken}` } },
+        8000
+      );
+      if (metaResponse.ok) {
+        const metadata = await metaResponse.json();
+        sentMessageId = (metadata?.payload?.headers || []).find((header) => String(header.name || '').toLowerCase() === 'message-id')?.value || '';
+      }
+    } catch (error) {
+      console.error('Sent message metadata lookup failed:', error);
+    }
+
+    if (sentMessageId) await svc.ContractDispatchAttempt.update(dispatchAttempt.id, { gmail_message_id: sentMessageId });
+    const addToSet = {};
+    if (newThreadId) addToSet.gmail_thread_ids = newThreadId;
+    if (sentMessageId && !replyAnchor) addToSet.gmail_root_message_ids = sentMessageId;
+    const showUpdate = { $set: { active_thread_id: newThreadId, gmail_thread_id: newThreadId } };
+    if (Object.keys(addToSet).length) showUpdate.$addToSet = addToSet;
+    await svc.Show.updateMany({ id: show_id }, showUpdate);
+
+    const finishResult = await svc.Contract.updateMany(
+      { id: contractId, dispatch_lock: idempotencyKey, status: 'DISPATCHING' },
+      {
+        $set: {
+          status: 'SENT',
+          needs_resend: false,
+          dispatched_at: new Date().toISOString(),
+          last_dispatched_message_id: sentMessageId || null,
+          last_modified_by_user_id: user.id,
+          last_modified_at: new Date().toISOString(),
+          immutable_at: contract.immutable_at || new Date().toISOString(),
+        },
+        $unset: { dispatch_lock: '', dispatch_heartbeat_at: '' },
+      }
+    );
+    if (finishResult?.updated !== 1) throw new DispatchError('Email sent, but the contract lock could not be finalized. Contact an administrator.', 409);
+    lockAcquired = false;
+
+    waitUntil(
+      base44.asServiceRole.functions.invoke('syncAnalogAdvancingTasks', { show_id })
+        .catch((error) => console.error('Analog advancing sync failed after contract dispatch:', error))
+    );
+
+    base44.asServiceRole.entities.ActivityLog.create({
+      timestamp: new Date().toISOString(),
+      action_type: 'Contract Dispatched',
+      actor_id: user.id,
+      actor_label: user.full_name || user.email || 'User',
+      affected_entity_type: 'Contract',
+      affected_entity_id: contractId,
+      affected_entity_label: `${show.event_name || 'Show'} — ${show.date || ''}`,
+      result: 'Success',
+      metadata: { show_id, thread_id: newThreadId, dispatch_attempt: attempt, to, cc_count: ccList.length, message_id: sentMessageId || null },
+    }).catch((error) => console.error('Audit Log Failed:', error));
+
+    return Response.json({ success: true, gmail_thread_id: newThreadId, was_reply: attempt === 'thread-id', message_id: sentMessageId, contract_id: contractId, dispatch_attempt: attempt });
+  } catch (error) {
+    const keepForHumanReview = gmailAccepted || (gmailStarted && !gmailDefinitiveFailure);
+    if (dispatchAttempt && base44) {
+      const status = keepForHumanReview ? 'UNCERTAIN' : 'FAILED';
+      await base44.asServiceRole.entities.ContractDispatchAttempt.update(dispatchAttempt.id, { status, failure_message: error?.message || 'Dispatch failed' }).catch(() => null);
+    }
+    if (lockAcquired && base44 && contractId && !keepForHumanReview) {
+      await base44.asServiceRole.entities.Contract.updateMany(
+        { id: contractId, dispatch_lock: idempotencyKey, status: 'DISPATCHING' },
+        { $set: { status: 'READY' }, $unset: { dispatch_lock: '', dispatch_heartbeat_at: '' } }
+      ).catch((resetError) => console.error('Dispatch lock rollback failed:', resetError));
+    }
+    return Response.json({ error: error?.message || 'Contract dispatch failed', lock_retained: keepForHumanReview }, { status: error?.status || 500 });
+  }
+}

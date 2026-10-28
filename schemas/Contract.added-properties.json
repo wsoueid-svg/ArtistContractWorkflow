@@ -1,0 +1,31 @@
+{
+  "content_hash": {
+    "type": "string",
+    "description": "Approved canonical document hash"
+  },
+  "pdf_hash": {
+    "type": "string",
+    "description": "SHA-256 of generated PDF bytes; equals legacy contract_hash"
+  },
+  "draft_id": {
+    "type": "string",
+    "description": "Reference to frozen generated ContractDraft"
+  },
+  "draft_revision_no": {
+    "type": "integer"
+  },
+  "master_content_version": {
+    "type": "string"
+  },
+  "rendered_template_key": {
+    "type": "string"
+  },
+  "needs_resend": {
+    "type": "boolean",
+    "default": false
+  },
+  "generation_lock": {
+    "type": "string",
+    "description": "Generator-owned READY/draft reservation; dispatch cannot claim draft status"
+  }
+}

@@ -1,0 +1,64 @@
+diff --git a/base44/entities/User.jsonc b/base44/entities/User.jsonc
+index 1bfa965088ef232e2da40ef23d8d9a9059136b6d..b54f18aae9acbf419557db561f3c312b532f4911 100644
+--- a/base44/entities/User.jsonc
++++ b/base44/entities/User.jsonc
+@@ -16,7 +16,14 @@
+     "is_active": {
+       "type": "boolean",
+       "default": true,
+-      "description": "Master access toggle."
++      "description": "Master access toggle.",
++      "rls": {
++        "update": {
++          "user_condition": {
++            "collaborator_role": "editor"
++          }
++        }
++      }
+     },
+     "invite_status": {
+       "type": "string",
+@@ -59,7 +66,14 @@
+       "default": [
+         "analog"
+       ],
+-      "description": "Organizations this user may access."
++      "description": "Organizations this user may access.",
++      "rls": {
++        "update": {
++          "user_condition": {
++            "collaborator_role": "editor"
++          }
++        }
++      }
+     },
+     "active_org": {
+       "type": "string",
+@@ -84,11 +98,25 @@
+       "enum": [
+         "Finance Manager",
+         "Finance Viewer"
+-      ]
++      ],
++      "rls": {
++        "update": {
++          "user_condition": {
++            "collaborator_role": "editor"
++          }
++        }
++      }
+     },
+     "is_cfo": {
+       "type": "boolean",
+-      "default": false
++      "default": false,
++      "rls": {
++        "update": {
++          "user_condition": {
++            "collaborator_role": "editor"
++          }
++        }
++      }
+     },
+     "is_admin": {
+       "type": "boolean",

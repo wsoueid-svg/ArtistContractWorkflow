@@ -1,0 +1,15 @@
+diff --git a/base44/shared/contractTemplates/representation.ts b/base44/shared/contractTemplates/representation.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..b9834dfa15a20428e67c7f0361245edff5c6c03a
+--- /dev/null
++++ b/base44/shared/contractTemplates/representation.ts
+@@ -0,0 +1,8 @@
++export const ANALOG_BANNER_URL = 'https://base44.app/api/apps/6aa80b297e3dedc77a81006c/files/mp/public/6aa80b297e3dedc77a81006c/b3612566a_analog-reference-header.jpeg';
++export const AESL_REPRESENTATION_EN = 'ANALOG ENTERTAINMENT SL with address in C/ Secundino Alonso 75, escalera 1, planta 1ª, puerta 6 A, Puerto del Rosario, Las Palmas, 35600, Spain and with VAT B-72947948 representing the artist on behalf of CIDONY SA (Ruta 10 s/n, km. 185. Arenas de José Ignacio. P 923 M 55, Jose Ignacio Maldonado RUT 216151090016)';
++export const AESL_REPRESENTATION_ES = 'ANALOG ENTERTAINMENT SL con dirección en C/ Secundino Alonso 75, escalera 1, planta 1ª, puerta 6 A, Puerto del Rosario, Las Palmas, 35600, España y con CIF B-72947948, representando al artista en nombre de CIDONY SA (Ruta 10 s/n, km. 185. Arenas de José Ignacio. P 923 M 55, Jose Ignacio Maldonado RUT 216151090016)';
++export const CONTRACT_RENDER_CONFIG = { format: 'A4', use_print: true, headerHeight: 84, version: 'increment-1-v1' };
++export function representationText(key) { return key === 'aesl-en' ? AESL_REPRESENTATION_EN : key === 'aesl-es' ? AESL_REPRESENTATION_ES : null; }
++export function buildRunningHeader(brand) {
++  return brand.key === 'nysm' ? null : `<div style="width:100%;text-align:center;padding:8px 0 12px;"><img src="${ANALOG_BANNER_URL}" width="570" height="87" style="max-width:100%;height:74px;object-fit:contain;" alt="Analog. Confirmation of Artist" /></div>`;
++}
+\ No newline at end of file

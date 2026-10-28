@@ -1,0 +1,22 @@
+import ContactAutocompleteField from '@/components/contracts/ContactAutocompleteField';
+import { Button } from '@/components/ui/button';
+
+export default function ContractPromoterField({ fields, onTextChange, promoter }) {
+  const initialContact = {
+    company: fields.company_name, address: fields.company_address, vat_tax_id: fields.company_vat,
+    contact_persons: fields.company_signatory ? [{ name: fields.company_signatory, email: '', phone: '' }] : [],
+    default_deal_terms: { legal_company_name: fields.company_name, company_registration_number: fields.company_vat, billing_address: { street: fields.company_address } },
+  };
+  return <div className="space-y-2">
+    <ContactAutocompleteField label="Company Name *" value={fields.company_name}
+      onTextChange={value => { promoter.clear(); onTextChange(value); }} onSelectContact={promoter.link}
+      disabled={promoter.saving} initialContact={initialContact} placeholder="Search CRM or enter a new company name" />
+    <p className="text-sm text-muted-foreground">Choose a CRM company to link it to this show. Selecting a company saves that link immediately; the details below apply to this contract.</p>
+    <p role="status" className="text-sm text-muted-foreground" aria-live="polite">
+      {promoter.saving ? 'Saving promoter link…' : promoter.ready ? `Linked to this show: ${promoter.contact.name}` : 'Select a CRM contact or create a new contact before continuing.'}
+    </p>
+    {promoter.error && <div role="alert" className="space-y-1 text-sm text-destructive"><p>{promoter.error}</p>
+      {promoter.contact && <Button type="button" variant="outline" size="sm" onClick={promoter.retry} disabled={promoter.saving}>Retry linking contact</Button>}
+    </div>}
+  </div>;
+}

@@ -1,0 +1,146 @@
+/**
+ * sanitize.js — Enterprise-grade input sanitization utilities.
+ *
+ * These functions are used on BOTH the frontend (form validation) and are
+ * mirrored in backend functions (defense-in-depth). They strip dangerous
+ * content before data ever reaches the database.
+ *
+ * Rules:
+ *  - All text inputs are trimmed and length-capped.
+ *  - HTML/script tags are stripped from plain-text fields.
+ *  - Rich-text fields (notes, bio) are sanitized to allow only safe tags.
+ *  - URLs are validated to prevent javascript: and data: URI schemes.
+ *  - Emails are normalized to lowercase.
+ */
+
+// ─── Plain Text Sanitization ─────────────────────────────────────────────────
+
+/**
+ * sanitizeText — Strips all HTML tags and trims whitespace.
+ * Use for: names, titles, venues, cities — any field that should never contain HTML.
+ *
+ * @param {string} str
+ * @param {number} [maxLength=1000] — Hard cap to prevent buffer-style attacks
+ * @returns {string}
+ */
+export const sanitizeText = (str, maxLength = 1000) => {
+  if (!str || typeof str !== 'string') return '';
+  const trimmed = str.trim().slice(0, maxLength);
+  // Strip ALL HTML tags and decode common entities
+  return trimmed
+    .replace(/<[^>]*>/g, '') // Remove any HTML tags
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+    .replace(/&#x27;/g, "'")
+    .replace(/&#x2F;/g, '/');
+};
+
+/**
+ * sanitizeRichText — Allows a safe subset of HTML tags for rich-text fields.
+ * Strips: <script>, <iframe>, <object>, <embed>, on* event handlers, javascript: URIs.
+ * Use for: notes, bio, description — fields where limited formatting is acceptable.
+ *
+ * @param {string} str
+ * @param {number} [maxLength=10000]
+ * @returns {string}
+ */
+export const sanitizeRichText = (str, maxLength = 10000) => {
+  if (!str || typeof str !== 'string') return '';
+  let cleaned = str.trim().slice(0, maxLength);
+
+  // Remove script blocks entirely (including content)
+  cleaned = cleaned.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+  // Remove iframe, object, embed, applet tags
+  cleaned = cleaned.replace(/<\/?(iframe|object|embed|applet|link|meta|base)[^>]*>/gi, '');
+  // Remove all on* event handler attributes (onclick, onerror, onload, etc.)
+  cleaned = cleaned.replace(/\son\w+\s*=\s*"[^"]*"/gi, '');
+  cleaned = cleaned.replace(/\son\w+\s*=\s*'[^']*'/gi, '');
+  cleaned = cleaned.replace(/\son\w+\s*=\s*[^\s>]+/gi, '');
+  // Remove javascript: URIs in href/src attributes
+  cleaned = cleaned.replace(/(href|src)\s*=\s*["']?\s*javascript:[^"']*/gi, '$1="#"');
+  // Remove data: URIs (can be used for XSS in some contexts)
+  cleaned = cleaned.replace(/(href|src)\s*=\s*["']?\s*data:[^"']*/gi, '$1="#"');
+
+  return cleaned;
+};
+
+// ─── Field-Specific Sanitizers ────────────────────────────────────────────────
+
+/**
+ * sanitizeEmail — Trims, lowercases, and validates email format.
+ * @param {string} str
+ * @returns {string} — Clean email or empty string if invalid
+ */
+export const sanitizeEmail = (str) => {
+  if (!str || typeof str !== 'string') return '';
+  const cleaned = str.trim().toLowerCase().slice(0, 254);
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleaned)) return '';
+  return cleaned;
+};
+
+/**
+ * sanitizeUrl — Validates that a URL uses a safe protocol (http/https only).
+ * Blocks: javascript:, data:, file:, vbscript: schemes.
+ * @param {string} str
+ * @returns {string} — Clean URL or empty string if dangerous/invalid
+ */
+export const sanitizeUrl = (str) => {
+  if (!str || typeof str !== 'string') return '';
+  const trimmed = str.trim().slice(0, 2048);
+  // Block dangerous protocols
+  const dangerousSchemes = /^(javascript|data|file|vbscript|about|blob):/i;
+  if (dangerousSchemes.test(trimmed)) return '';
+  // Allow only http, https, or relative URLs
+  if (!/^https?:\/\//i.test(trimmed) && !trimmed.startsWith('/') && !trimmed.startsWith('#')) {
+    return '';
+  }
+  return trimmed;
+};
+
+/**
+ * sanitizePhone — Strips everything except digits, +, spaces, hyphens, parentheses.
+ * @param {string} str
+ * @returns {string}
+ */
+export const sanitizePhone = (str) => {
+  if (!str || typeof str !== 'string') return '';
+  return str.trim().replace(/[^\d+\-()\s]/g, '').slice(0, 30);
+};
+
+/**
+ * sanitizeNumber — Converts to a finite, non-negative number or returns undefined.
+ * @param {*} val
+ * @param {number} [max=1e9]
+ * @returns {number|undefined}
+ */
+export const sanitizeNumber = (val, max = 1e9) => {
+  const n = Number(val);
+  if (!Number.isFinite(n) || n < 0 || n > max) return undefined;
+  return n;
+};
+
+/**
+ * sanitizeUuid — Validates UUID v4 format.
+ * @param {string} str
+ * @returns {string|undefined}
+ */
+export const sanitizeUuid = (str) => {
+  if (!str || typeof str !== 'string') return undefined;
+  const trimmed = str.trim();
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trimmed)) {
+    return undefined;
+  }
+  return trimmed;
+};
+
+/**
+ * sanitizeEnum — Returns the value if it's in the allowed set, else undefined.
+ * @param {string} val
+ * @param {string[]} allowed
+ * @returns {string|undefined}
+ */
+export const sanitizeEnum = (val, allowed) => {
+  if (!val || typeof val !== 'string') return undefined;
+  return allowed.includes(val) ? val : undefined;
+};

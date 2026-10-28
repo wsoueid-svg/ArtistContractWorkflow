@@ -1,0 +1,16 @@
+// Centralised artist cache invalidation.
+//
+// TanStack prefix matching works on ARRAY elements, so ['artist'] does NOT match
+// ['artists'] — 'artists' !== 'artist'. Both roots must be invalidated explicitly:
+//   ['artists']        → list queries (Artists page, useOrgArtists, AnalogMasterCalendar)
+//   ['artist', <id>]   → single-artist queries (ArtistProfile, ArtistInfoTab)
+//   ['artist-lookup']  → combobox / lookup caches
+//
+// Every artist mutation must call this so no call site can miss a key.
+export function invalidateArtistQueries(queryClient, artistId) {
+  queryClient.invalidateQueries({ queryKey: ['artists'] });
+  queryClient.invalidateQueries({ queryKey: ['artist'] });
+  queryClient.invalidateQueries({ queryKey: ['artist-lookup'] });
+  queryClient.invalidateQueries({ queryKey: ['org-artists'] });
+  if (artistId) queryClient.invalidateQueries({ queryKey: ['artist', artistId] });
+}

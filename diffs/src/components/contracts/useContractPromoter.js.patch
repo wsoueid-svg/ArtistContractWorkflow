@@ -1,0 +1,49 @@
+diff --git a/src/components/contracts/useContractPromoter.js b/src/components/contracts/useContractPromoter.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..43e62d45c43a6b45876a62ae302655090c5d1755
+--- /dev/null
++++ b/src/components/contracts/useContractPromoter.js
+@@ -0,0 +1,42 @@
++import { useEffect, useRef, useState } from 'react';
++import { useQueryClient } from '@tanstack/react-query';
++import { base44 } from '@/api/base44Client';
++import { useAuth } from '@/lib/AuthContext';
++import { useOrg } from '@/lib/OrgContext';
++import { auditStamp, invalidateShowQueries } from '@/lib/showEdit';
++import promoterContactFields from '@/components/contracts/promoterContactFields';
++import contractError from '@/components/contract-lab/contractErrors';
++
++export default function useContractPromoter(show, setFields) {
++  const [contact, setContact] = useState(null), [ready, setReady] = useState(false);
++  const [saving, setSaving] = useState(false), [error, setError] = useState('');
++  const busy = useRef(false), queryClient = useQueryClient();
++  const { user } = useAuth(); const { activeOrg } = useOrg();
++  useEffect(() => {
++    let active = true;
++    const id = show?.contract_contact_id || show?.client_contact_id || show?.contact_id;
++    if (!id) return;
++    setSaving(true);
++    base44.entities.Contact.get(id).then(c => {
++      if (!active) return;
++      if (!c || c.is_deleted) throw new Error('This promoter is unavailable. Select or create a contact below.');
++      setContact(c); setReady(true);
++      setFields(f => ({ ...f, ...Object.fromEntries(Object.entries(promoterContactFields(c)).map(([k, v]) => [k, f[k] || v])) }));
++    }).catch(e => { if (active) setError(contractError(e)); }).finally(() => { if (active) setSaving(false); });
++    return () => { active = false; };
++  }, [show?.id]);
++  const link = async selected => {
++    if (busy.current) return;
++    busy.current = true; setSaving(true); setReady(false); setError(''); setContact(selected);
++    setFields(f => ({ ...f, ...promoterContactFields(selected) }));
++    try {
++      const current = await base44.entities.Contact.get(selected.id);
++      if (!current || current.is_deleted) throw new Error('This promoter is unavailable. Select or create another contact.');
++      await base44.entities.Show.update(show.id, { contract_contact_id: current.id, ...auditStamp(user, activeOrg) });
++      setContact(current); setFields(f => ({ ...f, ...promoterContactFields(current) })); setReady(true);
++      void Promise.all([invalidateShowQueries(queryClient, show.id), ...['contract-draft', 'contract-revisions'].map(key => queryClient.invalidateQueries({ queryKey: [key, show.id] }))]);
++    } catch (e) { setError(contractError(e) || 'Could not link this contact. Please retry.'); }
++    finally { busy.current = false; setSaving(false); }
++  };
++  return { contact, ready, saving, error, link, retry: () => contact && link(contact), clear: () => { setContact(null); setReady(false); setError(''); } };
++}
+\ No newline at end of file

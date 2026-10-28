@@ -1,0 +1,286 @@
+import React, { useState, useMemo } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { base44 } from '@/api/base44Client';
+import { Plus, MapPin } from 'lucide-react';
+import { toast } from 'sonner';
+import AnalogTourCard from '@/components/analog/tours/AnalogTourCard';
+import AnalogTourFilters from '@/components/analog/tours/AnalogTourFilters';
+import AnalogTourFormModal from '@/components/analog/tours/AnalogTourFormModal';
+import ShowDrawer from '@/components/analog/ShowDrawer';
+import PageHeader from '@/components/shared/PageHeader';
+import { buildStubArtistIds, tourBelongsToOrg } from '@/lib/orgUtils';
+import { auditStamp } from '@/lib/showEdit';
+import { useAuth } from '@/lib/AuthContext';
+import { useOrg } from '@/lib/OrgContext';
+
+const ACTIVE_STATUSES = ['planning', 'confirmed', 'ongoing'];
+
+/**
+ * AnalogTours — the Analog org's dedicated Tours view.
+ * Groups Analog shows under their assigned tour. Fully separate from Elevate:
+ * only tours owned by Analog (created_by_org_id 'analog' or on an Analog-only
+ * artist) are listed, and new tours are stamped with Analog ownership.
+ */
+export default function AnalogTours() {
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const { activeOrg } = useOrg();
+  const [search, setSearch] = useState('');
+  const [filterArtist, setFilterArtist] = useState('');
+  const [filterStatus, setFilterStatus] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [expanded, setExpanded] = useState({});
+  const [linkingTourId, setLinkingTourId] = useState(null);
+  const [formOpen, setFormOpen] = useState(false);
+  const [editingTour, setEditingTour] = useState(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [selectedShow, setSelectedShow] = useState(null);
+  const [drawerDefaults, setDrawerDefaults] = useState(null);
+  const [unlinkingId, setUnlinkingId] = useState(null);
+
+  // ── Data ──────────────────────────────────────────────────────
+  const { data: allArtists = [] } = useQuery({
+    queryKey: ['artists', 'analog'],
+    queryFn: () => base44.entities.Artist.list('name', 500),
+  });
+
+  const { data: allTours = [], isLoading } = useQuery({
+    queryKey: ['tours', 'analog'],
+    queryFn: () => base44.entities.Tour.list('-start_date', 300),
+  });
+
+  const { data: shows = [] } = useQuery({
+    queryKey: ['analog-shows', 'analog'],
+    queryFn: () => base44.functions.invoke('getShowsForOrg', { activeOrg: 'analog' }).then(r => r.data.shows || []),
+  });
+
+  const analogArtists = useMemo(
+    () => allArtists.filter(a => {
+      const org = a.org || (a.is_aboss_import ? 'analog' : 'elevate');
+      return org === 'analog' || org === 'both';
+    }),
+    [allArtists]
+  );
+
+  const artistMap = useMemo(() => {
+    const m = {};
+    allArtists.forEach(a => { m[a.id] = a; });
+    return m;
+  }, [allArtists]);
+
+  const stubArtistIds = useMemo(() => buildStubArtistIds(allArtists), [allArtists]);
+
+  const tours = useMemo(
+    () => allTours.filter(t => tourBelongsToOrg(t, 'analog', stubArtistIds)),
+    [allTours, stubArtistIds]
+  );
+
+  const showsByTour = useMemo(() => {
+    const m = {};
+    shows.forEach(s => { if (s.tour_id) { (m[s.tour_id] ||= []).push(s); } });
+    return m;
+  }, [shows]);
+
+  // ── Mutations ─────────────────────────────────────────────────
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ['tours', 'analog'] });
+    queryClient.invalidateQueries({ queryKey: ['analog-shows', 'analog'] });
+  };
+
+  const saveTour = useMutation({
+    mutationFn: ({ id, data }) =>
+      id
+        ? base44.entities.Tour.update(id, data)
+        : base44.entities.Tour.create({ ...data, created_by_org_id: 'analog', data_source: 'analog_push' }),
+    onSuccess: () => {
+      invalidate();
+      setFormOpen(false);
+      setEditingTour(null);
+      toast.success('Tour saved successfully.');
+    },
+    onError: () => toast.error('Could not save the tour. Please try again.'),
+  });
+
+  const deleteTour = useMutation({
+    mutationFn: async (tour) => {
+      // Unlink the tour's shows first — shows are never deleted with the tour.
+      const linked = showsByTour[tour.id] || [];
+      if (linked.length) {
+        await base44.entities.Show.bulkUpdate(linked.map(s => ({ id: s.id, tour_id: '' })));
+      }
+      return base44.entities.Tour.delete(tour.id);
+    },
+    onSuccess: () => { invalidate(); toast.success('Tour deleted. Its shows were kept and unlinked.'); },
+    onError: () => toast.error('Could not delete the tour. Please try again.'),
+  });
+
+  const linkShow = useMutation({
+    mutationFn: ({ show, tour }) => base44.entities.Show.update(show.id, { tour_id: tour.id, ...auditStamp(user, activeOrg) }),
+    onSuccess: () => { invalidate(); toast.success('Show added to the tour.'); },
+    onError: () => toast.error('Could not add the show to the tour.'),
+    onSettled: () => setLinkingTourId(null),
+  });
+
+  const unlinkShow = useMutation({
+    mutationFn: (show) => base44.entities.Show.update(show.id, { tour_id: '', ...auditStamp(user, activeOrg) }),
+    onSuccess: () => { invalidate(); toast.success('Show removed from the tour.'); },
+    onError: () => toast.error('Could not remove the show from the tour.'),
+    onSettled: () => setUnlinkingId(null),
+  });
+
+  const saveShow = useMutation({
+    mutationFn: (data) =>
+      data.id
+        ? base44.entities.Show.update(data.id, { ...data, ...auditStamp(user, activeOrg) })
+        : base44.entities.Show.create({ ...data, data_source: 'analog_push', created_by_org_id: 'analog' }),
+    onSuccess: () => { invalidate(); setDrawerOpen(false); toast.success('Show saved successfully.'); },
+    onError: () => toast.error('Could not save the show. Please try again.'),
+  });
+
+  // ── Handlers ──────────────────────────────────────────────────
+  const openNewTour = () => { setEditingTour(null); setFormOpen(true); };
+  const openEditTour = (tour) => { setEditingTour(tour); setFormOpen(true); };
+
+  const handleAddShow = (tour) => {
+    setSelectedShow(null);
+    setDrawerDefaults({ tour_id: tour.id, artist_id: tour.artist_id, status: 'pending', currency: 'EUR', data_source: 'analog_push' });
+    setDrawerOpen(true);
+  };
+
+  const handleShowClick = (show) => { setSelectedShow(show); setDrawerDefaults(null); setDrawerOpen(true); };
+
+  const handleUnlink = (show) => { setUnlinkingId(show.id); unlinkShow.mutate(show); };
+
+  // ── Filter + split ────────────────────────────────────────────
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return tours.filter(t => {
+      if (q && !(t.name?.toLowerCase().includes(q) || artistMap[t.artist_id]?.name?.toLowerCase().includes(q))) return false;
+      if (filterArtist && t.artist_id !== filterArtist) return false;
+      if (filterStatus && (t.status || 'planning') !== filterStatus) return false;
+      // Date range overlap: the tour must intersect the selected window.
+      const tStart = t.start_date || '';
+      const tEnd = t.end_date || tStart;
+      if (dateFrom && tEnd && tEnd < dateFrom) return false;
+      if (dateTo && tStart && tStart > dateTo) return false;
+      return true;
+    });
+  }, [tours, search, artistMap, filterArtist, filterStatus, dateFrom, dateTo]);
+
+  const activeFilterCount = [filterArtist, filterStatus, dateFrom, dateTo].filter(Boolean).length;
+  const resetFilters = () => { setFilterArtist(''); setFilterStatus(''); setDateFrom(''); setDateTo(''); };
+
+  // Analog shows not yet assigned to any tour — linkable into a tour.
+  const unassignedShows = useMemo(
+    () => shows.filter(s => !s.tour_id).sort((a, b) => (a.date || '').localeCompare(b.date || '')),
+    [shows]
+  );
+
+  const activeTours = filtered.filter(t => ACTIVE_STATUSES.includes(t.status || 'planning'));
+  const pastTours = filtered.filter(t => !ACTIVE_STATUSES.includes(t.status || 'planning'));
+
+  const renderCard = (tour) => (
+    <AnalogTourCard
+      key={tour.id}
+      tour={tour}
+      artistName={artistMap[tour.artist_id]?.name}
+      shows={showsByTour[tour.id] || []}
+      expanded={!!expanded[tour.id]}
+      onToggle={() => setExpanded(p => ({ ...p, [tour.id]: !p[tour.id] }))}
+      onEdit={() => openEditTour(tour)}
+      onDelete={() => { if (confirm(`Delete "${tour.name}"? Its shows will be kept and unlinked.`)) deleteTour.mutate(tour); }}
+      isDeleting={deleteTour.isPending && deleteTour.variables?.id === tour.id}
+      onShowClick={handleShowClick}
+      onAddShow={() => handleAddShow(tour)}
+      onUnlinkShow={handleUnlink}
+      unlinkingId={unlinkingId}
+      linkableShows={unassignedShows}
+      onLinkShow={(show) => { setLinkingTourId(tour.id); linkShow.mutate({ show, tour }); }}
+      isLinking={linkingTourId === tour.id}
+    />
+  );
+
+  return (
+    <div className="space-y-3">
+      {/* Header */}
+      <PageHeader
+        title="Analog Tours"
+        subtitle={`${activeTours.length} active · ${pastTours.length} past`}
+        actions={
+          <button onClick={openNewTour}
+            className="flex items-center gap-1.5 px-3 py-2 min-h-[44px] md:min-h-0 bg-yellow-400 text-black text-sm font-semibold rounded-xl hover:bg-yellow-300 transition-colors">
+            <Plus className="w-4 h-4" /> New Tour
+          </button>
+        }
+      />
+
+      {/* Search + filters */}
+      <AnalogTourFilters
+        search={search}
+        onSearchChange={setSearch}
+        artistId={filterArtist}
+        onArtistChange={setFilterArtist}
+        artistOptions={analogArtists.map(a => ({ value: a.id, label: a.name }))}
+        status={filterStatus}
+        onStatusChange={setFilterStatus}
+        dateFrom={dateFrom}
+        onDateFromChange={setDateFrom}
+        dateTo={dateTo}
+        onDateToChange={setDateTo}
+        onReset={resetFilters}
+        activeCount={activeFilterCount}
+      />
+
+      {/* List */}
+      {isLoading ? (
+        <div className="bg-gray-900 border border-white/10 rounded-xl p-8 text-center text-sm text-gray-400">Loading tours…</div>
+      ) : filtered.length === 0 ? (
+        <div className="bg-gray-900 border border-white/10 rounded-xl p-12 text-center">
+          <MapPin className="w-8 h-8 text-gray-700 mx-auto mb-2" />
+          <p className="text-sm text-gray-400">No tours yet</p>
+          <p className="text-xs text-gray-500 mt-1">Create a tour to group Analog shows across multiple dates.</p>
+        </div>
+      ) : (
+        <div className="space-y-6">
+          {activeTours.length > 0 && (
+            <div>
+              <h2 className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-gray-500 mb-2">
+                <span className="w-1 h-4 bg-yellow-400 rounded" /> Active Tours
+              </h2>
+              <div className="space-y-3">{activeTours.map(renderCard)}</div>
+            </div>
+          )}
+          {pastTours.length > 0 && (
+            <div>
+              <h2 className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-gray-500 mb-2">
+                <span className="w-1 h-4 bg-gray-600 rounded" /> Past Tours
+              </h2>
+              <div className="space-y-3 opacity-70">{pastTours.map(renderCard)}</div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Tour form */}
+      {formOpen && (
+        <AnalogTourFormModal
+          tour={editingTour}
+          artists={analogArtists}
+          isSubmitting={saveTour.isPending}
+          onCancel={() => { setFormOpen(false); setEditingTour(null); }}
+          onSubmit={(data) => saveTour.mutate({ id: editingTour?.id, data })}
+        />
+      )}
+
+      {/* Show drawer — add a show to a tour, or edit an existing one */}
+      <ShowDrawer
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        show={selectedShow || drawerDefaults}
+        artists={analogArtists}
+        onSave={(data) => saveShow.mutateAsync(selectedShow?.id ? { ...data, id: selectedShow.id } : data)}
+      />
+    </div>
+  );
+}

@@ -1,0 +1,101 @@
+import React from 'react';
+
+/**
+ * Unified, scannable status badge with subtle glow.
+ * Designed for high-density lists — a manager scanning 50+ items
+ * can instantly identify bottlenecks by color.
+ * 
+ * Usage:
+ *   <StageBadge stage="master" />
+ *   <StageBadge stage="approved" type="approval" />
+ *   <StageBadge stage="confirmed" type="show" />
+ */
+
+const STAGE_MAP = {
+  // Release stages
+  demo:         { label: 'Demo',         color: 'bg-gray-100  text-gray-700  border-gray-200',  glow: '' },
+  master:       { label: 'Master',       color: 'bg-blue-50   text-blue-700  border-blue-200',  glow: 'glow-blue' },
+  artwork:      { label: 'Artwork',      color: 'bg-purple-50 text-purple-700 border-purple-200', glow: 'glow-purple' },
+  distribution: { label: 'Distribution', color: 'bg-orange-50 text-orange-700 border-orange-200', glow: 'glow-orange' },
+  promotion:    { label: 'Promotion',    color: 'bg-yellow-50 text-yellow-700 border-yellow-200', glow: 'glow-yellow' },
+  released:     { label: 'Released',     color: 'bg-green-50  text-green-700  border-green-200', glow: 'glow-green' },
+
+  // Release statuses
+  upcoming:     { label: 'Upcoming',     color: 'bg-yellow-50 text-yellow-700 border-yellow-200', glow: 'glow-yellow' },
+  archived:     { label: 'Archived',     color: 'bg-gray-100  text-gray-500  border-gray-200',  glow: '' },
+
+  // Show statuses
+  confirmed:    { label: 'Confirmed',    color: 'bg-green-50  text-green-700  border-green-200', glow: 'glow-green' },
+  pending:      { label: 'Pending',      color: 'bg-yellow-50 text-yellow-700 border-yellow-200', glow: 'glow-yellow' },
+  cancelled:    { label: 'Cancelled',    color: 'bg-red-50    text-red-600   border-red-200',   glow: 'glow-red' },
+  completed:    { label: 'Completed',    color: 'bg-gray-100  text-gray-600  border-gray-200',  glow: '' },
+
+  // Contract statuses
+  ready: { label: 'Ready', color: 'bg-purple-50 text-purple-600 border-purple-200', glow: '' },
+  dispatching: { label: 'Sending', color: 'bg-blue-50 text-blue-600 border-blue-200', glow: '' },
+  returned: { label: 'Returned', color: 'bg-orange-50 text-orange-700 border-orange-200', glow: '' },
+  draft:        { label: 'Draft',        color: 'bg-gray-100  text-gray-600  border-gray-200',  glow: '' },
+  requested:    { label: 'Requested',    color: 'bg-blue-50   text-blue-600  border-blue-200',  glow: 'glow-blue' },
+  ready_to_send:{ label: 'Ready',        color: 'bg-purple-50 text-purple-600 border-purple-200', glow: 'glow-purple' },
+  sent:         { label: 'Sent',         color: 'bg-yellow-50 text-yellow-700 border-yellow-200', glow: 'glow-yellow' },
+  signed:       { label: 'Signed',       color: 'bg-green-50  text-green-700  border-green-200', glow: 'glow-green' },
+  paid:         { label: 'Paid',         color: 'bg-green-50  text-green-700  border-green-200', glow: 'glow-green' },
+
+  // Approval statuses
+  approved:     { label: 'Approved',     color: 'bg-green-50  text-green-700  border-green-200', glow: 'glow-green' },
+  rejected:     { label: 'Rejected',     color: 'bg-red-50    text-red-600   border-red-200',   glow: 'glow-red' },
+
+  // Task statuses
+  todo:         { label: 'To Do',        color: 'bg-gray-100  text-gray-600  border-gray-200',  glow: '' },
+  in_progress:  { label: 'In Progress',  color: 'bg-blue-50   text-blue-700  border-blue-200',  glow: 'glow-blue' },
+  done:         { label: 'Done',         color: 'bg-green-50  text-green-700  border-green-200', glow: 'glow-green' },
+  blocked:      { label: 'Blocked',      color: 'bg-red-50    text-red-600   border-red-200',   glow: 'glow-red' },
+
+  // Task priorities
+  low:          { label: 'Low',          color: 'bg-gray-100  text-gray-600  border-gray-200',  glow: '' },
+  medium:       { label: 'Medium',       color: 'bg-yellow-50 text-yellow-700 border-yellow-200', glow: '' },
+  high:         { label: 'High',         color: 'bg-orange-50 text-orange-700 border-orange-200', glow: 'glow-orange' },
+  urgent:       { label: 'Urgent',       color: 'bg-red-50    text-red-600   border-red-200',   glow: 'glow-red' },
+
+  // Payment
+  overdue:      { label: 'Overdue',      color: 'bg-red-50    text-red-600   border-red-200',   glow: 'glow-red' },
+  disputed:     { label: 'Disputed',     color: 'bg-orange-50 text-orange-700 border-orange-200', glow: 'glow-orange' },
+
+  // Social media post statuses
+  planned:      { label: 'Planned',      color: 'bg-gray-100  text-gray-600  border-gray-200',  glow: '' },
+  pending_approval: { label: 'Pending Approval', color: 'bg-yellow-50 text-yellow-700 border-yellow-200', glow: 'glow-yellow' },
+  scheduled:    { label: 'Scheduled',    color: 'bg-blue-50   text-blue-700  border-blue-200',  glow: 'glow-blue' },
+  published:    { label: 'Published',    color: 'bg-green-50  text-green-700  border-green-200', glow: 'glow-green' },
+
+  // Distribution
+  not_started:  { label: 'Not Started',  color: 'bg-gray-100  text-gray-500  border-gray-200',  glow: '' },
+  submitted:    { label: 'Submitted',    color: 'bg-blue-50   text-blue-600  border-blue-200',  glow: 'glow-blue' },
+  processing:   { label: 'Processing',   color: 'bg-yellow-50 text-yellow-700 border-yellow-200', glow: 'glow-yellow' },
+  live:         { label: 'Live',         color: 'bg-green-50  text-green-700  border-green-200', glow: 'glow-green' },
+};
+
+export default function StageBadge({ stage, label: customLabel, size = 'sm', className = '' }) {
+  const key = (stage || '').toLowerCase().replace(/\s+/g, '_');
+  const config = STAGE_MAP[key] || {
+    label: stage || 'Unknown',
+    color: 'bg-gray-100 text-gray-600 border-gray-200',
+    glow: '',
+  };
+
+  const sizeClasses = size === 'xs'
+    ? 'text-[10px] px-1.5 py-0.5'
+    : size === 'sm'
+    ? 'text-xs px-2 py-0.5'
+    : 'text-sm px-2.5 py-1';
+
+  return (
+    <span
+      className={`
+        inline-flex items-center font-medium rounded-full border
+        ${config.color} ${config.glow} ${sizeClasses} ${className}
+      `.trim()}
+    >
+      {customLabel || config.label}
+    </span>
+  );
+}

@@ -1,0 +1,156 @@
+{
+  "feature_flag": {
+    "name": null,
+    "default": null,
+    "status": "No contract-editor feature flag exists in the exported source; integration is wired directly into UI/backend. No off-by-default safety is provided."
+  },
+  "required_secrets": [
+    {
+      "name": "PDFSHIFT_API_KEY",
+      "purpose": "Server PDF rendering via base44/shared/pdfshift.ts",
+      "required_for": "PDF generation",
+      "value_exported": false
+    }
+  ],
+  "not_contract_requirements": [
+    "AVIATIONSTACK_API_KEY"
+  ],
+  "connectors": [
+    {
+      "service": "gmail",
+      "mode": "app-user",
+      "source_workspace_connector_id": "6a9851f6298f03badb17ca43",
+      "source_workspace_name": "Webclient Artisthub Gmail Connector",
+      "required_for": [
+        "dispatchContract",
+        "scanGmailConfThreads",
+        "getGmailThreadMetadata",
+        "gmailConnection"
+      ],
+      "destination_action": "Verify/rebind to main app connector and authorize each actual app user; never export tokens or assume connections transfer.",
+      "source_authorization_verified": false
+    }
+  ],
+  "environment_specific_identifiers": [
+    {
+      "kind": "connector",
+      "value": "6a9851f6298f03badb17ca43",
+      "files": [
+        "base44/functions/dispatchContract/entry.ts",
+        "base44/shared/gmailUser.ts"
+      ],
+      "action": "resolve-destination-not-blind-copy"
+    },
+    {
+      "kind": "public-render-header-image",
+      "value": "https://base44.app/api/apps/6aa80b297e3dedc77a81006c/files/mp/public/6aa80b297e3dedc77a81006c/b3612566a_analog-reference-header.jpeg",
+      "files": [
+        "base44/shared/contractTemplates/representation.ts"
+      ],
+      "action": "verify-availability-and-ownership-before-production"
+    }
+  ],
+  "data_prerequisites": {
+    "exported_records": false,
+    "template_keys": [
+      "cidony",
+      "nysm",
+      "nysm-es",
+      "aesl-en",
+      "aesl-es"
+    ],
+    "required": "Active ContractTemplate records linked to real active LegalEntity records, approved legal wording, real organizational grants and staff assignments, Show/Artist/Contact links. Resolve destination record IDs; do not copy fictional seeded records."
+  },
+  "permissions": {
+    "changed_entities": [
+      "base44/entities/Contract.jsonc",
+      "base44/entities/ContractAuditLog.jsonc",
+      "base44/entities/ContractDraft.jsonc",
+      "base44/entities/ContractRedline.jsonc",
+      "base44/entities/User.jsonc"
+    ],
+    "review_required": true,
+    "source_write_rules": "Exact Contract/ContractAuditLog write rules and User security-field update guards use collaborator_role: editor; ContractDraft/ContractRedline writes are admin-only. Service-role handlers contain additional access validation. Source is not certification that these rules fit the main app.",
+    "other_identity_tests_verified": false
+  },
+  "runtime_packages": {
+    "frontend_source_sdk": "^0.8.57",
+    "frontend_source_vite_plugin": "^1.0.50",
+    "baseline_sdk": "^0.8.53",
+    "baseline_vite_plugin": "^1.0.45",
+    "package_updates": "Optional separate patch; no new frontend package introduced by this diff.",
+    "backend": "Keep exact npm: SDK pins and nodemailer import from source snapshots; base44:runtime is a server-runtime dependency."
+  },
+  "routes": [
+    {
+      "path": "/contract-preview",
+      "added": true,
+      "integration": "Explicit route with existing LayoutWrapper and auth/providers preserved."
+    },
+    {
+      "path": "/showdetail?id=<show>&tab=contract",
+      "added": false,
+      "integration": "Shared org-aware show contract entry; retain main app routing and tab handling."
+    },
+    {
+      "path": "/analogshowdetail",
+      "added": false,
+      "integration": "Existing supported route; do not duplicate or replace org routing."
+    }
+  ],
+  "storage": {
+    "new_contract_pdf": "private",
+    "redlines": "private",
+    "signed_uploads": "private",
+    "access": "contractFileAccess plus short-lived signed access; legacy public URLs remain read-only compatibility references.",
+    "files_exported": false
+  },
+  "lifecycle": {
+    "draft": [
+      "editing",
+      "approved",
+      "generating",
+      "generated"
+    ],
+    "contract": [
+      "draft",
+      "READY",
+      "DISPATCHING",
+      "SENT",
+      "RETURNED",
+      "SIGNED"
+    ],
+    "signing": "Internal staff confirmation; not a promoter-facing electronic-signature provider.",
+    "send_safety": "No new no-send or dispatch dry-run switch exists. Never call real Gmail send during review.",
+    "returned": "Reply and attachment validation in contractReturn.ts; requires real per-user Gmail scan data. Not certified by this export."
+  },
+  "existing_workflows": [
+    {
+      "path": "base44/workflows/Analog Advancing — Contract Milestones.jsonc",
+      "name": "Analog Advancing — Contract Milestones",
+      "changed_vs_clone": false,
+      "reference": "reference/base44/workflows/Analog Advancing — Contract Milestones.jsonc.source.txt",
+      "action": "review-existing-do-not-duplicate-or-activate"
+    },
+    {
+      "path": "base44/workflows/Analog Advancing — Show Milestones.jsonc",
+      "name": "Analog Advancing — Show Milestones",
+      "changed_vs_clone": false,
+      "reference": "reference/base44/workflows/Analog Advancing — Show Milestones.jsonc.source.txt",
+      "action": "review-existing-do-not-duplicate-or-activate"
+    },
+    {
+      "path": "base44/workflows/Lock Exchange Rate — Contract.jsonc",
+      "name": "Lock Exchange Rate — Contract",
+      "changed_vs_clone": false,
+      "reference": "reference/base44/workflows/Lock Exchange Rate — Contract.jsonc.source.txt",
+      "action": "review-existing-do-not-duplicate-or-activate"
+    }
+  ],
+  "workflows_changed_vs_clone": [],
+  "migration_script": {
+    "present": false,
+    "action": "No automatic data migration/backfill is supplied. Review legacy drafts and immutable issued/signed records against destination data before rollout."
+  },
+  "no_secret_values_or_access_tokens_exported": true
+}

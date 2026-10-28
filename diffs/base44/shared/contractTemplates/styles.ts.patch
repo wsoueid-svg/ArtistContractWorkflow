@@ -1,0 +1,37 @@
+diff --git a/base44/shared/contractTemplates/styles.ts b/base44/shared/contractTemplates/styles.ts
+index c3abf3215f4b3d634710bef7bd1329fc53278ed1..c4d183ae6a9b425285b30a48e31ce762a4c3d504 100644
+--- a/base44/shared/contractTemplates/styles.ts
++++ b/base44/shared/contractTemplates/styles.ts
+@@ -14,6 +14,12 @@ export const CONTRACT_CSS = `
+     margin: 18mm 16mm 20mm 16mm;
+   }
+ 
++  @page analog {
++    size: A4;
++    margin: 28mm 16mm 20mm 16mm;
++  }
++  body.analog-contract { page: analog; }
++
+   * { box-sizing: border-box; }
+ 
+   html, body {
+@@ -101,6 +107,8 @@ export const CONTRACT_CSS = `
+   .schedule-row .v { margin-left: 4pt; }
+ 
+   /* ── Payment table ──────────────────────────────────────── */
++  .analog-banner { display: block; width: 100%; height: auto; }
++  @media print { .masthead:has(.analog-banner) { display: none; } }
+   table.payments {
+     width: 100%;
+     border-collapse: collapse;
+@@ -143,6 +151,10 @@ export const CONTRACT_CSS = `
+     page-break-inside: avoid;
+   }
+   .totals td { padding: 2.5pt 3pt; }
++  .analog-contract table.payments, .analog-contract .totals { table-layout: fixed; }
++  .analog-contract table.payments th, .analog-contract table.payments td, .analog-contract .totals td { white-space: normal; overflow-wrap: anywhere; }
++  .analog-contract .totals td.label { width: 64%; }
++  .analog-contract .totals td.value { width: 36%; }
+   .totals td.label { font-weight: bold; }
+   .totals td.value {
+     text-align: right;

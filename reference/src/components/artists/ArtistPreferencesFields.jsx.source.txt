@@ -1,0 +1,30 @@
+import React from 'react';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+
+const FIELDS = [
+  ['dietary', 'Dietary requirements', 'Allergies, intolerances, preferred meals…'],
+  ['hotel_preferences', 'Hotel preferences', 'Room type, accessibility, late check-in…'],
+  ['transportation_notes', 'Transport notes', 'Vehicle, pickup, luggage, accessibility…'],
+  ['technical_rider', 'Artist rider', 'Technical, hospitality, backstage and production requirements…'],
+];
+
+export default function ArtistPreferencesFields({ value = {}, onChange }) {
+  return (
+    <div className="grid gap-4 sm:grid-cols-2">
+      {FIELDS.map(([key, label, placeholder]) => (
+        <div key={key} className={key === 'technical_rider' ? 'sm:col-span-2' : ''}>
+          <Label htmlFor={`artist-preference-${key}`}>{label}</Label>
+          <Textarea
+            id={`artist-preference-${key}`}
+            value={value[key] || ''}
+            onChange={(event) => onChange({ ...value, [key]: event.target.value })}
+            placeholder={placeholder}
+            rows={key === 'technical_rider' ? 5 : 3}
+            className="mt-1 min-h-[88px] resize-y"
+          />
+        </div>
+      ))}
+    </div>
+  );
+}

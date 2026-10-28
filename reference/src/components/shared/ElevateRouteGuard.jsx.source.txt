@@ -1,0 +1,18 @@
+import React from 'react';
+import { Navigate } from 'react-router-dom';
+import { useOrg } from '@/lib/OrgContext';
+
+/**
+ * ElevateRouteGuard — hard route guard for Elevate-only pages.
+ * If activeOrg is 'analog', immediately redirects to root.
+ * Acts as security layer on top of the sidebar nav-hiding UX layer.
+ */
+export default function ElevateRouteGuard({ children }) {
+  const { activeOrg } = useOrg();
+
+  if (activeOrg === 'analog') {
+    return <Navigate to="/" replace />;
+  }
+
+  return <>{children}</>;
+}

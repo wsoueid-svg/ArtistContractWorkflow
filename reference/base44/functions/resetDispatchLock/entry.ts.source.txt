@@ -1,0 +1,36 @@
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
+import { assertShowAccess, canDispatchContracts } from '../../shared/assertShowAccess.ts';
+
+const STALE_AFTER_MS = 5 * 60 * 1000;
+
+export default async function(req) {
+  try {
+    const base44 = createClientFromRequest(req);
+    const user = await base44.auth.me();
+    if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+
+    const { show_id, contract_id } = await req.json();
+    const { show } = await assertShowAccess(base44, show_id, user);
+    if (!await canDispatchContracts(base44, user, show)) {
+      return Response.json({ error: 'You do not have permission to reset contract dispatches' }, { status: 403 });
+    }
+
+    const contract = await base44.asServiceRole.entities.Contract.get(contract_id).catch(() => null);
+    if (!contract || contract.show_id !== show.id) {
+      return Response.json({ error: 'Contract not found for this show' }, { status: 404 });
+    }
+    const heartbeat = new Date(contract.dispatch_heartbeat_at || 0).getTime();
+    if (contract.status !== 'DISPATCHING' || !contract.dispatch_lock || !heartbeat || Date.now() - heartbeat <= STALE_AFTER_MS) {
+      return Response.json({ error: 'This dispatch lock is not stale and cannot be reset' }, { status: 409 });
+    }
+
+    const result = await base44.asServiceRole.entities.Contract.updateMany(
+      { id: contract.id, status: 'DISPATCHING', dispatch_lock: contract.dispatch_lock },
+      { $set: { status: 'READY' }, $unset: { dispatch_lock: '', dispatch_heartbeat_at: '' } }
+    );
+    if (result?.updated !== 1) return Response.json({ error: 'The dispatch lock changed before reset' }, { status: 409 });
+    return Response.json({ success: true, status: 'READY' });
+  } catch (error) {
+    return Response.json({ error: error?.message || 'Could not reset dispatch lock' }, { status: error?.status || 500 });
+  }
+}

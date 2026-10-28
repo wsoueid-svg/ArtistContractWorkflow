@@ -1,0 +1,253 @@
+import React, { useRef, useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { X, Plus, ChevronRight, ChevronLeft, Check, Music2, User, Link } from 'lucide-react';
+import FileUploader from '../shared/FileUploader';
+
+const STEPS = [
+  { id: 1, label: 'Essentials', icon: Music2, description: 'Name, photo & genres' },
+  { id: 2, label: 'Contact', icon: User, description: 'Email, phone & socials' },
+  { id: 3, label: 'Details', icon: Link, description: 'Bio, press kit & extras' },
+];
+
+const EMPTY_FORM = {
+  name: '',
+  stage_name: '',
+  bio: '',
+  photo_url: '',
+  press_kit_url: '',
+  genres: [],
+  social_media: {},
+  contact_info: {},
+  preferences: {},
+  frequent_flyer: [],
+  status: 'active',
+  dropbox_folder_url: '',
+};
+
+export default function ArtistOnboardingWizard({ onSubmit, onCancel }) {
+  const [step, setStep] = useState(1);
+  const [formData, setFormData] = useState(EMPTY_FORM);
+  const [genreInput, setGenreInput] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+  const submitLock = useRef(false);
+
+  const handleCreate = async () => {
+    if (submitLock.current || !formData.name.trim()) return;
+    submitLock.current = true;
+    setSubmitting(true);
+    setError('');
+    try {
+      await onSubmit({ ...formData, name: formData.name.trim() });
+    } catch (err) {
+      setError(err?.response?.data?.message || err?.message || 'Could not create the artist. Please try again.');
+    } finally {
+      submitLock.current = false;
+      setSubmitting(false);
+    }
+  };
+
+  const set = (field, value) => setFormData(prev => ({ ...prev, [field]: value }));
+  const setContact = (field, value) => setFormData(prev => ({ ...prev, contact_info: { ...prev.contact_info, [field]: value } }));
+  const setSocial = (field, value) => setFormData(prev => ({ ...prev, social_media: { ...prev.social_media, [field]: value } }));
+
+  const addGenre = () => {
+    if (genreInput.trim()) {
+      set('genres', [...(formData.genres || []), genreInput.trim()]);
+      setGenreInput('');
+    }
+  };
+
+  const removeGenre = (i) => set('genres', formData.genres.filter((_, idx) => idx !== i));
+
+  const canProceed = step === 1 ? !!formData.name.trim() : true;
+
+  return (
+    <div className="flex flex-col h-full max-h-[90vh]">
+      {/* Header */}
+      <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b-2 border-yellow-400 flex-shrink-0">
+        <div>
+          <h2 className="text-2xl font-bold text-black">Add New Artist</h2>
+          <p className="text-sm text-gray-500 mt-0.5">Step {step} of {STEPS.length} — {STEPS[step - 1].description}</p>
+        </div>
+        <button onClick={onCancel} disabled={submitting} aria-label="Close artist wizard" className="text-gray-400 hover:text-black transition">
+          <X className="w-5 h-5" />
+        </button>
+      </div>
+
+      {/* Step indicators */}
+      <div className="flex items-center gap-0 px-6 py-4 flex-shrink-0">
+        {STEPS.map((s, i) => (
+          <React.Fragment key={s.id}>
+            <div className="flex items-center gap-2">
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all ${
+                step > s.id ? 'bg-yellow-400 border-yellow-400 text-black' :
+                step === s.id ? 'bg-black border-black text-yellow-400' :
+                'bg-white border-gray-300 text-gray-400'
+              }`}>
+                {step > s.id ? <Check className="w-4 h-4" /> : s.id}
+              </div>
+              <span className={`text-xs font-semibold hidden sm:block ${step === s.id ? 'text-black' : 'text-gray-400'}`}>{s.label}</span>
+            </div>
+            {i < STEPS.length - 1 && (
+              <div className={`flex-1 h-0.5 mx-3 ${step > s.id ? 'bg-yellow-400' : 'bg-gray-200'}`} />
+            )}
+          </React.Fragment>
+        ))}
+      </div>
+
+      {/* Body */}
+      <div className="flex-1 overflow-y-auto px-6 pb-4 space-y-5">
+
+        {/* ── STEP 1: Essentials ── */}
+        {step === 1 && (
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <Label>Full Name <span className="text-red-500">*</span></Label>
+                <Input className="mt-1" value={formData.name} onChange={e => set('name', e.target.value)} placeholder="Artist full name" autoFocus />
+              </div>
+              <div>
+                <Label>Stage Name</Label>
+                <Input className="mt-1" value={formData.stage_name} onChange={e => set('stage_name', e.target.value)} placeholder="Performing name" />
+              </div>
+            </div>
+
+            <div>
+              <Label>Status</Label>
+              <Select value={formData.status} onValueChange={v => set('status', v)}>
+                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="inactive">Inactive</SelectItem>
+                  <SelectItem value="on_tour">On Tour</SelectItem>
+                  <SelectItem value="in_studio">In Studio</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label>Profile Photo</Label>
+              <div className="mt-1">
+                <FileUploader label="" value={formData.photo_url} onChange={url => set('photo_url', url)} accept="image/*" />
+              </div>
+            </div>
+
+            <div>
+              <Label>Genres</Label>
+              <div className="flex gap-2 mt-1">
+                <Input value={genreInput} onChange={e => setGenreInput(e.target.value)} placeholder="e.g. Techno, House, Minimal"
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addGenre(); } }} />
+                <Button type="button" onClick={addGenre} size="icon" className="bg-black text-white hover:bg-gray-800 flex-shrink-0"><Plus className="w-4 h-4" /></Button>
+              </div>
+              <div className="flex flex-wrap gap-2 mt-2">
+                {formData.genres?.map((g, i) => (
+                  <span key={i} className="bg-yellow-400 text-black px-3 py-1 rounded-full text-sm font-medium flex items-center gap-1.5">
+                    {g}
+                    <button type="button" onClick={() => removeGenre(i)}><X className="w-3 h-3" /></button>
+                  </span>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* ── STEP 2: Contact & Socials ── */}
+        {step === 2 && (
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <Label>Email</Label>
+                <Input className="mt-1" type="email" value={formData.contact_info?.email || ''} onChange={e => setContact('email', e.target.value)} placeholder="artist@email.com" />
+              </div>
+              <div>
+                <Label>Phone</Label>
+                <Input className="mt-1" value={formData.contact_info?.phone || ''} onChange={e => setContact('phone', e.target.value)} placeholder="+1 555 000 0000" />
+              </div>
+              <div>
+                <Label>Emergency Contact</Label>
+                <Input className="mt-1" value={formData.contact_info?.emergency_contact || ''} onChange={e => setContact('emergency_contact', e.target.value)} placeholder="Contact name" />
+              </div>
+              <div>
+                <Label>Emergency Phone</Label>
+                <Input className="mt-1" value={formData.contact_info?.emergency_phone || ''} onChange={e => setContact('emergency_phone', e.target.value)} placeholder="+1 555 000 0000" />
+              </div>
+            </div>
+
+            <div className="border-t pt-4">
+              <p className="text-sm font-semibold text-gray-700 mb-3">Social Media</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {['instagram', 'spotify', 'tiktok', 'youtube', 'facebook', 'twitter'].map(platform => (
+                  <div key={platform}>
+                    <Label className="capitalize">{platform}</Label>
+                    <Input className="mt-1" value={formData.social_media?.[platform] || ''} onChange={e => setSocial(platform, e.target.value)} placeholder={`@${platform}`} />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* ── STEP 3: Details ── */}
+        {step === 3 && (
+          <>
+            <div>
+              <Label>Biography</Label>
+              <Textarea className="mt-1" rows={4} value={formData.bio || ''} onChange={e => set('bio', e.target.value)} placeholder="Artist bio for press kits and marketing..." />
+            </div>
+
+            <div>
+              <Label>Press Kit</Label>
+              <div className="mt-1">
+                <FileUploader label="" value={formData.press_kit_url} onChange={url => set('press_kit_url', url)} accept=".pdf,.doc,.docx,.zip" />
+              </div>
+            </div>
+
+            <div>
+              <Label className="flex items-center gap-2">
+                <svg viewBox="0 0 24 24" fill="#0061FF" className="w-4 h-4"><path d="M6 2L0 6l6 4 6-4L6 2zM18 2l-6 4 6 4 6-4-6-4zM0 14l6 4 6-4-6-4-6 4zM18 10l-6 4 6 4 6-4-6-4zM6 19.5L12 23l6-3.5-6-4-6 4z"/></svg>
+                Dropbox Folder URL
+              </Label>
+              <Input className="mt-1" value={formData.dropbox_folder_url || ''} onChange={e => set('dropbox_folder_url', e.target.value)} placeholder="https://www.dropbox.com/sh/..." />
+            </div>
+
+            <div>
+              <Label>Contract End Date</Label>
+              <Input className="mt-1" type="date" value={formData.contract_end_date || ''} onChange={e => set('contract_end_date', e.target.value)} />
+            </div>
+          </>
+        )}
+      </div>
+
+      {error && <p role="alert" className="px-6 pb-3 text-sm text-destructive">{error}</p>}
+      {/* Footer */}
+      <div className="flex items-center justify-between px-6 py-4 border-t bg-gray-50 flex-shrink-0">
+        <Button variant="outline" disabled={submitting} onClick={step === 1 ? onCancel : () => setStep(s => s - 1)}>
+          {step === 1 ? 'Cancel' : <><ChevronLeft className="w-4 h-4 mr-1" />Back</>}
+        </Button>
+        {step < STEPS.length ? (
+          <Button
+            className="bg-black text-yellow-400 hover:bg-gray-900 font-semibold"
+            disabled={!canProceed}
+            onClick={() => setStep(s => s + 1)}
+          >
+            Next <ChevronRight className="w-4 h-4 ml-1" />
+          </Button>
+        ) : (
+          <Button
+            className="bg-yellow-400 text-black hover:bg-yellow-500 font-semibold"
+            disabled={!formData.name.trim() || submitting}
+            aria-busy={submitting}
+            onClick={handleCreate}
+          >
+            <Check className="w-4 h-4 mr-1" /> {submitting ? 'Creating…' : 'Create Artist'}
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}

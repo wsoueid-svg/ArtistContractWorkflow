@@ -1,0 +1,54 @@
+import React, { useEffect } from 'react';
+import { ShieldOff } from 'lucide-react';
+import { base44 } from '@/api/base44Client';
+
+/**
+ * Terminal deactivation screen.
+ * Renders with zero auth context. It does perform ONE self-heal check: if the
+ * signed-in account is in fact still active (e.g. the URL was reached by
+ * mistake, or access was restored), it sends the user straight back into the
+ * workspace instead of dead-ending them here. Any failure leaves the terminal
+ * message in place, so a genuinely revoked account can never loop.
+ */
+export default function Deactivated() {
+  useEffect(() => {
+    let cancelled = false;
+    base44.auth.me()
+      .then((me) => {
+        if (!cancelled && me && me.is_active !== false) {
+          window.location.replace('/');
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-slate-50 p-6">
+      <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm">
+        <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-full bg-slate-100">
+          <ShieldOff className="h-7 w-7 text-slate-500" />
+        </div>
+        <h1 className="text-xl font-semibold text-slate-900">
+          Access has been revoked
+        </h1>
+        <p className="mt-3 text-sm leading-relaxed text-slate-600">
+          Your account has been deactivated, so it can no longer open this
+          workspace or read any of its data.
+        </p>
+        <p className="mt-4 text-sm leading-relaxed text-slate-600">
+          If you believe this is a mistake, please contact an administrator on
+          your team to have your access restored.
+        </p>
+        <div className="mt-7 border-t border-slate-200 pt-5">
+          <a
+            href="/"
+            className="inline-flex min-h-[44px] items-center justify-center rounded-xl bg-slate-900 px-5 text-sm font-semibold text-white transition-colors hover:bg-slate-800"
+          >
+            Return to sign in
+          </a>
+        </div>
+      </div>
+    </div>
+  );
+}

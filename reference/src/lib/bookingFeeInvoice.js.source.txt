@@ -1,0 +1,40 @@
+// Booking-fee invoice status — in the Analog org the only thing invoiced and
+// tracked is the booking fee, so a show's primary invoice IS its booking-fee
+// invoice. The guarantee/gross fee and its WHT/VAT breakdown live on the deal
+// card, never on an invoice.
+import { agingBucket, daysOverdue } from '@/lib/arAging';
+
+const DRAFT_STATUSES = ['Draft', 'Needs Review', 'Pending Holded Approval'];
+const PENDING_STATUSES = ['Sent', 'Viewed', 'Partially Paid', 'Overdue', 'Disputed'];
+
+export const BOOKING_FEE_STAGES = {
+  draft:   { key: 'draft',   label: 'Draft',        className: 'bg-gray-100 text-gray-600' },
+  pending: { key: 'pending', label: 'Sent/Pending', className: 'bg-blue-100 text-blue-700' },
+  paid:    { key: 'paid',    label: 'Paid',         className: 'bg-green-100 text-green-700' },
+};
+
+/**
+ * Collapses an invoice's granular status into the three states the desk tracks,
+ * and attaches the AR-aging bucket when it is past due and unpaid.
+ */
+export function bookingFeeStatus(invoice, now = new Date()) {
+  if (!invoice) return null;
+  const status = invoice.status;
+  if (status === 'Cancelled') return null;
+
+  const stage = status === 'Paid'
+    ? BOOKING_FEE_STAGES.paid
+    : PENDING_STATUSES.includes(status)
+      ? BOOKING_FEE_STAGES.pending
+      : DRAFT_STATUSES.includes(status)
+        ? BOOKING_FEE_STAGES.draft
+        : BOOKING_FEE_STAGES.draft;
+
+  const overdueDays = stage.key === 'paid' ? 0 : daysOverdue(invoice.due_date, now);
+  return {
+    stage,
+    overdueDays,
+    isOverdue: overdueDays > 0,
+    bucket: overdueDays > 0 ? agingBucket(invoice.due_date, now) : null,
+  };
+}

@@ -1,0 +1,25 @@
+diff --git a/src/components/contracts/SignContractButton.jsx b/src/components/contracts/SignContractButton.jsx
+index 8ea6cd5137545d034057c63921301665fd6a96bb..eae4c25cd3b40941b2aaa208a8638c327e8bdea7 100644
+--- a/src/components/contracts/SignContractButton.jsx
++++ b/src/components/contracts/SignContractButton.jsx
+@@ -9,7 +9,7 @@ export default function SignContractButton({ contract, onSigned }) {
+   const [signed, setSigned] = useState(contract?.status === 'SIGNED');
+   const [error, setError] = useState(null);
+ 
+-  if (!contract || !contract.contract_file_url) return null;
++  if (!contract || !contract.contract_file_url || !['SENT','RETURNED','SIGNED'].includes(contract.status)) return null;
+ 
+   if (signed || contract.status === 'SIGNED') {
+     return (
+@@ -49,9 +49,9 @@ export default function SignContractButton({ contract, onSigned }) {
+   return (
+     <div>
+       <AlertDialog>
+-        <AlertDialogTrigger asChild><Button size="sm" disabled={loading} className="min-h-[44px] bg-emerald-600 text-xs text-white hover:bg-emerald-700">{loading ? <><Loader2 className="mr-1 h-3 w-3 animate-spin" />Confirming…</> : <><ShieldCheck className="mr-1 h-3 w-3" />Mark as Signed</>}</Button></AlertDialogTrigger>
++        <AlertDialogTrigger asChild><Button size="sm" disabled={loading} className="min-h-[44px] bg-emerald-600 text-xs text-white hover:bg-emerald-700">{loading ? <><Loader2 className="mr-1 h-3 w-3 animate-spin" />Confirming…</> : <><ShieldCheck className="mr-1 h-3 w-3" />Record signature confirmation</>}</Button></AlertDialogTrigger>
+         <AlertDialogContent>
+-          <AlertDialogHeader><AlertDialogTitle>Mark this contract as signed?</AlertDialogTitle><AlertDialogDescription>This records your identity, the time, and a hash of the document. The signature confirmation cannot be undone.</AlertDialogDescription></AlertDialogHeader>
++          <AlertDialogHeader><AlertDialogTitle>Mark this contract as signed?</AlertDialogTitle><AlertDialogDescription>Confirm after checking the agreement was signed outside this app. This records your staff identity, the time and PDF hash; it does not collect the promoter’s electronic signature.</AlertDialogDescription></AlertDialogHeader>
+           <AlertDialogFooter><AlertDialogCancel className="min-h-[44px]">Cancel</AlertDialogCancel><AlertDialogAction onClick={handleSign} className="min-h-[44px] bg-emerald-600 hover:bg-emerald-700">Confirm signature</AlertDialogAction></AlertDialogFooter>
+         </AlertDialogContent>
+       </AlertDialog>

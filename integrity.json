@@ -1,0 +1,17 @@
+{
+  "validated_at": "2026-10-28T13:42:49.495Z",
+  "baseline": "e7774444c8653da22922707c2d0c3423700a1fd6",
+  "source": "ca8a6369782cbfd215db27bf23c98569daf09d2b",
+  "verdict": "pass",
+  "changed_file_snapshots_verified": 115,
+  "backend_function_complete_snapshots": 12,
+  "baseline_modified_snapshots": 42,
+  "per_file_patches_replayed_in_memory": 115,
+  "full_git_diff_identical": true,
+  "unchanged_dependency_reference_snapshots": 157,
+  "unresolved_static_local_imports": 0,
+  "only_documentation_artifacts_written": true,
+  "no_runtime_or_database_changes": true,
+  "destination_patch_application_tested": false,
+  "validation_method": "Byte/hash comparison against captured Git source; all unified text patches replayed against original snapshots in memory, with line content compared to full current snapshots. Main-app merge/application not tested."
+}

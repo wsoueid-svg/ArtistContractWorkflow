@@ -1,0 +1,96 @@
+{
+  "name": "ContractAuditLog",
+  "type": "object",
+  "properties": {
+    "contract_id": {
+      "type": "string",
+      "description": "ID of the contract being signed"
+    },
+    "user_id": {
+      "type": "string",
+      "description": "User ID who recorded the confirmation"
+    },
+    "user_email": {
+      "type": "string",
+      "description": "Email of the confirming user"
+    },
+    "user_name": {
+      "type": "string",
+      "description": "Full name of the confirming user"
+    },
+    "ip_address": {
+      "type": "string",
+      "description": "IP address captured at confirmation time"
+    },
+    "contract_hash": {
+      "type": "string",
+      "description": "SHA-256 hash of the contract PDF content at confirmation time"
+    },
+    "action": {
+      "type": "string",
+      "enum": [
+        "signed",
+        "approved",
+        "rejected",
+        "revoked"
+      ],
+      "default": "signed",
+      "description": "Type of signing action"
+    },
+    "signed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the signature was confirmed"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Optional signer notes or comments"
+    },
+    "signature_method": {
+      "type": "string",
+      "enum": [
+        "e_sign",
+        "manual_signed",
+        "revert_signed",
+        "staff_confirmation"
+      ],
+      "description": "Historical e_sign entries are retained; new internal confirmations are staff_confirmation."
+    }
+  },
+  "required": [
+    "contract_id",
+    "user_id",
+    "contract_hash",
+    "action",
+    "signed_at"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.user_id": "{{user.id}}"
+        }
+      ]
+    },
+    "create": {
+      "user_condition": {
+        "collaborator_role": "editor"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "collaborator_role": "editor"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "collaborator_role": "editor"
+      }
+    }
+  }
+}

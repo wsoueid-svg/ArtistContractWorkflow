@@ -1,0 +1,29 @@
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
+
+export default async function(req) {
+  try {
+    const base44 = createClientFromRequest(req);
+    const authenticated = await base44.auth.isAuthenticated();
+    if (!authenticated) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    const { show_id } = await req.json();
+    if (!show_id) return Response.json({ skipped: true, reason: 'No show_id' });
+    const svc = base44.asServiceRole.entities;
+    const show = await svc.Show.get(show_id).catch(() => null);
+    if (!show || (show.created_by_org_id !== 'analog' && !show.is_aboss_import)) return Response.json({ skipped: true, reason: 'Not an Analog show' });
+
+    const [tasks, contracts, invoices] = await Promise.all([
+      svc.Task.filter({ show_id }), svc.Contract.filter({ show_id }), svc.Invoice.filter({ $or: [{ show_id }, { parent_show_id: show_id }], is_deleted: false }),
+    ]);
+    const completedKeys = new Set();
+    if (contracts.some((contract) => ['SENT', 'RETURNED', 'SIGNED'].includes(contract.status))) completedKeys.add('contract_dispatch');
+    if (contracts.some((contract) => contract.status === 'SIGNED')) completedKeys.add('contract_signature');
+    if (show.advance_paid || invoices.some((invoice) => invoice.invoice_type === 'DEPOSIT' && invoice.status === 'Paid')) completedKeys.add('advance_payment');
+    if (show.payment_received || invoices.some((invoice) => ['BALANCE', 'FULL_FEE'].includes(invoice.invoice_type) && invoice.status === 'Paid')) completedKeys.add('balance_payment');
+
+    const updates = tasks.filter((task) => task.related_entity_type === 'analog_advancing' && completedKeys.has(task.related_entity_id) && task.status !== 'done').map((task) => ({ id: task.id, status: 'done' }));
+    if (updates.length) await svc.Task.bulkUpdate(updates);
+    return Response.json({ success: true, completed: updates.length, completed_keys: [...completedKeys] });
+  } catch (error) {
+    return Response.json({ error: error.message }, { status: 500 });
+  }
+}

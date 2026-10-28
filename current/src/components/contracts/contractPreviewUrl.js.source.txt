@@ -1,0 +1,6 @@
+export default function contractPreviewUrl(contractId, showId) {
+  const params = new URLSearchParams();
+  if (contractId) params.set('contract', contractId);
+  else if (showId) params.set('show', showId);
+  return `/contract-preview?${params}`;
+}

@@ -1,0 +1,129 @@
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { useAuth } from '@/lib/AuthContext';
+import { queryClientInstance } from '@/lib/query-client';
+import { base44 } from '@/api/base44Client';
+import { resolveOrgSwitchPath } from '@/lib/orgRouteMap';
+
+const OrgContext = createContext();
+
+/**
+ * OrgProvider — wraps the app and exposes the active org context.
+ * - Defaults to the user's first org on load.
+ * - switchOrg() hard-flushes the React Query cache to prevent cross-org data bleed.
+ * - Every backend call should pass activeOrg so the Iron Gate can verify it.
+ */
+export const OrgProvider = ({ children }) => {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [activeOrg, setActiveOrg] = useState(null);
+  // Gate rendering until the server-side org context is persisted, otherwise
+  // org-scoped queries fire under the wrong context and get wiped by the
+  // cache flush below without ever refetching.
+  const [orgReady, setOrgReady] = useState(false);
+
+  // P3-M1: Derive allowedOrgs strictly from the server-validated user object (JWT claim).
+  // This is the cryptographic source of truth — never trust sessionStorage for access grants.
+  // sessionStorage is used only as a UX hint for *which* allowed org was last active.
+  const allowedOrgs = user?.org_access?.length > 0
+    ? user.org_access
+    : (user?.role === 'admin' ? ['elevate', 'analog'] : ['elevate']);
+
+  // Initialize / re-validate activeOrg whenever the user object changes.
+  // If a manipulated sessionStorage value names an org not in the server-granted allowedOrgs,
+  // it is silently discarded and the user is hard-reset to their first authorized tenant.
+  useEffect(() => {
+    if (!user) return;
+    const stored = sessionStorage.getItem('activeOrg');
+    const isStoredValid = stored && allowedOrgs.includes(stored);
+    const initial = isStoredValid ? stored : allowedOrgs[0];
+
+    // If current activeOrg is no longer in the server-granted list, force-revert immediately.
+    if (activeOrg && !allowedOrgs.includes(activeOrg)) {
+      setActiveOrg(allowedOrgs[0]);
+      sessionStorage.setItem('activeOrg', allowedOrgs[0]);
+      base44.auth.updateMe({ active_org: allowedOrgs[0] }).catch(() => {});
+      queryClientInstance.clear();
+      return;
+    }
+
+    if (!activeOrg) {
+      sessionStorage.setItem('activeOrg', initial);
+      // Persist active_org and flush the cache BEFORE any org-scoped
+      // component mounts, then unlock rendering.
+      base44.auth.updateMe({ active_org: initial })
+        .catch(() => {})
+        .then(() => {
+          queryClientInstance.clear();
+          setActiveOrg(initial);
+          setOrgReady(true);
+        });
+    }
+  }, [user, JSON.stringify(allowedOrgs)]);
+
+  // Self-heal: the server-side active_org lives on the shared user record, so a
+  // second tab / device / the published app can flip it underneath this session
+  // and RLS silently returns the other org's data. On every navigation and on
+  // window focus, re-assert this session's org and refetch if it drifted.
+  useEffect(() => {
+    if (!activeOrg || !orgReady) return;
+    let cancelled = false;
+    const resync = () => {
+      base44.auth.me().then(async (me) => {
+        if (cancelled || !me || me.active_org === activeOrg) return;
+        await base44.auth.updateMe({ active_org: activeOrg }).catch(() => {});
+        if (!cancelled) queryClientInstance.invalidateQueries();
+      }).catch(() => {});
+    };
+    resync();
+    window.addEventListener('focus', resync);
+    return () => { cancelled = true; window.removeEventListener('focus', resync); };
+  }, [location.pathname, activeOrg, orgReady]);
+
+  const switchOrg = async (org) => {
+    // Guard: only allow switching to a server-granted org — client-side bypass is impossible.
+    if (!allowedOrgs.includes(org)) return;
+    // Persist the server-side org context FIRST — RLS reads user.active_org,
+    // so any query fired before this resolves would return the old org's data.
+    try {
+      await base44.auth.updateMe({ active_org: org });
+    } catch {
+      // ignore — cache flush below still forces a refetch
+    }
+    // Hard-flush the entire React Query cache BEFORE flipping the org state.
+    // Order matters: clear() removes queries without notifying mounted
+    // observers, so it must never run after the new-org queries have started
+    // (that leaves the dashboard stuck in a permanent loading state).
+    // Clearing first, then changing activeOrg, makes every org-keyed query
+    // mount fresh and fetch under the correct server context.
+    queryClientInstance.clear();
+    setActiveOrg(org);
+    sessionStorage.setItem('activeOrg', org);
+    // Smart landing: equivalent page in the new org if one exists,
+    // dashboard if the page has no counterpart, stay put on shared pages.
+    const target = resolveOrgSwitchPath(location.pathname, org);
+    if (target) navigate(target, { replace: true });
+  };
+
+  // Portal branding is Analog regardless of the owning artist's tenancy; keep the security context unchanged.
+  const theme = (location.pathname.startsWith('/portal') || activeOrg === 'analog')
+    ? { bg: 'bg-org-accent', text: 'text-org-accent-foreground', hex: 'hsl(var(--studio-yellow))' }
+    : { bg: 'bg-indigo-600', text: 'text-white', hex: '#4F46E5' };
+
+  return (
+    <OrgContext.Provider value={{ activeOrg, allowedOrgs, switchOrg, theme }}>
+      {user && !orgReady ? (
+        <div className="fixed inset-0 flex items-center justify-center">
+          <div className="w-8 h-8 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin" />
+        </div>
+      ) : children}
+    </OrgContext.Provider>
+  );
+};
+
+export const useOrg = () => {
+  const ctx = useContext(OrgContext);
+  if (!ctx) throw new Error('useOrg must be used within OrgProvider');
+  return ctx;
+};

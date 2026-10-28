@@ -1,0 +1,52 @@
+import React, { useState } from 'react';
+import { X } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+
+export default function EmailChipInput({ label, values = [], onChange, placeholder }) {
+  const [draft, setDraft] = useState('');
+
+  const commit = () => {
+    const email = draft.trim().replace(/,$/, '');
+    if (email && email.includes('@') && !values.includes(email)) onChange([...values, email]);
+    setDraft('');
+  };
+
+  return (
+    <div className="space-y-1.5">
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label}</p>
+      <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-slate-200 p-2">
+        {values.map((email) => (
+          <span
+            key={email}
+            className="flex items-center gap-1 rounded-full bg-slate-100 py-1 pl-2.5 pr-1 text-xs font-medium text-slate-700"
+          >
+            {email}
+            <button
+              type="button"
+              onClick={() => onChange(values.filter((v) => v !== email))}
+              className="flex h-5 w-5 items-center justify-center rounded-full text-slate-400 hover:bg-slate-200 hover:text-slate-700"
+              aria-label={`Remove ${email}`}
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </span>
+        ))}
+        <Input
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ',' || e.key === 'Tab') {
+              if (draft.trim()) { e.preventDefault(); commit(); }
+            }
+            if (e.key === 'Backspace' && !draft && values.length) {
+              onChange(values.slice(0, -1));
+            }
+          }}
+          onBlur={commit}
+          placeholder={values.length ? '' : placeholder}
+          className="h-8 min-w-[160px] flex-1 border-0 px-1 text-sm shadow-none focus-visible:ring-0"
+        />
+      </div>
+    </div>
+  );
+}

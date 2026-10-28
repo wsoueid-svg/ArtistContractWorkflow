@@ -1,0 +1,347 @@
+import React, { useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { X, Plus, Trash2 } from 'lucide-react';
+import FileUploader from '../shared/FileUploader';
+import ArtistPreferencesFields from './ArtistPreferencesFields';
+
+export default function ArtistForm({ artist, onSubmit, onCancel }) {
+  const [formData, setFormData] = useState(
+    artist || {
+      name: '',
+      stage_name: '',
+      bio: '',
+      photo_url: '',
+      press_kit_url: '',
+      genres: [],
+      social_media: {},
+      contact_info: {},
+      preferences: {},
+      frequent_flyer: [],
+      status: 'active',
+    }
+  );
+
+  const [genreInput, setGenreInput] = useState('');
+  const [flyerInput, setFlyerInput] = useState({ airline: '', number: '', tier: '' });
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    onSubmit(formData);
+  };
+
+  const addGenre = () => {
+    if (genreInput.trim()) {
+      setFormData({
+        ...formData,
+        genres: [...(formData.genres || []), genreInput.trim()],
+      });
+      setGenreInput('');
+    }
+  };
+
+  const removeGenre = (index) => {
+    setFormData({
+      ...formData,
+      genres: formData.genres.filter((_, i) => i !== index),
+    });
+  };
+
+  const addFrequentFlyer = () => {
+    if (flyerInput.airline) {
+      setFormData({
+        ...formData,
+        frequent_flyer: [...(formData.frequent_flyer || []), flyerInput],
+      });
+      setFlyerInput({ airline: '', number: '', tier: '' });
+    }
+  };
+
+  const removeFrequentFlyer = (index) => {
+    setFormData({
+      ...formData,
+      frequent_flyer: formData.frequent_flyer.filter((_, i) => i !== index),
+    });
+  };
+
+  return (
+    <div className="p-6">
+      <div className="flex justify-between items-center mb-6 border-b-2 border-yellow-400 pb-4">
+        <h2 className="text-2xl font-bold text-black">
+          {artist ? 'Edit Artist' : 'Add New Artist'}
+        </h2>
+        <button
+          onClick={onCancel}
+          className="text-gray-500 hover:text-black transition"
+        >
+          <X className="w-6 h-6" />
+        </button>
+      </div>
+
+      <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Basic Info */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <Label htmlFor="name">Full Name *</Label>
+            <Input
+              id="name"
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              required
+              className="mt-1"
+            />
+          </div>
+          <div>
+            <Label htmlFor="stage_name">Stage Name</Label>
+            <Input
+              id="stage_name"
+              value={formData.stage_name || ''}
+              onChange={(e) => setFormData({ ...formData, stage_name: e.target.value })}
+              className="mt-1"
+            />
+          </div>
+        </div>
+
+        <div>
+          <Label htmlFor="bio">Biography</Label>
+          <Textarea
+            id="bio"
+            value={formData.bio || ''}
+            onChange={(e) => setFormData({ ...formData, bio: e.target.value })}
+            rows={4}
+            className="mt-1"
+          />
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <FileUploader
+              label="Profile Photo"
+              value={formData.photo_url || ''}
+              onChange={(url) => setFormData({ ...formData, photo_url: url })}
+              accept="image/*"
+            />
+          </div>
+          <div>
+            <FileUploader
+              label="Press Kit"
+              value={formData.press_kit_url || ''}
+              onChange={(url) => setFormData({ ...formData, press_kit_url: url })}
+              accept=".pdf,.doc,.docx,.zip"
+            />
+          </div>
+        </div>
+
+        {/* Genres */}
+        <div>
+          <Label>Genres</Label>
+          <div className="flex gap-2 mt-1">
+            <Input
+              value={genreInput}
+              onChange={(e) => setGenreInput(e.target.value)}
+              placeholder="Add genre"
+              onKeyPress={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  addGenre();
+                }
+              }}
+            />
+            <Button type="button" onClick={addGenre} size="icon">
+              <Plus className="w-4 h-4" />
+            </Button>
+          </div>
+          <div className="flex flex-wrap gap-2 mt-2">
+            {formData.genres?.map((genre, idx) => (
+              <span
+                key={idx}
+                className="bg-yellow-400 text-black px-3 py-1 rounded-full text-sm font-medium flex items-center gap-2"
+              >
+                {genre}
+                <button type="button" onClick={() => removeGenre(idx)}>
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            ))}
+          </div>
+        </div>
+
+        {/* Social Media */}
+        <div>
+          <Label className="text-lg font-semibold">Social Media</Label>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+            {['instagram', 'facebook', 'twitter', 'tiktok', 'spotify', 'youtube'].map(
+              (platform) => (
+                <div key={platform}>
+                  <Label htmlFor={platform} className="capitalize">
+                    {platform}
+                  </Label>
+                  <Input
+                    id={platform}
+                    value={formData.social_media?.[platform] || ''}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        social_media: {
+                          ...formData.social_media,
+                          [platform]: e.target.value,
+                        },
+                      })
+                    }
+                    placeholder={`@${platform}`}
+                    className="mt-1"
+                  />
+                </div>
+              )
+            )}
+          </div>
+        </div>
+
+        {/* Contact Info */}
+        <div>
+          <Label className="text-lg font-semibold">Contact Information</Label>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+            <div>
+              <Label htmlFor="email">Email</Label>
+              <Input
+                id="email"
+                type="email"
+                value={formData.contact_info?.email || ''}
+                onChange={(e) =>
+                  setFormData({
+                    ...formData,
+                    contact_info: { ...formData.contact_info, email: e.target.value },
+                  })
+                }
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <Label htmlFor="phone">Phone</Label>
+              <Input
+                id="phone"
+                value={formData.contact_info?.phone || ''}
+                onChange={(e) =>
+                  setFormData({
+                    ...formData,
+                    contact_info: { ...formData.contact_info, phone: e.target.value },
+                  })
+                }
+                className="mt-1"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <Label className="text-lg font-semibold">Artist rider & preferences</Label>
+          <p className="mt-1 text-sm text-gray-500">Master defaults used to prepare new shows.</p>
+          <div className="mt-3">
+            <ArtistPreferencesFields
+              value={formData.preferences || {}}
+              onChange={(preferences) => setFormData({ ...formData, preferences })}
+            />
+          </div>
+        </div>
+
+        {/* Frequent Flyer */}
+        <div>
+          <Label className="text-lg font-semibold">Frequent Flyer Programs</Label>
+          <div className="grid grid-cols-3 gap-2 mt-2">
+            <Input
+              placeholder="Airline"
+              value={flyerInput.airline}
+              onChange={(e) => setFlyerInput({ ...flyerInput, airline: e.target.value })}
+            />
+            <Input
+              placeholder="Number"
+              value={flyerInput.number}
+              onChange={(e) => setFlyerInput({ ...flyerInput, number: e.target.value })}
+            />
+            <div className="flex gap-2">
+              <Input
+                placeholder="Tier"
+                value={flyerInput.tier}
+                onChange={(e) => setFlyerInput({ ...flyerInput, tier: e.target.value })}
+              />
+              <Button type="button" onClick={addFrequentFlyer} size="icon">
+                <Plus className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+          <div className="space-y-2 mt-2">
+            {formData.frequent_flyer?.map((flyer, idx) => (
+              <div
+                key={idx}
+                className="flex items-center justify-between bg-gray-50 p-3 rounded border"
+              >
+                <span className="text-sm">
+                  <strong>{flyer.airline}</strong> - {flyer.number} ({flyer.tier})
+                </span>
+                <button type="button" onClick={() => removeFrequentFlyer(idx)}>
+                  <Trash2 className="w-4 h-4 text-red-500" />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Dropbox */}
+        <div>
+          <Label htmlFor="dropbox_folder_url" className="flex items-center gap-2">
+            <svg viewBox="0 0 24 24" fill="#0061FF" className="w-4 h-4"><path d="M6 2L0 6l6 4 6-4L6 2zM18 2l-6 4 6 4 6-4-6-4zM0 14l6 4 6-4-6-4-6 4zM18 10l-6 4 6 4 6-4-6-4zM6 19.5L12 23l6-3.5-6-4-6 4z"/></svg>
+            Dropbox Folder URL
+          </Label>
+          <Input
+            id="dropbox_folder_url"
+            value={formData.dropbox_folder_url || ''}
+            onChange={(e) => setFormData({ ...formData, dropbox_folder_url: e.target.value })}
+            placeholder="https://www.dropbox.com/sh/..."
+            className="mt-1"
+          />
+        </div>
+
+        {/* Status */}
+        <div>
+          <Label htmlFor="status">Status</Label>
+          <Select
+            value={formData.status}
+            onValueChange={(value) => setFormData({ ...formData, status: value })}
+          >
+            <SelectTrigger className="mt-1">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="active">Active</SelectItem>
+              <SelectItem value="inactive">Inactive</SelectItem>
+              <SelectItem value="on_tour">On Tour</SelectItem>
+              <SelectItem value="in_studio">In Studio</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Actions */}
+        <div className="flex justify-end gap-3 pt-4 border-t">
+          <Button type="button" variant="outline" onClick={onCancel}>
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            className="bg-yellow-400 text-black hover:bg-yellow-500 font-semibold"
+          >
+            {artist ? 'Update Artist' : 'Create Artist'}
+          </Button>
+        </div>
+      </form>
+    </div>
+  );
+}

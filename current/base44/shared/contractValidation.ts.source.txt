@@ -1,0 +1,36 @@
+import { AccessError } from './assertShowAccess.ts';
+export function validDate(value,label) {
+  const text=String(value||'').split('T')[0];
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(text)||!Number.isFinite(Date.parse(text+'T00:00:00Z'))||new Date(text+'T00:00:00Z').toISOString().slice(0,10)!==text) throw new AccessError(`${label} is missing or invalid. Correct it before generating.`,422);
+  return text;
+}
+function amount(value,label,required=false,max=Infinity) {
+  if(value==null&&!required)return;
+  if(value==null||value===''||typeof value==='boolean'||!Number.isFinite(Number(value))||Number(value)<0||Number(value)>max) throw new AccessError(`${label} is missing or invalid. Enter a non-negative amount before generating.`,422);
+}
+export function validateShowInputs(show,template) {
+  validDate(show.date,'Show date');
+  amount(show.guarantee_fee,'Show guarantee',true);
+  for(const k of ['gross_fee','booking_fee_amount_fixed','booking_fee_rate','wht_amount_fixed','withholding_tax_rate','deal_vat_rate'])amount(show[k],k);
+  amount(template.default_terms?.deposit_percentage??show.deposit_percentage,'Deposit percentage',true,100);
+  amount(template.default_terms?.balance_due_offset_days??show.balance_due_offset_days??14,'Balance due offset',true);
+  for(const cost of show.cost_items||[])amount(cost.amount,'Cost amount',true);
+}
+export function validateGenerationInputs(f,breakdown,show,template) {
+  validDate(f.contract_date,'Contract date');validDate(f.date_of_show,'Show date');
+  if(show)validateShowInputs(show,template);
+  if(breakdown) {
+    for(const key of ['guaranteeCents','bookingFeeCents','subtotalCents','totalPayableCents','vatAmountCents','whtAmountCents'])amount(breakdown[key],key,true);
+    for(const part of breakdown.parts){validDate(part.dueDate,`${part.type} due date`);for(const k of ['feeCents','vatAmountCents','whtCents','cashCents'])amount(part[k],`${part.type} ${k}`,true);}
+  } else {
+    for(const k of ['booking_fee','advance_amount','balance_amount'])amount(f[k],k,true);
+    for(const k of ['advance_pct','balance_pct'])amount(f[k],k,true,100);
+    validDate(f.advance_due,'Deposit due date');validDate(f.balance_due,'Balance due date');if(Number(f.booking_fee)>0)validDate(f.booking_fee_due,'Booking fee due date');
+  }
+}
+// Ignore record metadata and clocks; compare authoritative business inputs and date-only schedules.
+export function sourceSignature(source) {
+  const keys=['artist_id','date','event_name','venue','country','currency','guarantee_fee','gross_fee','booking_fee_rate','booking_fee_amount_fixed','booking_fee_type','deposit_percentage','balance_due_offset_days','deal_subject_to_vat','deal_vat_rate','deal_subject_to_wht','withholding_tax_rate','deal_wht_base','wht_amount_fixed','cost_items','contract_contact_id','client_contact_id','contact_id','contractual_set_window'];
+  const clean=value=>Array.isArray(value)?value.map(clean):value&&typeof value==='object'?Object.fromEntries(Object.keys(value).sort().filter(k=>!['id','created_date','updated_date','created_by_id','created_by','captured_at'].includes(k)).map(k=>[k,clean(value[k])])):value;
+  return JSON.stringify(clean({show:Object.fromEntries(keys.map(k=>[k,source.show[k]??null])),legal:source.legalEntity,template:source.template,fields:source.fields,breakdown:{...source.breakdown,parts:source.breakdown.parts.map(p=>({...p,dueDate:String(p.dueDate).slice(0,10)}))}}));
+}

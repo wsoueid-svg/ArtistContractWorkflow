@@ -1,0 +1,35 @@
+import { useEffect, useState } from 'react';
+import { base44 } from '@/api/base44Client';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+
+export default function ContractTemplateSelect({ value, onSelect, disabled }) {
+  const [templates, setTemplates] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let active = true;
+    base44.functions.invoke('getContractTemplateOptions', {})
+      .then(response => { if (active) setTemplates(response.data.templates || []); })
+      .catch(caught => { if (active) setError(caught?.response?.data?.error || caught.message || 'Could not load templates.'); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, []);
+  const readyTemplates = templates.filter((template) => template.template_key);
+
+  return (
+    <div className="space-y-1.5">
+      <Label htmlFor="contract-template-choice" className="text-xs font-semibold text-gray-700">Contract Template *</Label>
+      <Select value={value || ''} onValueChange={(id) => onSelect(readyTemplates.find((item) => item.id === id))} disabled={disabled || loading || readyTemplates.length === 0}>
+        <SelectTrigger id="contract-template-choice" aria-label="Contract template"><SelectValue placeholder={loading ? 'Loading templates…' : 'Select the billing entity template'} /></SelectTrigger>
+        <SelectContent>
+          {readyTemplates.map((template) => <SelectItem key={template.id} value={template.id}>{template.name}</SelectItem>)}
+        </SelectContent>
+      </Select>
+      {error ? <p className="text-xs text-red-700">{error}</p>
+        : !loading && readyTemplates.length === 0 ? <p className="text-xs text-amber-700">No contract template is ready. Finance must assign each template its document variant.</p>
+          : <p className="text-xs text-slate-600">The template fixes the contracting and invoicing entity.</p>}
+    </div>
+  );
+}

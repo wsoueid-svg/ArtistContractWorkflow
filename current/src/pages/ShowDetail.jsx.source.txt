@@ -1,0 +1,367 @@
+import React, { useState, useEffect } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { AlertTriangle, FileText } from 'lucide-react';
+
+import { base44 } from '@/api/base44Client';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Badge } from '@/components/ui/badge';
+import { ArrowLeft, Calendar, MapPin, DollarSign, Lock } from 'lucide-react';
+import { getCurrencySymbol } from '../components/shared/CurrencyUtils';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import ShowContractWorkspace from '@/components/analog/show-detail/AnalogContractTab';
+import { createPageUrl } from '../utils';
+import { toast } from 'sonner';
+import MarketingAssetsPanel from '../components/marketing/MarketingAssetsPanel';
+import ShowActivityTimeline from '../components/marketing/ShowActivityTimeline';
+import MarketingPackChecklist from '../components/marketing/MarketingPackChecklist';
+import FormSubmissionsPanel from '../components/marketing/FormSubmissionsPanel';
+import { ensureShowFolderStructure } from '../components/documents/FolderAutomation';
+import LogisticsPanel from '../components/shows/LogisticsPanel';
+import FeesPanel from '../components/shows/FeesPanel';
+import ShowDayTimeline from '../components/shows/ShowDayTimeline';
+
+import ShowFinanceTab from '../components/shows/ShowFinanceTab';
+import OrgAttributionBadge, { LastModifiedAttribution } from '../components/shows/OrgAttributionBadge';
+import AnalogDeleteModal from '../components/shows/AnalogDeleteModal';
+
+import DealCardModal from '../components/logistics/DealCardModal';
+import VenueLink from '../components/shared/VenueLink';
+import LogisticsTimeline from '../components/logistics/LogisticsTimeline';
+import ShowContactsSection from '../components/logistics/ShowContactsSection';
+import ShowDocumentsSection from '../components/logistics/ShowDocumentsSection';
+
+
+export default function ShowDetail() {
+  const urlParams = new URLSearchParams(window.location.search);
+  const showId = urlParams.get('id');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const selectedTab = ['overview','contract','finance','marketing','logistics','activity'].includes(searchParams.get('tab')) ? searchParams.get('tab') : 'overview';
+  const setTab = tab => setSearchParams(current => { const next = new URLSearchParams(current); next.set('tab', tab); return next; }, { replace: true });
+  const [folderInitialized, setFolderInitialized] = useState(false);
+  
+  const [analogDeleteModalOpen, setAnalogDeleteModalOpen] = useState(false);
+  const [dealCardOpen, setDealCardOpen] = useState(false);
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
+
+  // Smart back: return to wherever the user came from (workspace, calendar, shows list);
+  // fall back to the Shows page on direct-link entry.
+  const goBack = () => {
+    if (window.history.length > 1) navigate(-1);
+    else navigate(createPageUrl('Shows'));
+  };
+
+  // Mutation to hide an Analog-A show from Elevate's view (ShowOrgVisibility unlink)
+  const hideShowMutation = useMutation({
+    mutationFn: async () => {
+      const user = await base44.auth.me();
+      return base44.entities.ShowOrgVisibility.create({
+        show_id: showId,
+        org_id: 'elevate',
+        is_hidden: true,
+        hidden_by_user_id: user?.id,
+        hidden_at: new Date().toISOString(),
+      });
+    },
+    onSuccess: () => {
+      setAnalogDeleteModalOpen(false);
+      toast.success("Show hidden from your view. Analog-A's booking record is preserved.", {
+        duration: 5000,
+      });
+      // Navigate back
+      window.history.back();
+    },
+  });
+
+
+  const { data: show, isLoading } = useQuery({
+    queryKey: ['show', showId],
+    queryFn: () => base44.entities.Show.get(showId),
+    enabled: !!showId,
+  });
+
+  const { data: artist } = useQuery({
+    queryKey: ['artist', show?.artist_id],
+    queryFn: () => base44.entities.Artist.get(show.artist_id),
+    enabled: !!show?.artist_id,
+  });
+
+  
+
+  // Fetch residency this show belongs to (if any)
+  const { data: residencies = [] } = useQuery({
+    queryKey: ['residency_for_show', showId],
+    queryFn: () => base44.entities.Residency.list(),
+    enabled: !!showId,
+    select: (data) => data.filter(r => r.show_ids?.includes(showId)),
+  });
+  const residency = residencies[0] || null;
+
+  // Auto-create folder structure when show and artist are loaded
+  useEffect(() => {
+    if (show && artist && !folderInitialized) {
+      ensureShowFolderStructure(show, artist).then(() => {
+        setFolderInitialized(true);
+      }).catch((err) => {
+        console.error('Failed to create folder structure:', err);
+      });
+    }
+  }, [show, artist, folderInitialized]);
+
+  if (isLoading) {
+    return <div className="text-center py-12">Loading show details...</div>;
+  }
+
+  if (!show) {
+    return <div className="text-center py-12">Show not found</div>;
+  }
+
+  const statusColors = {
+    confirmed: 'bg-green-100 text-green-700',
+    pending: 'bg-yellow-100 text-yellow-700',
+    cancelled: 'bg-red-100 text-red-700',
+    completed: 'bg-gray-100 text-gray-700',
+  };
+
+  const isAnalogShow = show?.data_source === 'analog_push';
+
+  return (
+    <div className="space-y-6">
+      {/* Residency Banner — absolute top, yellow pill */}
+      {residency && (
+        <Link to="/residencies" className="flex items-center gap-2 w-fit">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-yellow-400 text-black text-xs font-semibold hover:bg-yellow-300 transition-colors">
+            🎪 Part of residency: {residency.name}
+          </span>
+        </Link>
+      )}
+
+      {/* Cancellation Banner */}
+      {show.status === 'cancelled' && (
+        <div className="w-full bg-red-600 text-white rounded-xl px-5 py-3 flex items-center gap-3">
+          <AlertTriangle className="w-5 h-5 flex-shrink-0" />
+          <div className="flex-1 flex flex-wrap items-center gap-2">
+            <span className="font-bold tracking-widest text-sm uppercase">Cancelled</span>
+            {show.last_modified_by_org_id && (
+              <>
+                <span className="text-red-200 text-xs">by</span>
+                <OrgAttributionBadge org={show.last_modified_by_org_id} />
+              </>
+            )}
+            {show.last_modified_at && (
+              <span className="text-red-200 text-xs">
+                · {new Date(show.last_modified_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Analog Delete Modal */}
+      <AnalogDeleteModal
+        open={analogDeleteModalOpen}
+        onClose={() => setAnalogDeleteModalOpen(false)}
+        onHide={() => hideShowMutation.mutate()}
+        isLoading={hideShowMutation.isPending}
+      />
+
+      {/* Header */}
+      <div className="flex items-center justify-between gap-4">
+        <Button variant="ghost" size="sm" onClick={goBack}>
+          <ArrowLeft className="w-4 h-4 mr-2" />
+          Back
+        </Button>
+        <div className="flex items-center gap-2">
+          {show?.is_locked && (
+            <span className="text-xs px-2.5 py-1 rounded-full bg-gray-100 text-gray-500 font-medium">
+              Read-only archive
+            </span>
+          )}
+          {isAnalogShow && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-xs border-gray-300 text-gray-500 hover:text-red-600 hover:border-red-300"
+              onClick={() => setAnalogDeleteModalOpen(true)}
+            >
+              Hide from my view
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* Show Overview Card */}
+      <Card className="border-2 border-yellow-400">
+        <CardContent className="p-6">
+          <div className="flex justify-between items-start mb-4">
+            <div>
+              <div className="flex items-center gap-2 mb-1 flex-wrap">
+                <h1 className="text-3xl font-bold text-black">{show.event_name}</h1>
+                {show.is_locked && <Lock className="w-4 h-4 text-gray-400 flex-shrink-0" />}
+                {show.data_source && <OrgAttributionBadge org={show.data_source === 'analog_push' ? 'analog-a' : 'elevate'} />}
+              </div>
+              <p className="text-xl text-gray-600">{artist?.name}</p>
+            </div>
+            <Badge className={statusColors[show.status]}>
+              {show.status}
+            </Badge>
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-4 mt-6">
+            <div className="flex items-center gap-3">
+              <Calendar className="w-5 h-5 text-gray-500" />
+              <div>
+                <p className="text-sm text-gray-500">Date</p>
+                <p className="font-semibold">{show.date && !isNaN(new Date(show.date)) ? new Date(show.date).toLocaleDateString() : 'TBD'}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <MapPin className="w-5 h-5 text-gray-500" />
+              <div>
+                <p className="text-sm text-gray-500">Location</p>
+                <VenueLink venue={show.venue} city={show.city} country={show.country} className="font-semibold text-base" />
+              </div>
+            </div>
+            {show.guarantee_fee && (
+              <div className="flex items-center gap-3">
+                <DollarSign className="w-5 h-5 text-gray-500" />
+                <div>
+                  <p className="text-sm text-gray-500">Guarantee</p>
+                  <p className="font-semibold">{getCurrencySymbol(show.currency)}{show.guarantee_fee.toLocaleString()} <span className="text-xs text-gray-400 font-normal">{show.currency || 'EUR'}</span></p>
+                </div>
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Tabs */}
+      <Tabs value={selectedTab} onValueChange={setTab} className="w-full">
+        <TabsList>
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="contract">Contract</TabsTrigger>
+          <TabsTrigger value="finance">Finance</TabsTrigger>
+          <TabsTrigger value="marketing">Marketing Assets</TabsTrigger>
+          <TabsTrigger value="logistics" data-tour="show-logistics-tab">Logistics</TabsTrigger>
+          <TabsTrigger value="activity">Activity</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="overview" className="space-y-4">
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex items-start justify-between gap-4 mb-4">
+                <h3 className="font-bold text-lg">Show Details</h3>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-11 gap-1.5 text-xs"
+                  onClick={() => setDealCardOpen(true)}
+                >
+                  <FileText className="w-3.5 h-3.5" /> Generate Deal Card
+                </Button>
+              </div>
+              <div className="grid md:grid-cols-2 gap-4">
+                <div>
+                  <p className="text-sm text-gray-500">Venue</p>
+                  <p className="font-medium">{show.venue || 'TBD'}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">City</p>
+                  <p className="font-medium">{show.city || 'TBD'}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">Country</p>
+                  <p className="font-medium">{show.country || 'TBD'}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">Time</p>
+                  <p className="font-medium">{show.time || 'TBD'}</p>
+                </div>
+              </div>
+              {show.notes && (
+                <div className="mt-4 pt-4 border-t">
+                  <p className="text-sm text-gray-500 mb-2">Notes</p>
+                  <p className="text-sm">{show.notes}</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {show.deal_card_url && (
+            <div className="p-3 bg-green-50 border border-green-200 rounded-lg flex items-center gap-3">
+              <span className="text-green-700 text-sm font-medium">Last generated deal card:</span>
+              <a href={show.deal_card_url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline">
+                📄 Download PDF
+              </a>
+            </div>
+          )}
+
+          <FeesPanel show={show} />
+
+          <DealCardModal
+            show={show}
+            artist={artist}
+            open={dealCardOpen}
+            onClose={() => setDealCardOpen(false)}
+            onGenerated={() => queryClient.invalidateQueries({ queryKey: ['show', show.id] })}
+          />
+        </TabsContent>
+
+        <TabsContent value="contract" className="space-y-4">
+          <ShowContractWorkspace show={show} artist={artist} />
+        </TabsContent>
+
+        <TabsContent value="finance" className="space-y-4">
+          <ShowFinanceTab show={show} />
+        </TabsContent>
+
+        <TabsContent value="marketing" className="space-y-4">
+          {artist && (
+            <>
+              <FormSubmissionsPanel show={show} artist={artist} />
+              <MarketingPackChecklist show={show} />
+              <MarketingAssetsPanel show={show} artist={artist} />
+            </>
+          )}
+        </TabsContent>
+
+        <TabsContent value="logistics" className="space-y-4">
+          {/* Day-of Timeline */}
+          <div className="bg-white border border-gray-200 rounded-xl p-5">
+            <ShowDayTimeline show={show} />
+          </div>
+
+          {/* NEW: Travel & Logistics Timeline */}
+          <Card>
+            <CardContent className="p-5">
+              <LogisticsTimeline show={show} />
+            </CardContent>
+          </Card>
+
+          {/* NEW: Points of Contact */}
+          <Card>
+            <CardContent className="p-5">
+              <ShowContactsSection show={show} />
+            </CardContent>
+          </Card>
+
+          {/* NEW: Show Documents with artist portal visibility control */}
+          <Card>
+            <CardContent className="p-5">
+              <ShowDocumentsSection show={show} />
+            </CardContent>
+          </Card>
+
+          {/* Legacy: aBoss-imported flight/hotel/transport/visa */}
+          <LogisticsPanel show={show} />
+        </TabsContent>
+
+        <TabsContent value="activity">
+          <ShowActivityTimeline showId={show.id} />
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}

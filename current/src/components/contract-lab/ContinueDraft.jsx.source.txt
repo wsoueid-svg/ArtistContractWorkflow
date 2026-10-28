@@ -1,0 +1,15 @@
+import React, { useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { base44 } from '@/api/base44Client';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import ContractFillForm from '@/components/contracts/ContractFillForm';
+export default function ContinueDraft({show}) {
+  const [open,setOpen]=useState(false),[documentMode,setDocumentMode]=useState(true);
+  const queryClient=useQueryClient();
+  const {data,error,isLoading}=useQuery({queryKey:['contract-draft',show.id],queryFn:async()=> (await base44.functions.invoke('getContractDraft',{show_id:show.id})).data,enabled:!!show.id,retry:false,staleTime:0,refetchOnMount:'always'});
+  if(isLoading)return <p className="mt-4 text-sm text-muted-foreground">Loading contract draft…</p>;
+  if(error)return <p className="mt-4 text-sm text-muted-foreground">{error.response?.data?.error||'Draft access is unavailable.'}</p>;
+  const draft=data?.draft; if(!draft)return null;
+  return <div className="mt-4 border-t border-border pt-4"><Button variant="outline" onClick={()=>setOpen(true)}>Continue editing draft</Button><p className="mt-2 text-sm text-muted-foreground">Revision {draft.revision_no} • Last saved {new Date(draft.approved_at).toLocaleString()} • {draft.approved_by_name} • approved</p><Dialog open={open} onOpenChange={setOpen}><DialogContent className={documentMode?'contract-editor-dialog flex h-[100dvh] w-screen max-w-none flex-col gap-0 overflow-hidden rounded-none p-0 sm:h-[92dvh] sm:w-[94vw] sm:max-w-6xl sm:rounded-lg':'max-w-2xl overflow-hidden p-0'}><DialogHeader className="shrink-0 px-5 py-4"><DialogTitle>Contract document draft</DialogTitle></DialogHeader><ContractFillForm show={show} initialDraftId={draft.id} onDocumentMode={setDocumentMode} onClose={()=>setOpen(false)} onGenerated={()=>{setOpen(false);queryClient.invalidateQueries({queryKey:['show',show.id]});queryClient.invalidateQueries({queryKey:['show-contracts',show.id]});queryClient.invalidateQueries({queryKey:['contract-draft',show.id]});}}/></DialogContent></Dialog></div>;
+}

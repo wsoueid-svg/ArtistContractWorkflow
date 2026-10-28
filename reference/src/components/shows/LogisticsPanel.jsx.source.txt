@@ -1,0 +1,392 @@
+import React, { useState } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { base44 } from '@/api/base44Client';
+import { Card, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Plane, Hotel, Car, Edit2, Save, X, ExternalLink, Calendar, Clock, Download, ShieldCheck } from 'lucide-react';
+import { LastModifiedAttribution } from './OrgAttributionBadge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { toast } from 'sonner';
+import { auditStamp } from '@/lib/showEdit';
+import { useAuth } from '@/lib/AuthContext';
+import { useOrg } from '@/lib/OrgContext';
+
+// Legacy-compat panel — still handles the show.logistics fields from aBoss imports.
+// New travel events are handled by LogisticsTimeline + ShowContactsSection + ShowDocumentsSection.
+export default function LogisticsPanel({ show }) {
+  const [editingFlight, setEditingFlight] = useState(false);
+  const [editingHotel, setEditingHotel] = useState(false);
+  const [fetchingFlight, setFetchingFlight] = useState(false);
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const { activeOrg } = useOrg();
+
+  const [editingVisa, setEditingVisa] = useState(false);
+  const [editingTransport, setEditingTransport] = useState(false);
+
+  const [flightLink, setFlightLink] = useState(show.logistics?.flight_link || '');
+  const [flightData, setFlightData] = useState(show.logistics?.flight_data || {});
+
+  const [hotelLink, setHotelLink] = useState(show.logistics?.hotel_link || '');
+  const [hotelData, setHotelData] = useState(show.logistics?.hotel_data || {});
+
+  const [visaRequired, setVisaRequired] = useState(show.visa_required || false);
+  const [visaStatus, setVisaStatus] = useState(show.visa_status || 'not_needed');
+  const [groundTransport, setGroundTransport] = useState(show.logistics?.ground_transport || '');
+  const [groundTransportNotes, setGroundTransportNotes] = useState(show.logistics?.ground_transport_notes || '');
+
+  const updateMutation = useMutation({
+    mutationFn: (data) => base44.entities.Show.update(show.id, { ...data, ...auditStamp(user, activeOrg) }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['show', show.id] });
+      toast.success('Logistics updated successfully');
+      setEditingFlight(false);
+      setEditingHotel(false);
+    },
+  });
+
+  const fetchFlightDataFn = async () => {
+    if (!flightData.flight_number) {
+      toast.error('Please enter a flight number first');
+      return;
+    }
+    setFetchingFlight(true);
+    try {
+      const response = await base44.functions.invoke('fetchFlightData', {
+        flight_number: flightData.flight_number,
+        date: flightData.date || show.date,
+      });
+      if (response.data.success) {
+        setFlightData(response.data.flightData);
+        toast.success('Flight data fetched successfully!');
+      } else {
+        toast.error(response.data.error || 'Failed to fetch flight data');
+      }
+    } catch (error) {
+      toast.error(error.message || 'Failed to fetch flight data');
+    } finally {
+      setFetchingFlight(false);
+    }
+  };
+
+  const saveFlight = () => {
+    updateMutation.mutate({ logistics: { ...show.logistics, flight_link: flightLink, flight_data: flightData } });
+  };
+  const saveHotel = () => {
+    updateMutation.mutate({ logistics: { ...show.logistics, hotel_link: hotelLink, hotel_data: hotelData } });
+  };
+  const saveVisa = () => {
+    updateMutation.mutate({ visa_required: visaRequired, visa_status: visaStatus });
+  };
+  const saveTransport = () => {
+    updateMutation.mutate({ logistics: { ...show.logistics, ground_transport: groundTransport, ground_transport_notes: groundTransportNotes } });
+  };
+
+  return (
+    <div className="space-y-4">
+      {(show.last_modified_by_org_id || show.last_modified_at) && (
+        <LastModifiedAttribution orgId={show.last_modified_by_org_id} timestamp={show.last_modified_at} className="px-1" />
+      )}
+
+      {/* Flight Section */}
+      <Card>
+        <CardContent className="p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Plane className="w-5 h-5 text-blue-600" />
+              <h3 className="font-bold text-lg">Flight Information</h3>
+              <span className="text-xs text-gray-400 bg-gray-100 rounded px-1.5 py-0.5">Legacy</span>
+            </div>
+            {!editingFlight ? (
+              <Button size="sm" variant="ghost" data-tour="logistics-add-flight" onClick={() => setEditingFlight(true)}><Edit2 className="w-4 h-4" /></Button>
+            ) : (
+              <div className="flex gap-2">
+                <Button size="sm" onClick={saveFlight} className="bg-yellow-400 text-black hover:bg-yellow-500"><Save className="w-4 h-4" /></Button>
+                <Button size="sm" variant="ghost" onClick={() => setEditingFlight(false)}><X className="w-4 h-4" /></Button>
+              </div>
+            )}
+          </div>
+
+          {editingFlight ? (
+            <div className="space-y-4" data-tour="logistics-flight-form">
+              <div>
+                <Label>Flight Link/Confirmation</Label>
+                <Input value={flightLink} onChange={(e) => setFlightLink(e.target.value)} placeholder="Paste booking link or confirmation number" className="mt-1" />
+              </div>
+              <div>
+                <Label>Confirmation Number</Label>
+                <Input value={flightData.confirmation_number || ''} onChange={(e) => setFlightData({ ...flightData, confirmation_number: e.target.value })} placeholder="Booking confirmation" className="mt-1" />
+              </div>
+              <div className="grid md:grid-cols-2 gap-4">
+                <div>
+                  <Label>Flight Number</Label>
+                  <div className="flex gap-2 mt-1">
+                    <Input value={flightData.flight_number || ''} onChange={(e) => setFlightData({ ...flightData, flight_number: e.target.value })} placeholder="e.g., AA123" />
+                    <Button type="button" size="sm" onClick={fetchFlightDataFn} disabled={fetchingFlight || !flightData.flight_number} className="bg-blue-600 text-white hover:bg-blue-700">
+                      {fetchingFlight ? <Clock className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                    </Button>
+                  </div>
+                </div>
+                <div>
+                  <Label>Flight Date</Label>
+                  <Input type="date" value={flightData.date || ''} onChange={(e) => setFlightData({ ...flightData, date: e.target.value })} className="mt-1" />
+                </div>
+                <div>
+                  <Label>Departure Time</Label>
+                  <Input type="time" value={flightData.departure_time || ''} onChange={(e) => setFlightData({ ...flightData, departure_time: e.target.value })} className="mt-1" />
+                </div>
+                <div>
+                  <Label>Arrival Time</Label>
+                  <Input type="time" value={flightData.arrival_time || ''} onChange={(e) => setFlightData({ ...flightData, arrival_time: e.target.value })} className="mt-1" />
+                </div>
+                <div>
+                  <Label>Departure City</Label>
+                  <Input value={flightData.departure_city || ''} onChange={(e) => setFlightData({ ...flightData, departure_city: e.target.value })} placeholder="City/Airport" className="mt-1" />
+                </div>
+                <div>
+                  <Label>Arrival City</Label>
+                  <Input value={flightData.arrival_city || ''} onChange={(e) => setFlightData({ ...flightData, arrival_city: e.target.value })} placeholder="City/Airport" className="mt-1" />
+                </div>
+                <div className="md:col-span-2">
+                  <Label>Airline</Label>
+                  <Input value={flightData.airline || ''} onChange={(e) => setFlightData({ ...flightData, airline: e.target.value })} placeholder="Airline name" className="mt-1" />
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div>
+              {show.logistics?.flight_link ? (
+                <div className="space-y-3">
+                  <a href={show.logistics.flight_link} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-blue-600 hover:underline text-sm">
+                    <ExternalLink className="w-4 h-4" /> View Booking
+                  </a>
+                  {show.logistics.flight_data && Object.keys(show.logistics.flight_data).length > 0 && (
+                    <div className="bg-blue-50 rounded-lg p-4 space-y-2">
+                      {show.logistics.flight_data.airline && (
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <Plane className="w-4 h-4 text-blue-600" />
+                          <span className="font-semibold">{show.logistics.flight_data.airline}</span>
+                          {show.logistics.flight_data.flight_number && <span className="text-sm text-gray-600">({show.logistics.flight_data.flight_number})</span>}
+                          {show.logistics.flight_data.confirmation_number && (
+                            <span className="text-xs bg-blue-100 text-blue-700 border border-blue-200 rounded px-1.5 py-0.5">Conf: {show.logistics.flight_data.confirmation_number}</span>
+                          )}
+                        </div>
+                      )}
+                      <div className="grid md:grid-cols-2 gap-3 text-sm">
+                        {show.logistics.flight_data.departure_city && show.logistics.flight_data.arrival_city && (
+                          <div className="md:col-span-2 font-medium">{show.logistics.flight_data.departure_city} → {show.logistics.flight_data.arrival_city}</div>
+                        )}
+                        {show.logistics.flight_data.date && (
+                          <div className="flex items-center gap-2"><Calendar className="w-4 h-4 text-gray-500" /><span>{new Date(show.logistics.flight_data.date).toLocaleDateString()}</span></div>
+                        )}
+                        {show.logistics.flight_data.departure_time && (
+                          <div className="flex items-center gap-2"><Clock className="w-4 h-4 text-gray-500" /><span>Depart: {show.logistics.flight_data.departure_time}</span></div>
+                        )}
+                        {show.logistics.flight_data.arrival_time && (
+                          <div className="flex items-center gap-2"><Clock className="w-4 h-4 text-gray-500" /><span>Arrive: {show.logistics.flight_data.arrival_time}</span></div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <p className="text-gray-500 text-sm">No flight information added yet</p>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Hotel Section */}
+      <Card>
+        <CardContent className="p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Hotel className="w-5 h-5 text-green-600" />
+              <h3 className="font-bold text-lg">Hotel Information</h3>
+              <span className="text-xs text-gray-400 bg-gray-100 rounded px-1.5 py-0.5">Legacy</span>
+            </div>
+            {!editingHotel ? (
+              <Button size="sm" variant="ghost" data-tour="logistics-add-hotel" onClick={() => setEditingHotel(true)}><Edit2 className="w-4 h-4" /></Button>
+            ) : (
+              <div className="flex gap-2">
+                <Button size="sm" onClick={saveHotel} className="bg-yellow-400 text-black hover:bg-yellow-500"><Save className="w-4 h-4" /></Button>
+                <Button size="sm" variant="ghost" onClick={() => setEditingHotel(false)}><X className="w-4 h-4" /></Button>
+              </div>
+            )}
+          </div>
+          {editingHotel ? (
+            <div className="space-y-4">
+              <div>
+                <Label>Hotel Booking Link</Label>
+                <Input value={hotelLink} onChange={(e) => setHotelLink(e.target.value)} placeholder="Paste booking link or confirmation" className="mt-1" />
+              </div>
+              <div>
+                <Label>Confirmation Number</Label>
+                <Input value={hotelData.confirmation_number || ''} onChange={(e) => setHotelData({ ...hotelData, confirmation_number: e.target.value })} placeholder="Booking confirmation" className="mt-1" />
+              </div>
+              <div className="grid md:grid-cols-2 gap-4">
+                <div>
+                  <Label>Hotel Name</Label>
+                  <Input value={hotelData.hotel_name || ''} onChange={(e) => setHotelData({ ...hotelData, hotel_name: e.target.value })} placeholder="Hotel name" className="mt-1" />
+                </div>
+                <div>
+                  <Label>Address</Label>
+                  <Input value={hotelData.address || ''} onChange={(e) => setHotelData({ ...hotelData, address: e.target.value })} placeholder="Hotel address" className="mt-1" />
+                </div>
+                <div>
+                  <Label>Check-in Date</Label>
+                  <Input type="date" value={hotelData.check_in_date || ''} onChange={(e) => setHotelData({ ...hotelData, check_in_date: e.target.value })} className="mt-1" />
+                </div>
+                <div>
+                  <Label>Check-out Date</Label>
+                  <Input type="date" value={hotelData.check_out_date || ''} onChange={(e) => setHotelData({ ...hotelData, check_out_date: e.target.value })} className="mt-1" />
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div>
+              {show.logistics?.hotel_link ? (
+                <div className="space-y-3">
+                  <a href={show.logistics.hotel_link} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-green-600 hover:underline text-sm">
+                    <ExternalLink className="w-4 h-4" /> View Booking
+                  </a>
+                  {show.logistics.hotel_data && Object.keys(show.logistics.hotel_data).length > 0 && (
+                    <div className="bg-green-50 rounded-lg p-4 space-y-2">
+                      {show.logistics.hotel_data.hotel_name && (
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <Hotel className="w-4 h-4 text-green-600" />
+                          <span className="font-semibold">{show.logistics.hotel_data.hotel_name}</span>
+                          {show.logistics.hotel_data.confirmation_number && (
+                            <span className="text-xs bg-green-100 text-green-700 border border-green-200 rounded px-1.5 py-0.5">Conf: {show.logistics.hotel_data.confirmation_number}</span>
+                          )}
+                        </div>
+                      )}
+                      {show.logistics.hotel_data.address && <p className="text-sm text-gray-600">{show.logistics.hotel_data.address}</p>}
+                      <div className="grid md:grid-cols-2 gap-3 text-sm mt-3">
+                        {show.logistics.hotel_data.check_in_date && (
+                          <div className="flex items-center gap-2"><Calendar className="w-4 h-4 text-gray-500" /><div><p className="text-xs text-gray-500">Check-in</p><p className="font-medium">{new Date(show.logistics.hotel_data.check_in_date).toLocaleDateString()}</p></div></div>
+                        )}
+                        {show.logistics.hotel_data.check_out_date && (
+                          <div className="flex items-center gap-2"><Calendar className="w-4 h-4 text-gray-500" /><div><p className="text-xs text-gray-500">Check-out</p><p className="font-medium">{new Date(show.logistics.hotel_data.check_out_date).toLocaleDateString()}</p></div></div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <p className="text-gray-500 text-sm">No hotel information added yet</p>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Ground Transport */}
+      <Card>
+        <CardContent className="p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Car className="w-5 h-5 text-purple-600" />
+              <h3 className="font-bold text-lg">Ground Transport</h3>
+            </div>
+            {!editingTransport ? (
+              <Button size="sm" variant="ghost" onClick={() => setEditingTransport(true)}><Edit2 className="w-4 h-4" /></Button>
+            ) : (
+              <div className="flex gap-2">
+                <Button size="sm" onClick={saveTransport} className="bg-yellow-400 text-black hover:bg-yellow-500"><Save className="w-4 h-4" /></Button>
+                <Button size="sm" variant="ghost" onClick={() => setEditingTransport(false)}><X className="w-4 h-4" /></Button>
+              </div>
+            )}
+          </div>
+          {editingTransport ? (
+            <div className="space-y-3">
+              <div>
+                <Label>Transfer Type / Provider</Label>
+                <Input value={groundTransport} onChange={e => setGroundTransport(e.target.value)} placeholder="e.g. Private car, Uber, Rental" className="mt-1" />
+              </div>
+              <div>
+                <Label>Notes</Label>
+                <Input value={groundTransportNotes} onChange={e => setGroundTransportNotes(e.target.value)} placeholder="Pick-up location, driver contact, instructions..." className="mt-1" />
+              </div>
+            </div>
+          ) : (
+            <div>
+              {show.logistics?.ground_transport ? (
+                <div className="space-y-1">
+                  <p className="font-medium text-sm">{show.logistics.ground_transport}</p>
+                  {show.logistics.ground_transport_notes && <p className="text-sm text-gray-600">{show.logistics.ground_transport_notes}</p>}
+                </div>
+              ) : (
+                <p className="text-gray-500 text-sm">No ground transport details added</p>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Visa Status */}
+      <Card>
+        <CardContent className="p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="w-5 h-5 text-indigo-600" />
+              <h3 className="font-bold text-lg">Visa Status</h3>
+            </div>
+            {!editingVisa ? (
+              <Button size="sm" variant="ghost" onClick={() => setEditingVisa(true)}><Edit2 className="w-4 h-4" /></Button>
+            ) : (
+              <div className="flex gap-2">
+                <Button size="sm" onClick={saveVisa} className="bg-yellow-400 text-black hover:bg-yellow-500"><Save className="w-4 h-4" /></Button>
+                <Button size="sm" variant="ghost" onClick={() => setEditingVisa(false)}><X className="w-4 h-4" /></Button>
+              </div>
+            )}
+          </div>
+          {editingVisa ? (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <input type="checkbox" id="visa_req_edit" checked={visaRequired} onChange={e => setVisaRequired(e.target.checked)} className="w-4 h-4" />
+                <Label htmlFor="visa_req_edit">Visa Required</Label>
+              </div>
+              {visaRequired && (
+                <div>
+                  <Label>Visa Status</Label>
+                  <Select value={visaStatus} onValueChange={setVisaStatus}>
+                    <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="pending">Pending</SelectItem>
+                      <SelectItem value="approved">Approved</SelectItem>
+                      <SelectItem value="denied">Denied</SelectItem>
+                      <SelectItem value="not_needed">Not Needed</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <span className={`text-sm font-medium ${show.visa_required ? 'text-orange-600' : 'text-gray-600'}`}>
+                  {show.visa_required ? '⚠ Visa Required' : '✓ No Visa Required'}
+                </span>
+              </div>
+              {show.visa_required && (
+                <div className="ml-1">
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium border ${
+                    show.visa_status === 'approved' ? 'bg-green-50 text-green-700 border-green-200' :
+                    show.visa_status === 'denied' ? 'bg-red-50 text-red-700 border-red-200' :
+                    'bg-yellow-50 text-yellow-700 border-yellow-200'
+                  }`}>
+                    {show.visa_status?.replace('_', ' ')}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

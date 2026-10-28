@@ -1,0 +1,61 @@
+import React, { useState } from 'react';
+import { base44 } from '@/api/base44Client';
+import { Button } from '@/components/ui/button';
+import { Loader2, ShieldCheck, CheckCircle2 } from 'lucide-react';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
+
+export default function SignContractButton({ contract, onSigned }) {
+  const [loading, setLoading] = useState(false);
+  const [signed, setSigned] = useState(contract?.status === 'SIGNED');
+  const [error, setError] = useState(null);
+
+  if (!contract || !contract.contract_file_url) return null;
+
+  if (signed || contract.status === 'SIGNED') {
+    return (
+      <div className="flex items-center gap-2 text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
+        <CheckCircle2 className="w-4 h-4" />
+        <div>
+          <p className="font-semibold">Signed</p>
+          {contract.e_signed_by_name && (
+            <p className="text-green-600">Confirmed by {contract.e_signed_by_name}</p>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  const handleSign = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await base44.functions.invoke('signContract', {
+        contract_id: contract.id,
+        action: 'signed',
+      });
+      if (response.data?.error) {
+        setError(response.data.error);
+      } else {
+        setSigned(true);
+        onSigned?.(response.data);
+      }
+    } catch (e) {
+      setError(e?.response?.data?.error || e.message || 'Could not sign the contract');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div>
+      <AlertDialog>
+        <AlertDialogTrigger asChild><Button size="sm" disabled={loading} className="min-h-[44px] bg-emerald-600 text-xs text-white hover:bg-emerald-700">{loading ? <><Loader2 className="mr-1 h-3 w-3 animate-spin" />Confirming…</> : <><ShieldCheck className="mr-1 h-3 w-3" />Mark as Signed</>}</Button></AlertDialogTrigger>
+        <AlertDialogContent>
+          <AlertDialogHeader><AlertDialogTitle>Mark this contract as signed?</AlertDialogTitle><AlertDialogDescription>This records your identity, the time, and a hash of the document. The signature confirmation cannot be undone.</AlertDialogDescription></AlertDialogHeader>
+          <AlertDialogFooter><AlertDialogCancel className="min-h-[44px]">Cancel</AlertDialogCancel><AlertDialogAction onClick={handleSign} className="min-h-[44px] bg-emerald-600 hover:bg-emerald-700">Confirm signature</AlertDialogAction></AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      {error && <p className="text-xs text-red-500 mt-1">{error}</p>}
+    </div>
+  );
+}

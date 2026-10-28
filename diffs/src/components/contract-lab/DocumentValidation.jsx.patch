@@ -1,0 +1,11 @@
+diff --git a/src/components/contract-lab/DocumentValidation.jsx b/src/components/contract-lab/DocumentValidation.jsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..469ff9ecc6bc9120f1b8dda0af44a100e80b8bfd
+--- /dev/null
++++ b/src/components/contract-lab/DocumentValidation.jsx
+@@ -0,0 +1,4 @@
++import { CheckCircle2, AlertCircle } from 'lucide-react';
++export default function DocumentValidation({issues,onJump}) {
++  return <details className="document-validation" open={issues.length>0}><summary className="flex min-h-11 cursor-pointer items-center gap-2 text-xs font-medium">{issues.length?<><AlertCircle className="h-4 w-4"/>{issues.length} item{issues.length===1?'':'s'} to review before Generate</>:<><CheckCircle2 className="h-4 w-4"/>All required fields and placeholders checked</>}</summary>{issues.length>0&&<ul className="pb-2">{issues.map(issue=><li key={issue.id}><button type="button" className="min-h-11 w-full text-left text-sm underline underline-offset-4" onClick={()=>onJump(issue)}>{issue.label} <span className="text-muted-foreground">• Jump to item</span></button></li>)}</ul>}</details>;
++}
+\ No newline at end of file

@@ -1,0 +1,13 @@
+diff --git a/src/components/dashboard/RecentContractsCard.jsx b/src/components/dashboard/RecentContractsCard.jsx
+index 3b87ad1d74357a7856af6d10f30e230373ffd846..e5edd04c923f9e75cedfb31f00b5c1c02a0e6077 100644
+--- a/src/components/dashboard/RecentContractsCard.jsx
++++ b/src/components/dashboard/RecentContractsCard.jsx
+@@ -28,7 +28,7 @@ export default function RecentContractsCard({ contracts = [], artistMap = {} })
+           {rows.map(c => (
+             <li key={c.id} className="odd:bg-white even:bg-slate-50">
+               <Link
+-                to={c.show_id ? `/analogshowdetail?id=${c.show_id}` : '/contracts'}
++                to={c.show_id ? `/showdetail?id=${encodeURIComponent(c.show_id)}&tab=contract` : '/contracts'}
+                 className="flex items-center gap-3 px-4 py-2.5 hover:bg-yellow-50 transition-colors min-h-[52px]"
+               >
+                 <div className="flex-1 min-w-0">

@@ -1,0 +1,23 @@
+diff --git a/src/components/contracts/preview/ContractPdfZoom.jsx b/src/components/contracts/preview/ContractPdfZoom.jsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..b0a50e398ffde7259d1ad7339c08c8774b56b61c
+--- /dev/null
++++ b/src/components/contracts/preview/ContractPdfZoom.jsx
+@@ -0,0 +1,16 @@
++import { ZoomIn, ZoomOut } from 'lucide-react';
++import { Button } from '@/components/ui/button';
++
++export default function ContractPdfZoom({ zoom, onChange }) {
++  return <div className="border-b border-border bg-card px-3 py-2 sm:hidden">
++    <div className="flex items-center justify-between gap-2" role="group" aria-label="PDF zoom controls">
++      <div className="flex items-center gap-1">
++        <Button variant="outline" size="icon" className="h-11 w-11" aria-label="Zoom out" disabled={zoom <= 100} onClick={() => onChange(zoom - 25)}><ZoomOut /></Button>
++        <output className="min-w-14 text-center text-sm tabular-nums" aria-label="PDF zoom level" aria-live="polite">{zoom}%</output>
++        <Button variant="outline" size="icon" className="h-11 w-11" aria-label="Zoom in" disabled={zoom >= 250} onClick={() => onChange(zoom + 25)}><ZoomIn /></Button>
++      </div>
++      <Button variant="outline" className="min-h-11" onClick={() => onChange(100)}>Fit width</Button>
++    </div>
++    <p className="mt-2 text-xs text-muted-foreground">Use + / − to zoom. Scroll across the document when enlarged.</p>
++  </div>;
++}
+\ No newline at end of file

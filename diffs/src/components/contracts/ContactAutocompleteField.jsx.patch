@@ -1,0 +1,86 @@
+diff --git a/src/components/contracts/ContactAutocompleteField.jsx b/src/components/contracts/ContactAutocompleteField.jsx
+index c125437f968e192b5b5b04c9ad7ea73b5a235f67..3b1a868665072485e96217c992138661ca956e8f 100644
+--- a/src/components/contracts/ContactAutocompleteField.jsx
++++ b/src/components/contracts/ContactAutocompleteField.jsx
+@@ -1,26 +1,33 @@
+-import React, { useState } from 'react';
++import { useState } from 'react';
+ import { Input } from '@/components/ui/input';
+ import { Label } from '@/components/ui/label';
+ import { Building2, Plus } from 'lucide-react';
+-import useContactSearch from '@/hooks/useContactSearch';
++import { useQuery } from '@tanstack/react-query';
++import { base44 } from '@/api/base44Client';
++import { CONTACT_DIRECTORY_KEY } from '@/hooks/useContactSearch';
+ import NewContactDialog from '@/components/crm/NewContactDialog';
+ 
+ /**
+  * Company name input with CRM contact lookup.
+  * Typing searches the full CRM — selecting one autofills the promoter block.
+- * Free text is always allowed; "New contact" opens the full CRM form.
++ * New companies can be entered in the full CRM form and returned for linking.
+  */
+-export default function ContactAutocompleteField({ label, value, onTextChange, onSelectContact, placeholder }) {
++export default function ContactAutocompleteField({ label, value, onTextChange, onSelectContact, placeholder, disabled = false, initialContact }) {
+   const [open, setOpen] = useState(false);
+   const [creating, setCreating] = useState(false);
+   const q = (value || '').trim();
+-  const { results } = useContactSearch(q, { limit: 8 });
+-  const matches = q.length >= 1 ? results : [];
++  const pattern = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
++  const search = useQuery({ queryKey: [...CONTACT_DIRECTORY_KEY, 'contract-search', q], enabled: open && !disabled && q.length >= 1,
++    queryFn: () => base44.entities.Contact.filter({ is_deleted: { $ne: true }, $or: ['name', 'company', 'email', 'default_deal_terms.legal_company_name'].map(key => ({ [key]: { $regex: pattern, $options: 'i' } })) }, { sort: 'name', limit: 8 }) });
++  const matches = search.data?.items || [];
+ 
+   return (
+     <div className="space-y-1.5 relative">
+-      <Label className="text-xs font-semibold text-gray-700">{label}</Label>
++      <Label htmlFor="contract-company-name" className="text-xs font-semibold text-gray-700">{label}</Label>
+       <Input
++        id="contract-company-name"
++        name="company_name"
++        disabled={disabled}
+         value={value || ''}
+         onChange={e => { onTextChange(e.target.value); setOpen(true); }}
+         onFocus={() => setOpen(true)}
+@@ -29,13 +36,14 @@ export default function ContactAutocompleteField({ label, value, onTextChange, o
+         className="h-9 text-sm"
+         autoComplete="off"
+       />
+-      {open && q.length >= 1 && (
++      {open && !disabled && q.length >= 1 && (
+         <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden max-h-72 overflow-y-auto">
+           {matches.map(c => (
+             <button
+               key={c.id}
+               type="button"
+-              onMouseDown={(e) => { e.preventDefault(); onSelectContact(c); setOpen(false); }}
++              onMouseDown={e => e.preventDefault()}
++              onClick={() => { setOpen(false); onSelectContact(c); }}
+               className="w-full flex items-start gap-2 px-3 py-2 text-left hover:bg-gray-50 transition-colors"
+             >
+               <Building2 className="w-3.5 h-3.5 text-gray-400 mt-0.5 flex-shrink-0" />
+@@ -47,16 +55,15 @@ export default function ContactAutocompleteField({ label, value, onTextChange, o
+               </span>
+             </button>
+           ))}
+-          <button type="button" onMouseDown={(e) => { e.preventDefault(); setCreating(true); setOpen(false); }}
+-            className="w-full flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-slate-900 border-t border-gray-100 hover:bg-yellow-50">
+-            <Plus className="w-3.5 h-3.5" /> New contact "{q}"
+-          </button>
+-          <p className="px-3 py-1.5 text-[10px] text-gray-400 border-t border-gray-100 bg-gray-50">
+-            Select to autofill address &amp; VAT — or keep typing to enter manually
++          <p role="status" className="px-3 py-2 text-xs text-muted-foreground">
++            {search.isLoading ? 'Searching contacts…' : search.error ? 'Could not search contacts. Try again or create a new contact.' : matches.length ? 'Select a contact to link it to this show.' : 'No contacts found. Create a new contact below.'}
+           </p>
+         </div>
+       )}
+-      <NewContactDialog open={creating} initialName={q} onClose={() => setCreating(false)} onCreated={onSelectContact} />
++      <button type="button" disabled={disabled} onClick={() => { setCreating(true); setOpen(false); }} className="flex min-h-11 items-center gap-1.5 text-left text-xs font-medium text-primary underline underline-offset-4 disabled:opacity-50">
++        <Plus className="h-3.5 w-3.5" /> Create new promoter / company contact
++      </button>
++      {creating && <NewContactDialog open initialName={q} initialContact={initialContact} onClose={() => setCreating(false)} onCreated={onSelectContact} />}
+     </div>
+   );
+ }
+\ No newline at end of file

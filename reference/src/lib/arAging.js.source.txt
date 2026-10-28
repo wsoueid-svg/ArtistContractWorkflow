@@ -1,0 +1,29 @@
+// AR-aging buckets — the single client-side mirror of the finance hub's
+// arAging backend buckets, so the dashboard badges an overdue booking-fee
+// invoice with exactly the same bands and colours the Finance Hub uses.
+
+export const AR_BUCKETS = {
+  current:  { key: 'current',  label: 'Current',    dot: 'bg-green-400',  badge: 'bg-green-100 text-green-700' },
+  d30:      { key: 'd30',      label: '1–30 days',  dot: 'bg-yellow-400', badge: 'bg-yellow-100 text-yellow-700' },
+  d60:      { key: 'd60',      label: '31–60 days', dot: 'bg-orange-400', badge: 'bg-orange-100 text-orange-700' },
+  d90:      { key: 'd90',      label: '61–90 days', dot: 'bg-red-400',    badge: 'bg-red-100 text-red-700' },
+  d90plus:  { key: 'd90plus',  label: '90+ days',   dot: 'bg-red-700',    badge: 'bg-red-200 text-red-900' },
+};
+
+/** Whole days a due date is past — negative/zero means not yet due. */
+export function daysOverdue(dueDate, now = new Date()) {
+  if (!dueDate) return 0;
+  const due = new Date(dueDate);
+  if (isNaN(due)) return 0;
+  return Math.floor((now.getTime() - due.getTime()) / 86400000);
+}
+
+/** Maps a due date to its AR-aging bucket (same bands as the Finance Hub). */
+export function agingBucket(dueDate, now = new Date()) {
+  const days = daysOverdue(dueDate, now);
+  if (days <= 0) return AR_BUCKETS.current;
+  if (days <= 30) return AR_BUCKETS.d30;
+  if (days <= 60) return AR_BUCKETS.d60;
+  if (days <= 90) return AR_BUCKETS.d90;
+  return AR_BUCKETS.d90plus;
+}

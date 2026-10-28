@@ -1,0 +1,303 @@
+import React, { useState, useMemo } from 'react';
+import { base44 } from '@/api/base44Client';
+import { useOrg } from '../lib/OrgContext';
+import { useOrgShows, useOrgTours } from '../hooks/useOrgData';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Plus, Search, MapPin, Calendar, DollarSign, Pencil, Trash2, ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
+import TourForm from '../components/tours/TourForm';
+import TourShowsList from '../components/tours/TourShowsList';
+import TourProfitabilityPanel from '../components/tours/TourProfitabilityPanel';
+import TourFinancialSummary from '../components/tours/TourFinancialSummary';
+import useArtistLookup from '../hooks/useArtistLookup';
+
+const statusColors = {
+  planning: 'bg-blue-100 text-blue-700 border-blue-300',
+  confirmed: 'bg-green-100 text-green-700 border-green-300',
+  ongoing: 'bg-yellow-100 text-yellow-700 border-yellow-300',
+  completed: 'bg-gray-100 text-gray-700 border-gray-300',
+  cancelled: 'bg-red-100 text-red-700 border-red-300',
+};
+
+export default function Tours() {
+  const { activeOrg } = useOrg();
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showForm, setShowForm] = useState(false);
+  const [editingTour, setEditingTour] = useState(null);
+  const [expandedTours, setExpandedTours] = useState({});
+  const queryClient = useQueryClient();
+
+  const { artists, allArtists } = useArtistLookup();
+
+  const abossArtistIds = useMemo(() => new Set((allArtists || []).filter(a => a.is_aboss_import).map(a => a.id)), [allArtists]);
+  const { tours, isLoading } = useOrgTours(abossArtistIds);
+  const { shows } = useOrgShows(abossArtistIds);
+
+  const { data: contracts = [] } = useQuery({
+    queryKey: ['contracts'],
+    queryFn: () => base44.entities.Contract.list('-created_date', 200),
+  });
+
+  const createMutation = useMutation({
+    mutationFn: (data) => base44.entities.Tour.create(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tours'] });
+      setShowForm(false);
+      setEditingTour(null);
+      toast.success('Tour created successfully.');
+    },
+    onError: () => toast.error('Could not create the tour. Please try again.'),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }) => base44.entities.Tour.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tours'] });
+      setShowForm(false);
+      setEditingTour(null);
+      toast.success('Tour updated successfully.');
+    },
+    onError: () => toast.error('Could not update the tour. Please try again.'),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id) => base44.entities.Tour.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tours'] });
+      toast.success('Tour deleted successfully.');
+    },
+    onError: () => toast.error('Could not delete the tour. Please try again.'),
+  });
+
+  const handleSubmit = (data) => {
+    if (editingTour) {
+      updateMutation.mutate({ id: editingTour.id, data });
+    } else {
+      createMutation.mutate(data);
+    }
+  };
+
+  const isSavingTour = createMutation.isPending || updateMutation.isPending;
+
+  const toggleExpand = (tourId) => {
+    setExpandedTours(prev => ({ ...prev, [tourId]: !prev[tourId] }));
+  };
+
+  const filteredTours = tours.filter((tour) =>
+    tour.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    allArtists.find(a => a.id === tour.artist_id)?.name?.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const activeTours = filteredTours.filter(t => ['planning', 'confirmed', 'ongoing'].includes(t.status));
+  const pastTours = filteredTours.filter(t => ['completed', 'cancelled'].includes(t.status));
+
+  const renderTourCard = (tour) => {
+    const artist = allArtists.find((a) => a.id === tour.artist_id);
+    const tourShows = shows.filter((s) => s.tour_id === tour.id);
+    const totalFees = tourShows.reduce((sum, s) => sum + (s.guarantee_fee || 0), 0);
+    const confirmedShows = tourShows.filter(s => s.status === 'confirmed').length;
+    const isExpanded = expandedTours[tour.id];
+
+    const safeDate = (d) => { const dt = new Date(d); return isNaN(dt) ? null : dt; };
+
+    const dateRange = (() => {
+      const start = safeDate(tour.start_date);
+      if (!start) return null;
+      const startStr = start.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      const end = safeDate(tour.end_date);
+      const endStr = end ? end.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'TBD';
+      return `${startStr} → ${endStr}`;
+    })();
+
+    return (
+      <Card key={tour.id} className="border-2 border-gray-200 hover:border-yellow-400 transition-all">
+        <CardContent className="p-5">
+          {/* Header row */}
+          <div className="flex items-start gap-4">
+            <div className="p-3 bg-black rounded-xl flex-shrink-0">
+              <MapPin className="w-5 h-5 text-yellow-400" />
+            </div>
+
+            <div className="flex-1 min-w-0">
+              <div className="flex items-start justify-between gap-2 flex-wrap">
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="font-bold text-black text-xl">{tour.name}</h3>
+                    <Badge className={`border text-xs ${statusColors[tour.status || 'planning']}`}>
+                      {tour.status || 'planning'}
+                    </Badge>
+                  </div>
+                  <p className={`text-sm mt-0.5 ${artist?._deleted ? 'italic text-gray-400' : 'text-gray-500'}`}>{artist?.name}{artist?._deleted ? ' (deleted)' : ''}</p>
+                </div>
+                <div className="flex gap-1.5">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-11 w-11 md:h-8 md:w-8 p-0"
+                    onClick={() => { setEditingTour(tour); setShowForm(true); }}
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={deleteMutation.isPending}
+                    className="h-11 w-11 md:h-8 md:w-8 p-0 text-red-400 hover:text-red-600"
+                    onClick={() => { if (confirm('Delete this tour?')) deleteMutation.mutate(tour.id); }}
+                  >
+                    {deleteMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                  </Button>
+                </div>
+              </div>
+
+              {/* Stats row */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
+                <div className="bg-gray-50 rounded-lg p-2.5">
+                  <p className="text-xs text-gray-500 flex items-center gap-1"><Calendar className="w-3 h-3" />Dates</p>
+                  <p className="text-sm font-semibold text-black mt-0.5">{dateRange || 'TBD'}</p>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-2.5">
+                  <p className="text-xs text-gray-500">Shows</p>
+                  <p className="text-sm font-semibold text-black mt-0.5">
+                    {tourShows.length} total
+                    {confirmedShows > 0 && <span className="text-green-600 font-normal"> · {confirmedShows} confirmed</span>}
+                  </p>
+                </div>
+                {totalFees > 0 && (
+                  <div className="bg-gray-50 rounded-lg p-2.5">
+                    <p className="text-xs text-gray-500 flex items-center gap-1"><DollarSign className="w-3 h-3" />Total Fees</p>
+                    <p className="text-sm font-semibold text-green-700 mt-0.5">${totalFees.toLocaleString()}</p>
+                  </div>
+                )}
+                {tour.countries && tour.countries.length > 0 && (
+                  <div className="bg-gray-50 rounded-lg p-2.5">
+                    <p className="text-xs text-gray-500">Countries</p>
+                    <div className="flex flex-wrap gap-1 mt-0.5">
+                      {tour.countries.map((c, i) => (
+                        <span key={i} className="text-xs bg-white border border-gray-200 rounded px-1.5 py-0.5">{c}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {tour.itinerary_notes && (
+                <p className="text-xs text-gray-500 mt-3 italic line-clamp-2">{tour.itinerary_notes}</p>
+              )}
+
+              {/* Toggle shows */}
+              <button
+                className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-black mt-3 min-h-[44px] md:min-h-0 transition-colors"
+                onClick={() => toggleExpand(tour.id)}
+              >
+                {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                {isExpanded ? 'Hide shows' : `Show ${tourShows.length > 0 ? tourShows.length + ' show' + (tourShows.length !== 1 ? 's' : '') : 'shows'}`}
+              </button>
+            </div>
+          </div>
+
+          {/* Real-time Financial Summary */}
+          <TourFinancialSummary tour={tour} />
+
+          {/* AI Profitability Analysis */}
+          <TourProfitabilityPanel tourId={tour.id} tourName={tour.name} />
+
+          {/* Expandable shows list */}
+          {isExpanded && (
+            <TourShowsList
+              tour={tour}
+              shows={tourShows}
+              artists={artists}
+              contracts={contracts}
+            />
+          )}
+        </CardContent>
+      </Card>
+    );
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b-4 border-yellow-400 pb-4">
+        <div>
+          <h1 className="text-2xl sm:text-3xl xl:text-4xl font-bold text-black">Tours</h1>
+          <p className="text-gray-600 mt-1">{activeTours.length} active · {pastTours.length} completed</p>
+        </div>
+        <Button
+          onClick={() => { setEditingTour(null); setShowForm(true); }}
+          disabled={isSavingTour}
+          className="bg-black text-yellow-400 hover:bg-gray-900 font-semibold"
+        >
+          <Plus className="w-5 h-5 mr-2" />
+          New Tour
+        </Button>
+      </div>
+
+      {/* Search */}
+      <div className="relative max-w-md">
+        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+        <Input
+          placeholder="Search tours or artists..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="pl-10 border-2 border-gray-200 focus:border-yellow-400"
+        />
+      </div>
+
+      {/* Tour Form Modal */}
+      {showForm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+            <TourForm
+              tour={editingTour}
+              artists={artists}
+              contracts={contracts}
+              onSubmit={handleSubmit}
+              isSubmitting={isSavingTour}
+              onCancel={() => { setShowForm(false); setEditingTour(null); }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Tours List */}
+      {isLoading ? (
+        <div className="text-center py-12">
+          <p className="text-gray-500">Loading tours...</p>
+        </div>
+      ) : filteredTours.length === 0 ? (
+        <div className="text-center py-16">
+          <MapPin className="w-16 h-16 text-gray-200 mx-auto mb-4" />
+          <p className="text-gray-400 text-lg">No tours yet</p>
+          <p className="text-gray-400 text-sm mt-1">Create a tour to group multiple shows together</p>
+        </div>
+      ) : (
+        <div className="space-y-8">
+          {activeTours.length > 0 && (
+            <div>
+              <h2 className="text-xl font-bold text-black mb-4 flex items-center gap-2">
+                <div className="w-1.5 h-6 bg-yellow-400 rounded" />
+                Active Tours
+              </h2>
+              <div className="space-y-4">{activeTours.map(renderTourCard)}</div>
+            </div>
+          )}
+          {pastTours.length > 0 && (
+            <div>
+              <h2 className="text-xl font-bold text-black mb-4 flex items-center gap-2">
+                <div className="w-1.5 h-6 bg-gray-300 rounded" />
+                Past Tours
+              </h2>
+              <div className="space-y-4 opacity-70">{pastTours.map(renderTourCard)}</div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}

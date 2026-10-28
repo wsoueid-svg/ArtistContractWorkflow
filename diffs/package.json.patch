@@ -1,0 +1,15 @@
+diff --git a/package.json b/package.json
+index 6f0850df213093f50aa2eb97a791e29f81414985..8e602fcfe0f85db6948b099b2b724709e882cf84 100644
+--- a/package.json
++++ b/package.json
+@@ -12,8 +12,8 @@
+     "preview": "vite preview"
+   },
+   "dependencies": {
+-    "@base44/sdk": "^0.8.53",
+-    "@base44/vite-plugin": "^1.0.45",
++    "@base44/sdk": "^0.8.57",
++    "@base44/vite-plugin": "^1.0.50",
+     "@hello-pangea/dnd": "^17.0.0",
+     "@hookform/resolvers": "^4.1.2",
+     "@radix-ui/react-accordion": "^1.2.3",

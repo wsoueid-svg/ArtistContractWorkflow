@@ -1,0 +1,23 @@
+diff --git a/src/components/contract-lab/ContractBlock.jsx b/src/components/contract-lab/ContractBlock.jsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..e0adc2b058978fc7241fdb98581de426a479f814
+--- /dev/null
++++ b/src/components/contract-lab/ContractBlock.jsx
+@@ -0,0 +1,16 @@
++import { useMemo, useRef } from 'react';
++import ReactQuill from 'react-quill';
++import 'react-quill/dist/quill.snow.css';
++import ClauseActions from '@/components/contract-lab/ClauseActions';
++import ClauseChanges from '@/components/contract-lab/ClauseChanges';
++import ProtectedSource from '@/components/contract-lab/ProtectedSource';
++import displayDocumentHTML from '@/components/contract-lab/displayDocumentHTML';
++import { lockedBlock } from '@/components/contract-lab/documentText';
++const modules={toolbar:false,history:{userOnly:true}};
++export default function ContractBlock({block,onEdit,onAction,canUp,canDown,activeEditor,number,showChanges,readOnly,appendix=false}) {
++  const ref=useRef(null),locked=lockedBlock(block),changed=!locked&&block.rich_text!==(block.baseline_html||''),html=useMemo(()=>displayDocumentHTML(block.rich_text),[block.rich_text]);
++  return <section id={`contract-block-${block.id}`} data-block-id={block.id} data-block-kind={block.kind} className={`document-block ${locked?'document-block-protected':''} ${appendix?'document-block-appendix':''}`}>
++    <div className="clause-caption">{number&&<span className="clause-number">{number}.</span>}{locked?<ProtectedSource block={block}/>:<>{changed&&<span className="edited-marker">{block.master?'Edited':'Added'}</span>}{!readOnly&&<ClauseActions block={block} onAction={onAction} canUp={canUp} canDown={canDown} appendix={appendix}/>}</>}</div>
++    {locked?<div className="contract-protected document-text" dangerouslySetInnerHTML={{__html:html}}/>:showChanges&&changed?<ClauseChanges before={block.baseline_html} after={block.rich_text}/>:readOnly?<div className="document-text" dangerouslySetInnerHTML={{__html:html}}/>:<ReactQuill ref={ref} theme="snow" value={block.rich_text} onChange={(value,delta,source)=>{if(source==='user')onEdit(value);}} onChangeSelection={range=>{if(range)activeEditor.current={quill:ref.current.getEditor(),range};}} modules={modules} formats={['bold','italic','underline','list']} aria-label={`Edit ${block.id}`}/>}
++  </section>;
++}
+\ No newline at end of file

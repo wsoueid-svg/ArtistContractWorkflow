@@ -1,0 +1,65 @@
+import React from 'react';
+import { Link } from 'react-router-dom';
+import { ArrowRight } from 'lucide-react';
+
+/**
+ * DealCard — shared shell for the personal dashboard cards.
+ */
+export default function DealCard({ icon: Icon, title, count, to, toLabel = 'View all', actions, children, className = '' }) {
+  return (
+    <section className={`studio-deal-card bg-white rounded-2xl border border-slate-200 overflow-hidden flex flex-col ${className}`}>
+      <header className="flex items-center justify-between gap-3 px-4 py-3 border-b border-slate-100">
+        <div className="flex items-center gap-2 min-w-0">
+          {Icon && (
+            <span className="w-7 h-7 rounded-lg bg-slate-900 flex items-center justify-center flex-shrink-0">
+              <Icon className="w-3.5 h-3.5 text-white" />
+            </span>
+          )}
+          <h3 className="text-sm font-semibold text-slate-900 leading-snug">{title}</h3>
+          {count != null && (
+            <span className="text-[10px] font-bold tabular-nums bg-slate-100 text-slate-600 rounded-full px-2 py-0.5">{count}</span>
+          )}
+        </div>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {actions}
+          {to && (
+            <Link to={to} className="hidden sm:flex items-center gap-1 text-xs text-slate-400 hover:text-slate-800">
+              {toLabel} <ArrowRight className="w-3 h-3" />
+            </Link>
+          )}
+        </div>
+      </header>
+      <div className="flex-1 min-h-0">{children}</div>
+    </section>
+  );
+}
+
+export function EmptyRow({ icon: Icon, text }) {
+  return (
+    <div className="px-4 py-10 text-center">
+      {Icon && <Icon className="w-7 h-7 text-slate-200 mx-auto mb-2" />}
+      <p className="text-xs text-slate-400">{text}</p>
+    </div>
+  );
+}
+
+export function StatusSummary({ items, activeKey, onToggle }) {
+  return (
+    <div className="flex flex-wrap gap-1.5 px-4 py-2.5 border-b border-slate-100 bg-slate-50/60">
+      {items.map(i => {
+        const selected = activeKey != null && activeKey === i.key;
+        return (
+          <button
+            type="button"
+            key={i.label}
+            onClick={onToggle ? () => onToggle(i.key) : undefined}
+            aria-pressed={selected}
+            className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold transition-all ${i.className} ${onToggle ? 'cursor-pointer hover:brightness-95' : 'cursor-default'} ${selected ? 'ring-2 ring-slate-900 ring-offset-1' : activeKey != null ? 'opacity-50' : ''}`}
+          >
+            {i.label} <span className="tabular-nums opacity-70">{i.count}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}

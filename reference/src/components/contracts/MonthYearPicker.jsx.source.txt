@@ -1,0 +1,64 @@
+import React, { useState } from 'react';
+import { Label } from '@/components/ui/label';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Button } from '@/components/ui/button';
+import { Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
+
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+/**
+ * Month + Year picker — outputs "June 2026". Avoids free-text typos in
+ * the contract's deposit clause.
+ */
+export default function MonthYearPicker({ label, value, onChange, hint }) {
+  const [open, setOpen] = useState(false);
+  const [year, setYear] = useState(() => {
+    const m = /(\d{4})/.exec(value || '');
+    return m ? parseInt(m[1], 10) : new Date().getFullYear();
+  });
+  const selectedMonth = (value || '').split(' ')[0];
+  const selectedYear = /(\d{4})/.exec(value || '')?.[1];
+
+  return (
+    <div className="space-y-1.5">
+      <Label className="text-xs font-semibold text-gray-700">{label}</Label>
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button variant="outline" className={`h-9 w-full justify-start text-sm font-normal ${!value ? 'text-gray-400' : ''}`}>
+            <Calendar className="w-3.5 h-3.5 mr-2 text-gray-400" />
+            {value || 'Select month & year'}
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-64 p-3" align="start">
+          <div className="flex items-center justify-between mb-2">
+            <button type="button" onClick={() => setYear(y => y - 1)} className="p-1.5 rounded-lg hover:bg-gray-100">
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <span className="text-sm font-semibold">{year}</span>
+            <button type="button" onClick={() => setYear(y => y + 1)} className="p-1.5 rounded-lg hover:bg-gray-100">
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+          <div className="grid grid-cols-3 gap-1">
+            {MONTHS.map(m => {
+              const active = selectedMonth === m && String(year) === selectedYear;
+              return (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => { onChange(`${m} ${year}`); setOpen(false); }}
+                  className={`px-1 py-2 rounded-lg text-xs font-medium transition-colors ${
+                    active ? 'bg-black text-white' : 'text-gray-700 hover:bg-gray-100'
+                  }`}
+                >
+                  {m.slice(0, 3)}
+                </button>
+              );
+            })}
+          </div>
+        </PopoverContent>
+      </Popover>
+      {hint && <p className="text-[11px] text-gray-400">{hint}</p>}
+    </div>
+  );
+}

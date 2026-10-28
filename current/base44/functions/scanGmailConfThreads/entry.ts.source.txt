@@ -1,0 +1,112 @@
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
+import { header, parseAddresses, cleanSubject, gmailGet, getMailboxEmail } from '../../shared/gmailThread.ts';
+import { getUserGmailToken, isGmailAuthError, rootMessageId, acquireSyncLock, releaseSyncLock, countUnassignedFor } from '../../shared/gmailUser.ts';
+import { ingestConfThread, isCommunicationFrozen } from '../../shared/confIngestion.ts';
+import { buildConfThreadAccess } from '../../shared/confThreadAccess.ts';
+import { recordContractReturn } from '../../shared/contractReturn.ts';
+
+export default async function(req) {
+  const base44 = createClientFromRequest(req);
+  let entities = null;
+  let userId = null;
+  try {
+    const user = await base44.auth.me();
+    if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    if(user.is_active===false||!['admin','user'].includes(user.role))return Response.json({error:'Active staff access required'},{status:403});
+    userId = user.id;
+    entities = base44.asServiceRole.entities;
+    const body = await req.json().catch(() => ({}));
+    const accessToken = await getUserGmailToken(base44);
+    if (!accessToken) return Response.json({ connected: false, gmail_connected: false, error: 'Gmail is not connected.' }, { status: 409 });
+
+    const lock = await acquireSyncLock(entities, user.id);
+    if (!lock.acquired) return Response.json({ status: 'cached', last_synced_at: lock.user?.last_gmail_scan_at || null, unassigned_count: await countUnassignedFor(entities, user.id) });
+    const lookbackDays = Math.min(30, Math.max(1, Number(body.lookback_days) || (!lock.user?.last_gmail_scan_at ? 7 : 2)));
+    const mailboxEmail = await getMailboxEmail(accessToken);
+    const users = await entities.User.list(undefined, 500).catch(() => []);
+    const internalEmails = new Set(users.map((item) => String(item.email || '').toLowerCase()).filter(Boolean));
+    if (mailboxEmail) internalEmails.add(mailboxEmail);
+
+    const shows = await base44.entities.Show.list('-date', 2000);
+    const showByThread = {};
+    shows.forEach((show) => [...(show.gmail_thread_ids || []), show.gmail_thread_id, show.active_thread_id].filter(Boolean).forEach((id) => { showByThread[id] = show; }));
+    const existingThreads = await entities.ConfThread.list('-last_message_at', 2000).catch(() => []);
+    const existingByThread = Object.fromEntries(existingThreads.map((item) => [item.thread_id, item]));
+
+    const threadIds = new Set();
+    let pageToken = null;
+    do {
+      const query = encodeURIComponent(`subject:CONF newer_than:${lookbackDays}d`);
+      const page = await gmailGet(accessToken, `threads?q=${query}&maxResults=100${pageToken ? `&pageToken=${pageToken}` : ''}`);
+      (page.threads || []).forEach((item) => threadIds.add(item.id));
+      pageToken = page.nextPageToken || null;
+    } while (pageToken && threadIds.size < 400);
+
+    const currentIds=shows.map(s=>s.contract_id).filter(Boolean);
+    const sentContracts = currentIds.length?await base44.entities.Contract.filter({ id:{$in:currentIds},status:'SENT' }):[];
+    const sentByShow = Object.fromEntries(sentContracts.filter(item=>shows.some(s=>s.id===item.show_id&&s.contract_id===item.id)).map(item=>[item.show_id,item]));
+    shows.forEach((show) => { const id = show.active_thread_id || show.gmail_thread_id; if (id && sentByShow[show.id] && !isCommunicationFrozen(show)) threadIds.add(id); });
+
+    let created = 0, updated = 0, returned = 0, messagesCreated = 0, attachmentsCreated = 0, frozen = 0;
+    const ids = Array.from(threadIds);
+    for (let index = 0; index < ids.length; index += 6) {
+      const batch = await Promise.all(ids.slice(index, index + 6).map((id) => gmailGet(accessToken, `threads/${encodeURIComponent(id)}?format=full`).catch((error) => {
+        if (isGmailAuthError(error)) throw error;
+        return null;
+      })));
+      for (const thread of batch) {
+        if (!thread?.messages?.length) continue;
+        const messages = thread.messages;
+        const first = messages[0];
+        const last = messages[messages.length - 1];
+        const linkedShow = showByThread[thread.id] || null;
+        const rootId = rootMessageId(first);
+        const participants = new Set();
+        messages.forEach((message) => {
+          parseAddresses(header(message, 'From')).forEach((email) => participants.add(email));
+          parseAddresses(header(message, 'To')).forEach((email) => participants.add(email));
+          parseAddresses(header(message, 'Cc')).forEach((email) => participants.add(email));
+        });
+        const previous = existingByThread[thread.id];
+        const scannedByUserIds = Array.from(new Set([...(previous?.scanned_by_user_ids || []), user.id]));
+        const matchedUserIds = users.filter((item) => participants.has(String(item.email || '').toLowerCase())).map((item) => item.id);
+        const record = {
+          thread_id: thread.id,
+          root_message_id: rootId || undefined,
+          scanned_by_user_ids: scannedByUserIds,
+          accessible_user_ids: buildConfThreadAccess({ ...previous, scanned_by_user_ids: scannedByUserIds, matched_user_ids: matchedUserIds }, linkedShow),
+          subject: cleanSubject(header(last, 'Subject') || header(first, 'Subject')),
+          from_email: parseAddresses(header(first, 'From'))[0] || '',
+          participant_emails: Array.from(participants),
+          matched_user_ids: matchedUserIds,
+          snippet: last.snippet || first.snippet || '',
+          message_count: messages.length,
+          first_message_at: first.internalDate ? new Date(Number(first.internalDate)).toISOString() : undefined,
+          last_message_at: last.internalDate ? new Date(Number(last.internalDate)).toISOString() : undefined,
+          last_message_id: header(last, 'Message-ID'),
+          last_message_from: parseAddresses(header(last, 'From'))[0] || '',
+          is_assigned: Boolean(linkedShow || previous?.is_assigned),
+          assigned_show_id: linkedShow?.id || previous?.assigned_show_id || undefined,
+          last_checked_at: new Date().toISOString(),
+          created_by_org_id: 'analog'
+        };
+        const storedThread = previous ? await entities.ConfThread.update(previous.id, record) : await entities.ConfThread.create(record);
+        existingByThread[thread.id] = storedThread;
+        previous ? updated++ : created++;
+
+        const ingestion = await ingestConfThread({ base44, accessToken, thread, confThread: storedThread, mailboxOwnerUserId: user.id, linkedShow });
+        if (ingestion.frozen) frozen++;
+        messagesCreated += ingestion.messages_created;
+        attachmentsCreated += ingestion.attachments_created;
+
+        const contract = linkedShow ? sentByShow[linkedShow.id] : null;
+        if(contract && !ingestion.frozen && await recordContractReturn(base44,linkedShow,contract,thread,last,internalEmails,user.id))returned++;
+      }
+    }
+    await releaseSyncLock(entities, user.id, 'IDLE', { completed: true, gmail_connected_email: mailboxEmail || undefined });
+    return Response.json({ status: 'scanned', scanned: ids.length, created, updated, messages_created: messagesCreated, attachments_created: attachmentsCreated, frozen, contracts_returned: returned, unassigned_count: await countUnassignedFor(entities, user.id) });
+  } catch (error) {
+    if (entities && userId) await releaseSyncLock(entities, userId, isGmailAuthError(error) ? 'ERROR_AUTH' : 'IDLE').catch(() => null);
+    return Response.json({ error: error.message }, { status: isGmailAuthError(error) ? 401 : 500 });
+  }
+}

@@ -1,0 +1,92 @@
+// Shared Gmail thread helpers used by scanGmailConfThreads and autofillShowFromThread.
+
+export function header(msg, name) {
+  const h = (msg?.payload?.headers || []).find(
+    (x) => String(x.name || '').toLowerCase() === name.toLowerCase()
+  );
+  return h?.value || '';
+}
+
+export function parseAddresses(raw) {
+  if (!raw) return [];
+  return String(raw)
+    .split(',')
+    .map((part) => {
+      const m = part.match(/<([^>]+)>/);
+      return (m ? m[1] : part).trim().toLowerCase();
+    })
+    .filter((e) => e.includes('@'));
+}
+
+export function cleanSubject(s) {
+  return String(s || '').replace(/^((re|fwd|fw)\s*:\s*)+/i, '').trim();
+}
+
+export async function gmailGet(accessToken, path) {
+  const res = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/${path}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    const err = new Error(`Gmail ${path.split('?')[0]} failed (${res.status}): ${text.slice(0, 200)}`);
+    err.status = res.status;
+    throw err;
+  }
+  return res.json();
+}
+
+export async function getGmailToken(base44) {
+  try {
+    const conn = await base44.asServiceRole.connectors.getConnection('gmail');
+    return conn?.accessToken || null;
+  } catch (_e) {
+    return null;
+  }
+}
+
+// Email address of the connected Gmail mailbox (the account every send/scan runs as).
+export async function getMailboxEmail(accessToken) {
+  try {
+    const p = await gmailGet(accessToken, 'profile');
+    return String(p?.emailAddress || '').toLowerCase();
+  } catch (_e) {
+    return '';
+  }
+}
+
+function b64urlDecode(data) {
+  const b64 = String(data || '').replace(/-/g, '+').replace(/_/g, '/');
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new TextDecoder().decode(bytes);
+}
+
+function stripHtml(html) {
+  return String(html || '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|div|li|tr)>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/\n{3,}/g, '\n\n');
+}
+
+// Extracts the readable text body of a Gmail message (format=full).
+export function extractBody(msg) {
+  const parts = [];
+  const walk = (p) => {
+    if (!p) return;
+    if (p.parts) { p.parts.forEach(walk); return; }
+    if (p.body?.data) parts.push({ mime: p.mimeType || '', text: b64urlDecode(p.body.data) });
+  };
+  walk(msg?.payload);
+  const plain = parts.find((p) => p.mime.startsWith('text/plain'));
+  if (plain) return plain.text;
+  const html = parts.find((p) => p.mime.startsWith('text/html'));
+  if (html) return stripHtml(html.text);
+  return msg?.snippet || '';
+}

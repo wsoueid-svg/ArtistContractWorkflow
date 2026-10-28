@@ -1,0 +1,13 @@
+import { lockedBlock } from '@/components/contract-lab/documentText';
+
+export default function refreshDocumentBlocks(current, master) {
+  const oldProtected = current.filter(lockedBlock), blocks = [];
+  for (const locked of master.filter(lockedBlock)) {
+    const previous = oldProtected.find(block => block.id === locked.id);
+    if (previous) blocks.push(...current.filter(block => !lockedBlock(block) && block.slot === previous.slot).map(block => ({ ...block, slot: locked.slot })));
+    blocks.push(locked);
+  }
+  const endSlot = master.filter(lockedBlock).length;
+  blocks.push(...current.filter(block => !lockedBlock(block) && block.slot === oldProtected.length).map(block => ({ ...block, slot: endSlot })));
+  return blocks.map((block, order) => ({ ...block, order }));
+}

@@ -1,0 +1,87 @@
+import { useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { base44 } from '@/api/base44Client';
+import { useOrg } from '@/lib/OrgContext';
+import { buildStubArtistIds, filterShowsForOrg, tourBelongsToOrg } from '@/lib/orgUtils';
+
+/**
+ * useOrgData — the single source of truth for org-scoped data on the frontend.
+ * All hooks namespace their React Query keys with activeOrg and apply the
+ * canonical cross-sharing rules from lib/orgUtils.
+ */
+
+/** Canonical artist ownership rule (matches APP_CONTEXT.md §2). */
+export function artistBelongsToOrg(artist, activeOrg) {
+  const org = artist.org || (artist.is_aboss_import ? 'analog' : 'elevate');
+  return activeOrg === 'analog'
+    ? org === 'analog' || org === 'both'
+    : org === 'elevate' || org === 'both';
+}
+
+/** Org-scoped artists. Returns the filtered roster plus lookup sets. */
+export function useOrgArtists(sort = '-created_date') {
+  const { activeOrg } = useOrg();
+  const { data: allArtists = [], isLoading } = useQuery({
+    queryKey: ['artists', activeOrg, sort],
+    queryFn: () => base44.entities.Artist.list(sort),
+    enabled: !!activeOrg,
+  });
+  const artists = useMemo(
+    () => allArtists.filter(a => artistBelongsToOrg(a, activeOrg)),
+    [allArtists, activeOrg]
+  );
+  const artistIds = useMemo(() => new Set(artists.map(a => a.id)), [artists]);
+  const stubArtistIds = useMemo(() => buildStubArtistIds(allArtists), [allArtists]);
+  return { artists, allArtists, artistIds, stubArtistIds, isLoading };
+}
+
+/** Org-scoped shows, using the canonical filterShowsForOrg rule. */
+export function useOrgShows(stubArtistIds, { sort = '-date', limit = 500 } = {}) {
+  const { activeOrg } = useOrg();
+  const { data: allShows = [], isLoading } = useQuery({
+    queryKey: ['shows', activeOrg, sort, limit],
+    queryFn: () => base44.entities.Show.list(sort, limit),
+    enabled: !!activeOrg,
+  });
+  const shows = useMemo(
+    () => filterShowsForOrg(allShows, activeOrg, stubArtistIds || new Set()),
+    [allShows, activeOrg, stubArtistIds]
+  );
+  return { shows, isLoading };
+}
+
+/**
+ * Org-scoped financial records. Mirrors the show-sharing rule:
+ * - Analog sees records on its own (analog/both) artists.
+ * - Elevate sees records on any non-stub artist (own + shared artists' ABOSS history).
+ */
+export function useOrgFinances(stubArtistIds, orgArtistIds, { sort = '-date', limit = 500 } = {}) {
+  const { activeOrg } = useOrg();
+  const { data: allFinances = [], isLoading } = useQuery({
+    queryKey: ['finances', activeOrg, sort, limit],
+    queryFn: () => base44.entities.FinancialRecord.list(sort, limit),
+    enabled: !!activeOrg,
+  });
+  const finances = useMemo(() => {
+    if (activeOrg === 'analog') {
+      return allFinances.filter(f => (orgArtistIds || new Set()).has(f.artist_id));
+    }
+    return allFinances.filter(f => !(stubArtistIds || new Set()).has(f.artist_id));
+  }, [allFinances, activeOrg, stubArtistIds, orgArtistIds]);
+  return { finances, isLoading };
+}
+
+/** Org-scoped tours — see tourBelongsToOrg for the canonical ownership rule. */
+export function useOrgTours(stubArtistIds, sort = '-start_date') {
+  const { activeOrg } = useOrg();
+  const { data: allTours = [], isLoading } = useQuery({
+    queryKey: ['tours', activeOrg, sort],
+    queryFn: () => base44.entities.Tour.list(sort),
+    enabled: !!activeOrg,
+  });
+  const tours = useMemo(
+    () => allTours.filter(t => tourBelongsToOrg(t, activeOrg, stubArtistIds)),
+    [allTours, activeOrg, stubArtistIds]
+  );
+  return { tours, isLoading };
+}

@@ -1,0 +1,51 @@
+import React, { useState, useMemo } from 'react';
+import { Input } from '@/components/ui/input';
+import { COUNTRIES } from '@/lib/geoData';
+
+/**
+ * CountryCombobox — searchable country picker backed by the standardized list.
+ * Selection-only (no free text) to keep country data clean and analyzable.
+ */
+export default function CountryCombobox({ value, onChange, className = 'mt-1', placeholder = 'Search country…' }) {
+  const [query, setQuery] = useState('');
+  const [open, setOpen] = useState(false);
+
+  const filtered = useMemo(() => {
+    if (!query) return COUNTRIES;
+    const q = query.toLowerCase();
+    return COUNTRIES.filter(c => c.toLowerCase().includes(q));
+  }, [query]);
+
+  const select = (country) => { onChange(country); setOpen(false); setQuery(''); };
+
+  return (
+    <div className="relative">
+      <Input
+        value={open ? query : (value || '')}
+        onChange={e => { setQuery(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 200)}
+        placeholder={value && !open ? value : placeholder}
+        className={className}
+        autoComplete="off"
+      />
+      {open && (
+        <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-auto">
+          {value && (
+            <button type="button" onMouseDown={() => select('')}
+              className="w-full text-left px-3 py-1.5 text-xs text-red-500 hover:bg-red-50 border-b border-gray-100">
+              ✕ Clear selection
+            </button>
+          )}
+          {filtered.map(c => (
+            <button key={c} type="button" onMouseDown={() => select(c)}
+              className={`w-full text-left px-3 py-1.5 text-sm hover:bg-gray-50 ${c === value ? 'font-semibold bg-gray-50' : ''}`}>
+              {c}
+            </button>
+          ))}
+          {filtered.length === 0 && <p className="px-3 py-2 text-xs text-gray-400">No matching country</p>}
+        </div>
+      )}
+    </div>
+  );
+}

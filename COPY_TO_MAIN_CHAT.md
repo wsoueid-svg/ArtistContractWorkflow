@@ -1,0 +1,13 @@
+Review the attached Contract Workflow Port ZIP against this MAIN app before changing anything.
+
+The staging app was cloned from this app. The ZIP contains the current contract editor/workflow (increments 1–3 and subsequent fixes), complete verbatim source snapshots, original snapshots, exact diffs, entity schemas, configuration requirements, dependency references and explicit exclusions.
+
+Start with README.md, manifest.json, configuration.json, exclusions.json, dependencies.json, verification.json and integrity.json. The baseline is e7774444c8653da22922707c2d0c3423700a1fd6; exported source is ca8a6369782cbfd215db27bf23c98569daf09d2b. These are staging repository commits, not claims about this main app's current version.
+
+First compare this app's current files with the bundle's baseline and current snapshots. Report conflicts, missing dependencies, schema/permission differences, connector/secret requirements and an ordered integration plan. Preserve all changes made in the main app since cloning. Do not apply the all-changes patch or overwrite existing files wholesale.
+
+The production-review patch contains permission changes that require explicit review, including Contract/ContractDraft/ContractRedline/ContractAuditLog and User security-field protection. The artist-creation repair and platform package updates are optional separate patches, not required contract changes. Unchanged reference files and historical reports are not replacements or current acceptance certificates.
+
+No feature flag exists in the exported implementation. Reuse this app's real configuration and destination Gmail app-user connector; do not assume staging IDs or connections work here. Never copy staging/demo records, fixtures, secrets, tokens or generated documents. Existing milestone/exchange-rate workflows are reference-only and must not be duplicated or automatically activated. Never send real emails or scan real mail during review. Staff signing must not be presented as promoter-facing electronic signing.
+
+Give me the review and integration plan first. Wait for my approval before modifying the main app, its permissions, data or automations. After an approved integration, verify draft save/reopen, protected sections, generation, preview/download, amendment/history and lifecycle boundaries with disposable records; report untested steps honestly rather than claiming the whole workflow passed.

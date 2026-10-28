@@ -1,0 +1,42 @@
+diff --git a/base44/functions/getContractRevisionView/entry.ts b/base44/functions/getContractRevisionView/entry.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..fefa05d0cbbbf7ee803ee25b157362ec3297e98d
+--- /dev/null
++++ b/base44/functions/getContractRevisionView/entry.ts
+@@ -0,0 +1,35 @@
++import { createClientFromRequest } from 'npm:@base44/sdk@0.8.53';
++import { draftAccess, buildContractDocument } from '../../shared/contractDocument.ts';
++export default async function(req) {
++  try {
++    const base44=createClientFromRequest(req), user=await base44.auth.me();
++    if(!user)return Response.json({error:'Unauthorized'},{status:401});
++    const body=await req.json();
++    if(typeof body.show_id!=='string'||!body.show_id)return Response.json({error:'Show is required'},{status:400});
++    const show=await draftAccess(base44,user,body.show_id),svc=base44.asServiceRole.entities;
++    if(body.contract_id) {
++      const contract=await svc.Contract.get(body.contract_id);
++      if(contract.show_id!==show.id)return Response.json({error:'Revision does not belong to this Show'},{status:403});
++      if(!contract.draft_id)return Response.json({contract,document:null});
++      const draft=await svc.ContractDraft.get(contract.draft_id);
++      if(draft.show_id!==show.id||draft.contract_id!==contract.id)return Response.json({error:'Document binding is inconsistent'},{status:409});
++      const [master,approver]=await Promise.all([buildContractDocument(draft.source_snapshot),draft.approved_by?svc.User.get(draft.approved_by):Promise.resolve(null)]);
++      return Response.json({contract,document:{...draft,master_blocks:master.blocks,approved_by_name:approver?.full_name||'Name unavailable',target_contract_version:contract.version_number||1,pdf_url:contract.contract_file_url,read_only:true}});
++    }
++    const [page,current,drafts]=await Promise.all([
++      svc.Contract.filter({show_id:show.id},{sort:'-version_number',limit:20,...(body.cursor?{cursor:body.cursor}:{})}),
++      show.contract_id?svc.Contract.get(show.contract_id):Promise.resolve(null),
++      svc.ContractDraft.filter({show_id:show.id},{sort:'-updated_date',limit:1})
++    ]);
++    if(current&&current.show_id!==show.id)return Response.json({error:'Current revision binding is inconsistent'},{status:409});
++    const latest=drafts.items[0]||null,records=[...page.items,...(current&&!page.items.some(c=>c.id===current.id)?[current]:[])];
++    const linkedIds=records.filter(c=>c.draft_id).map(c=>c.id);
++    const linked=linkedIds.length?(await svc.ContractDraft.filter({show_id:show.id,contract_id:{$in:linkedIds},status:{$in:['generated','generating']}},{limit:21,fields:['approved_by','approved_at','generated_at']})).items:[];
++    const users=[...new Set([...records.map(c=>c.created_by_id),...linked.map(d=>d.approved_by),latest?.approved_by].filter(id=>typeof id==='string'&&/^[a-f0-9]{24}$/i.test(id)))];
++    const names=users.length?await svc.User.filter({id:{$in:users}}):[];
++    const name=id=>names.find(u=>u.id===id)?.full_name||(typeof id==='string'&&id.startsWith('service_')?'Service automation':'Name unavailable');
++    const decorate=c=>{if(!c)return null;const d=linked.find(d=>d.id===c.draft_id);return {...c,created_by_name:name(c.created_by_id),approved_by_name:d?name(d.approved_by):null,approved_at:d?.approved_at||null,generated_at:d?.generated_at||null};};
++    const draft=latest?{id:latest.id,status:latest.status,parent_draft_id:latest.parent_draft_id,contract_id:latest.contract_id,revision_no:latest.revision_no,target_contract_version:latest.target_contract_version||1,approved_at:latest.approved_at,approved_by_name:name(latest.approved_by),generated_at:latest.generated_at}:null;
++    return Response.json({current:decorate(current),draft,items:page.items.map(decorate),next_cursor:page.next_cursor,has_more:page.has_more});
++  }catch(error){return Response.json({error:error.message},{status:error.status||500});}
++}
+\ No newline at end of file

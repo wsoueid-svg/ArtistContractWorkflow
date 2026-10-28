@@ -1,0 +1,66 @@
+{
+  "name": "ContractAuditLog",
+  "type": "object",
+  "properties": {
+    "contract_id": {
+      "type": "string",
+      "description": "ID of the contract being signed"
+    },
+    "user_id": {
+      "type": "string",
+      "description": "User ID who performed the e-signature"
+    },
+    "user_email": {
+      "type": "string",
+      "description": "Email of the signing user"
+    },
+    "user_name": {
+      "type": "string",
+      "description": "Full name of the signing user"
+    },
+    "ip_address": {
+      "type": "string",
+      "description": "IP address captured at time of signature"
+    },
+    "contract_hash": {
+      "type": "string",
+      "description": "SHA-256 hash of the contract PDF content at signing time"
+    },
+    "action": {
+      "type": "string",
+      "enum": [
+        "signed",
+        "approved",
+        "rejected",
+        "revoked"
+      ],
+      "default": "signed",
+      "description": "Type of signing action"
+    },
+    "signed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp of the e-signature"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Optional signer notes or comments"
+    },
+    "signature_method": {
+      "type": "string",
+      "enum": [
+        "e_sign",
+        "manual_signed",
+        "revert_signed"
+      ],
+      "description": "How the action was recorded: native e-sign, manual signature override, or a signature revert."
+    }
+  },
+  "required": [
+    "contract_id",
+    "user_id",
+    "contract_hash",
+    "action",
+    "signed_at"
+  ]
+}

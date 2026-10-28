@@ -1,0 +1,120 @@
+{
+  "name": "ContractDraft",
+  "type": "object",
+  "properties": {
+    "show_id": {
+      "type": "string"
+    },
+    "contract_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "template_id": {
+      "type": "string"
+    },
+    "template_key": {
+      "type": "string"
+    },
+    "legal_entity_id": {
+      "type": "string"
+    },
+    "master_content_version": {
+      "type": "string"
+    },
+    "source_snapshot": {
+      "type": "object"
+    },
+    "blocks": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "content_hash": {
+      "type": "string"
+    },
+    "revision_no": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "parent_draft_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "editing",
+        "approved",
+        "generating",
+        "generated"
+      ]
+    },
+    "approved_by": {
+      "type": "string"
+    },
+    "approved_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_by": {
+      "type": "string"
+    },
+    "lock_token": {
+      "type": "string"
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "target_contract_version": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "show_id",
+    "template_id",
+    "template_key",
+    "legal_entity_id",
+    "master_content_version",
+    "source_snapshot",
+    "blocks",
+    "content_hash",
+    "revision_no",
+    "status",
+    "lock_token"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "data.approved_by": "{{user.id}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

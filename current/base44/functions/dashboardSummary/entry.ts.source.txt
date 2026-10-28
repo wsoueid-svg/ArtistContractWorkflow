@@ -1,0 +1,289 @@
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
+
+/**
+ * Dashboard Summary — returns pre-aggregated data for the Home page in a single call.
+ * Replaces 6+ individual entity queries with one optimized backend call.
+ *
+ * P2-C4 fixes:
+ *  - FinancialRecord.list('-date', 500) replaced with a strict date-range filter
+ *    so no current-month records are silently dropped due to sort truncation.
+ *  - Finance snapshot block uses base44.asServiceRole to avoid RLS field-stripping
+ *    on Show.guarantee_fee after Phase 1 schema changes (P2-M2 fix).
+ *  - SDK bumped to 0.8.31.
+ *
+ * Returns:
+ *  - kpis: { artist_count, upcoming_shows, pending_tasks, upcoming_releases }
+ *  - itinerary: shows in next 14 days with logistics snapshot
+ *  - action_items: pending approvals, overdue tasks, unsigned contracts, shows missing logistics
+ *  - finance_snapshot: this-month income/expense/commission (finance users only)
+ */
+Deno.serve(async (req) => {
+  try {
+    const base44 = createClientFromRequest(req);
+    const user = await base44.auth.me();
+    if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+
+    // ZERO-TRUST: org context comes exclusively from the server-side JWT token.
+    // Client-provided org parameters are rejected to prevent tenant leakage.
+    await req.json().catch(() => ({}));
+    const activeOrg = user.active_org || 'elevate';
+
+    const now = new Date();
+    const todayStr  = now.toISOString().split('T')[0];
+    const in14Days  = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
+    const in14Str   = in14Days.toISOString().split('T')[0];
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+    const monthEnd   = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
+
+    const canViewFinances = user.role === 'admin' ||
+      user.finance_role === 'Finance Manager' ||
+      user.finance_role === 'Finance Viewer' ||
+      user.analog_role === 'admin' ||
+      user.analog_role === 'agent';
+
+    // Parallel fetches — user-scoped for non-finance data (RLS applies correctly here)
+    const [
+      artists,
+      upcomingShows,
+      myPendingTasks,
+      upcomingReleases,
+      pendingApprovals,
+      sentContracts,
+      stubArtists,
+    ] = await Promise.all([
+      base44.entities.Artist.filter({ status: ['active', 'on_tour', 'in_studio'] }, 'name', 200),
+      base44.asServiceRole.entities.Show.list('-date', 500),
+      base44.entities.Task.filter({ status: ['todo', 'in_progress', 'blocked'] }, '-due_date', 200),
+      base44.entities.Release.filter({ status: 'upcoming' }, 'release_date', 50),
+      base44.entities.Approval.filter({ status: 'pending' }, '-created_date', 50),
+      base44.entities.Contract.filter({ status: { $in: ['SENT', 'sent'] } }, '-created_date', 50),
+      base44.entities.Artist.filter({ org: 'analog' }, 'name', 500),
+    ]);
+
+    // Org-level filter with cross-sharing:
+    // - Analog: sees all analog_push shows + artists with org 'analog' or 'both'
+    // - Elevate: sees non-analog_push shows + analog_push shows on elevate-owned artists + artists with org 'elevate' only
+    // Fallback: if org field is missing, use is_aboss_import as legacy proxy
+    const getArtistOrg = (a) => a.org || (a.is_aboss_import ? 'analog' : 'elevate');
+    const stubArtistIds = new Set(stubArtists.map(a => a.id));
+    const orgShows = activeOrg === 'analog'
+      ? upcomingShows.filter(s => s.data_source === 'analog_push')
+      : upcomingShows.filter(s => s.data_source !== 'analog_push' || !stubArtistIds.has(s.artist_id));
+    const orgArtists = activeOrg === 'analog'
+      ? [...new Map(stubArtists.concat(artists).filter(a => { const o = getArtistOrg(a); return o === 'analog' || o === 'both'; }).map(a => [a.id, a])).values()]
+      : artists.filter(a => { const o = getArtistOrg(a); return o === 'elevate' || o === 'both'; });
+
+    // Filter upcoming shows for itinerary (next 14 days)
+    const itineraryShows = orgShows
+      .filter(s => {
+        if (s.status === 'cancelled') return false;
+        const d = s.date;
+        return d >= todayStr && d <= in14Str;
+      })
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .slice(0, 10)
+      .map(s => ({
+        id: s.id,
+        event_name: s.event_name,
+        date: s.date,
+        time: s.time,
+        venue: s.venue,
+        city: s.city,
+        country: s.country,
+        status: s.status,
+        artist_id: s.artist_id,
+        // Monetary API payloads expose integer cents only.
+        guarantee_fee_cents: canViewFinances ? Math.round(Number(s.guarantee_fee || 0) * 100) : undefined,
+        currency: s.currency,
+        logistics: s.logistics ? {
+          stage_time: s.logistics.stage_time,
+          flight_data: s.logistics.flight_data ? {
+            airline: s.logistics.flight_data.airline,
+            flight_number: s.logistics.flight_data.flight_number,
+          } : null,
+          hotel_data: s.logistics.hotel_data ? {
+            hotel_name: s.logistics.hotel_data.hotel_name,
+          } : null,
+        } : null,
+      }));
+
+    // All confirmed upcoming shows for stats
+    const confirmedUpcoming = orgShows.filter(s =>
+      s.status === 'confirmed' && s.date >= todayStr
+    );
+
+    // My tasks scoped to current user
+    const myTasks = myPendingTasks.filter(t =>
+      t.assigned_to && (t.assigned_to === user.id || t.assigned_to === user.email)
+    );
+
+    // Upcoming releases count
+    const releasesUpcoming = upcomingReleases.filter(r => r.release_date >= todayStr);
+
+    // Action items
+    const actionItems = [];
+
+    // Overdue tasks (mine)
+    myPendingTasks
+      .filter(t => {
+        const isMyTask = t.assigned_to === user.id || t.assigned_to === user.email;
+        return isMyTask && t.due_date && t.due_date < todayStr;
+      })
+      .slice(0, 5)
+      .forEach(t => actionItems.push({
+        type: 'overdue_task',
+        id: t.id,
+        label: t.title,
+        sublabel: `Overdue · ${t.priority || 'medium'}`,
+        priority: t.priority === 'urgent' ? 0 : 1,
+        link_path: 'Tasks',
+      }));
+
+    // Pending approvals
+    pendingApprovals.slice(0, 5).forEach(a => {
+      const isLate = a.sla_deadline && a.sla_deadline < now.toISOString();
+      actionItems.push({
+        type: 'approval',
+        id: a.id,
+        artist_id: a.artist_id,
+        label: `${(a.approval_type || 'Item').replace('_', ' ')} approval`,
+        sublabel: isLate ? 'SLA overdue' : 'Pending review',
+        priority: isLate ? 0 : 2,
+        link_path: 'ApprovalInbox',
+      });
+    });
+
+    // Unsigned contracts
+    sentContracts.slice(0, 5).forEach(c => actionItems.push({
+      type: 'contract',
+      id: c.id,
+      artist_id: c.artist_id,
+      label: c.title,
+      sublabel: `Unsigned · ${c.type || 'contract'}`,
+      priority: 3,
+      link_path: c.show_id ? `ShowDetail?id=${encodeURIComponent(c.show_id)}&tab=contract` : 'Contracts',
+    }));
+
+    // Shows within 30 days missing logistics/contract/invoice
+    orgShows
+      .filter(s => {
+        if (s.status !== 'confirmed') return false;
+        if (s.date < todayStr) return false;
+        const daysUntil = Math.ceil((new Date(s.date) - now) / 86400000);
+        if (daysUntil > 30) return false;
+        const missingFlight   = !s.logistics?.flight_link && !s.logistics?.flight_data?.airline;
+        const missingHotel    = !s.logistics?.hotel_link  && !s.logistics?.hotel_data?.hotel_name;
+        const missingContract = !s.contract_id && !s.contract_url;
+        const missingInvoice  = !s.invoice_sent;
+        return missingFlight || missingHotel || missingContract || missingInvoice;
+      })
+      .slice(0, 5)
+      .forEach(s => {
+        const missing = [];
+        if (!s.logistics?.flight_link && !s.logistics?.flight_data?.airline) missing.push('flight');
+        if (!s.logistics?.hotel_link  && !s.logistics?.hotel_data?.hotel_name) missing.push('hotel');
+        if (!s.contract_id && !s.contract_url) missing.push('contract');
+        if (!s.invoice_sent) missing.push('invoice');
+        actionItems.push({
+          type: 'show_missing',
+          id: s.id,
+          label: s.event_name,
+          sublabel: `Missing: ${missing.join(', ')}`,
+          priority: 1,
+          link_path: `ShowDetail?id=${s.id}`,
+        });
+      });
+
+    actionItems.sort((a, b) => a.priority - b.priority);
+
+    // ── Finance snapshot — finance users only ──────────────────────────────────
+    let financeSnapshot = null;
+    if (canViewFinances) {
+
+      // P2-C4: Strict date-range filter — no more top-500 sort truncation.
+      // P2-M2: Use asServiceRole so Show.guarantee_fee is not RLS-stripped.
+      const [monthFinances, monthShowsRaw, monthContracts] = await Promise.all([
+        base44.asServiceRole.entities.FinancialRecord.filter(
+          { date: { $gte: monthStart, $lte: monthEnd } },
+          '-date',
+          1000
+        ),
+        base44.asServiceRole.entities.Show.filter(
+          { status: ['confirmed', 'completed'] },
+          '-date',
+          200
+        ),
+        base44.asServiceRole.entities.Contract.list('-created_date', 200),
+      ]);
+
+      const monthShows = monthShowsRaw.filter(
+        s => s.date >= monthStart && s.date <= monthEnd
+      );
+
+      // Index contracts by id for O(1) show lookup
+      const contractById = new Map(monthContracts.map(c => [c.id, c]));
+
+      let expectedCommission = 0;
+      for (const s of monthShows) {
+        const feeEur = s.guarantee_fee_eur != null
+          ? s.guarantee_fee_eur
+          : (s.currency || 'EUR') === 'EUR' ? (s.guarantee_fee || 0) : 0;
+        const contract = s.contract_id ? contractById.get(s.contract_id) : null;
+        expectedCommission += Math.round(feeEur * 100 * ((contract?.commission_rate || 15) / 100));
+      }
+
+      // P2-C4: monthFinances is now strictly scoped to this month — no client-side date filter needed.
+      const monthIncome = monthFinances
+        .filter(f => f.type === 'income')
+        .reduce((sum, f) => sum + (f.amount_base_eur ?? (f.currency === 'EUR' ? f.amount : 0)), 0);
+
+      const monthExpenses = monthFinances
+        .filter(f => f.type === 'expense')
+        .reduce((sum, f) => sum + (f.amount_base_eur ?? (f.currency === 'EUR' ? f.amount : 0)), 0);
+
+      financeSnapshot = {
+        expected_commission_cents: Math.round(expectedCommission),
+        month_income_cents:        Math.round(monthIncome),
+        month_expenses_cents:      Math.round(monthExpenses),
+        net_flow_cents:            Math.round(monthIncome + expectedCommission - monthExpenses),
+        show_count:          monthShows.length,
+      };
+    }
+
+    // Upcoming releases for mini widget
+    const upcomingReleasesSlice = upcomingReleases
+      .filter(r => r.release_date >= todayStr)
+      .slice(0, 4)
+      .map(r => ({
+        id: r.id,
+        title: r.title,
+        artist_id: r.artist_id,
+        external_artist_name: r.external_artist_name,
+        release_date: r.release_date,
+        cover_art_url: r.cover_art_url,
+        stage: r.stage,
+        status: r.status,
+      }));
+
+    return Response.json({
+      kpis: {
+        artist_count:      orgArtists.length,
+        upcoming_shows:    confirmedUpcoming.length,
+        pending_tasks:     myTasks.length,
+        upcoming_releases: releasesUpcoming.length,
+      },
+      itinerary:          itineraryShows,
+      action_items:       actionItems.slice(0, 10),
+      upcoming_releases:  upcomingReleasesSlice,
+      finance_snapshot:   financeSnapshot,
+      artists: orgArtists.map(a => ({
+        id: a.id, name: a.name, stage_name: a.stage_name,
+        photo_url: a.photo_url, status: a.status,
+      })),
+    });
+
+  } catch (error) {
+    console.error('dashboardSummary error:', error.message);
+    return Response.json({ error: error.message }, { status: 500 });
+  }
+});

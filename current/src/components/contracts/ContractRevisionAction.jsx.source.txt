@@ -1,0 +1,15 @@
+import { useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { base44 } from '@/api/base44Client';
+import { Button } from '@/components/ui/button';
+import ContractEditorModal from '@/components/contract-lab/ContractEditorModal';
+export default function ContractRevisionAction({showId,contractId,onChanged}) {
+  const [open,setOpen]=useState(false),client=useQueryClient();
+  const {data,isLoading,error}=useQuery({queryKey:['contract-revisions',showId,'preview'],queryFn:async()=>{const [response,show]=await Promise.all([base44.functions.invoke('getContractRevisionView',{show_id:showId}),base44.entities.Show.get(showId)]);return {...response.data,show};},enabled:!!showId,retry:false});
+  const current=data?.current,draft=data?.draft,pending=draft&&['editing','approved'].includes(draft.status)&&draft.parent_draft_id===current?.draft_id;
+  if(!showId || isLoading || error || current?.id!==contractId)return null;
+  const locked=['SIGNED','DISPATCHING'].includes(current.status)||current.dispatch_lock||current.generation_lock;
+  const issued=['SENT','RETURNED'].includes(current.status);
+  const refresh=()=>{client.invalidateQueries({queryKey:['contract-revisions',showId]});client.invalidateQueries({queryKey:['show',showId]});onChanged?.();};
+  return <div className="space-y-2"><Button variant="outline" disabled={!!locked||!current.draft_id} onClick={()=>setOpen(true)}>{locked?'Contract locked':pending?'Continue revision':issued?'Create Amendment':'Edit / revise contract'}</Button>{!current.draft_id&&<p className="text-sm text-muted-foreground">This uploaded contract has no editable document snapshot.</p>}{open&&<ContractEditorModal show={data.show} open draftId={pending?draft.id:null} cloneId={pending?null:contractId} forceAmendment={issued} onClose={()=>setOpen(false)} onGenerated={refresh}/>}</div>;
+}

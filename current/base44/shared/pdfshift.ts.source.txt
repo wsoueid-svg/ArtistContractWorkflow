@@ -1,0 +1,63 @@
+/**
+ * PDFShift HTML-to-PDF client.
+ *
+ * Replaces the previous jsPDF renderer: Chrome headless gives us real
+ * pagination, @page margins, web fonts and table layout, which the manual
+ * coordinate-based renderer could not provide.
+ *
+ * Shared by every document generator that needs print-fidelity output.
+ */
+import { secrets } from 'base44:runtime';
+
+const PDFSHIFT_ENDPOINT = 'https://api.pdfshift.io/v3/convert/pdf';
+
+export const MAX_PDF_BYTES = 10 * 1024 * 1024;
+
+/**
+ * Convert an HTML string to PDF bytes.
+ * Throws an Error carrying `status` when PDFShift rejects the request.
+ */
+export async function htmlToPdf(html: string, opts: { footerHtml?: string; headerHtml?: string; sandbox?: boolean } = {}) {
+  const apiKey = secrets.get('PDFSHIFT_API_KEY');
+  if (!apiKey) {
+    const err: any = new Error('PDFSHIFT_API_KEY is not configured — cannot render the contract PDF.');
+    err.status = 500;
+    throw err;
+  }
+
+  const payload: Record<string, unknown> = {
+    source: html,
+    format: 'A4',
+    landscape: false,
+    use_print: true,
+  };
+  if (opts.sandbox) payload.sandbox = true;
+  if (opts.headerHtml) payload.header = { source: opts.headerHtml, height: 100 };
+  if (opts.footerHtml) {
+    payload.footer = { source: opts.footerHtml, height: 40 };
+  }
+
+  const response = await fetch(PDFSHIFT_ENDPOINT, {
+    method: 'POST',
+    headers: {
+      'X-API-Key': apiKey,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const detail = await response.text().catch(() => '');
+    const err: any = new Error(`PDFShift conversion failed (${response.status}): ${detail.slice(0, 400)}`);
+    err.status = 502;
+    throw err;
+  }
+
+  const bytes = await response.arrayBuffer();
+  if (bytes.byteLength > MAX_PDF_BYTES) {
+    const err: any = new Error('Generated PDF exceeds the 10MB limit');
+    err.status = 413;
+    throw err;
+  }
+  return bytes;
+}

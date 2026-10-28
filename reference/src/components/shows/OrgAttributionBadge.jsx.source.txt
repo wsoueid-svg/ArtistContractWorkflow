@@ -1,0 +1,69 @@
+import React from 'react';
+
+/**
+ * Canonical org attribution badge.
+ * Elevate = black fill, white text
+ * Analog-A = yellow-400 fill, black text
+ */
+export default function OrgAttributionBadge({ org, className = '' }) {
+  if (!org) return null;
+
+  const isAnalog = org === 'analog-a' || org === 'analog_push';
+  const isElevate = org === 'elevate' || org === 'elevate_owned';
+
+  if (isAnalog) {
+    return (
+      <span
+        className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold ${className}`}
+        style={{ backgroundColor: '#FACC15', color: '#000000' }}
+      >
+        Analog-A
+      </span>
+    );
+  }
+
+  if (isElevate) {
+    return (
+      <span
+        className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold ${className}`}
+        style={{ backgroundColor: '#000000', color: '#FFFFFF' }}
+      >
+        Elevate
+      </span>
+    );
+  }
+
+  // Fallback for unknown org values
+  return (
+    <span
+      className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-gray-200 text-gray-700 ${className}`}
+    >
+      {org}
+    </span>
+  );
+}
+
+/**
+ * Small "Last updated by [Org badge] · [date]" attribution line
+ */
+export function LastModifiedAttribution({ orgId, userId, timestamp, className = '' }) {
+  if (!orgId && !timestamp) return null;
+
+  const formattedDate = timestamp
+    ? new Date(timestamp).toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    : null;
+
+  return (
+    <div className={`flex items-center gap-1.5 text-xs text-gray-400 ${className}`}>
+      <span>Last updated by</span>
+      {orgId && <OrgAttributionBadge org={orgId} />}
+      {formattedDate && <span>· {formattedDate}</span>}
+    </div>
+  );
+}

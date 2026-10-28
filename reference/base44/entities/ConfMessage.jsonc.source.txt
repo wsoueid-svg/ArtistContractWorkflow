@@ -1,0 +1,95 @@
+{
+  "name": "ConfMessage",
+  "type": "object",
+  "rls": {
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  },
+  "properties": {
+    "dedupe_key": {
+      "type": "string",
+      "indexed": true,
+      "unique": true
+    },
+    "conf_thread_id": {
+      "type": "string",
+      "indexed": true
+    },
+    "gmail_thread_id": {
+      "type": "string",
+      "indexed": true
+    },
+    "gmail_message_id": {
+      "type": "string",
+      "indexed": true
+    },
+    "rfc_message_id": {
+      "type": "string",
+      "indexed": true
+    },
+    "mailbox_owner_user_id": {
+      "type": "string",
+      "indexed": true
+    },
+    "from_email": {
+      "type": "string"
+    },
+    "to_emails": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "cc_emails": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "subject": {
+      "type": "string"
+    },
+    "sent_at": {
+      "type": "string",
+      "format": "date-time",
+      "indexed": true
+    },
+    "snippet": {
+      "type": "string"
+    },
+    "body_text_uri": {
+      "type": "string"
+    },
+    "body_html_uri": {
+      "type": "string"
+    },
+    "has_html": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "dedupe_key",
+    "conf_thread_id",
+    "gmail_message_id",
+    "mailbox_owner_user_id"
+  ]
+}

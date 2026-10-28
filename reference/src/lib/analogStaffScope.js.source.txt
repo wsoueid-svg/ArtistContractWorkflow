@@ -1,0 +1,19 @@
+export const resolveAnalogStaffScope = (user, agent) => {
+  const isAdmin = user?.role === 'admin';
+  const type = agent?.agent_type || null;
+  return {
+    isAdmin,
+    myAgentId: agent?.id || null,
+    isBooker: type === 'booking' || type === 'both',
+    isLogistics: type === 'logistics' || type === 'both',
+    isBoth: type === 'both',
+  };
+};
+
+export const agentTouchesShow = (show, agentId) => Boolean(
+  agentId && (
+    (show.logistics_agent_ids || []).includes(agentId) ||
+    show.logistics_agent_id === agentId ||
+    (show.responsible_agent_ids || []).includes(agentId)
+  )
+);

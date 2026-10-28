@@ -1,0 +1,25 @@
+import { AccessError } from './assertShowAccess.ts';
+export async function currentContract(base44, show) {
+  const svc=base44.asServiceRole.entities;
+  const page=await svc.Contract.filter({show_id:show.id},{sort:'-version_number',limit:1});
+  const latest=page.items[0]||null;
+  if(show.contract_id) {
+    const item=await svc.Contract.get(show.contract_id);
+    if(item?.show_id!==show.id || Number(item.version_number||1)<Number(latest?.version_number||1))throw new AccessError('The show contract link is stale. Reopen the latest revision.',409);
+    return item;
+  }
+  return latest;
+}
+export function assertContractMutable(contract, amendment=false) {
+  if(contract?.status==='DISPATCHING'||contract?.dispatch_lock) throw new AccessError('Contract is dispatching. Wait until the existing dispatch lock clears.',409);
+  if(contract?.status==='SIGNED') throw new AccessError('Signed contracts cannot be edited or regenerated. Amendments to signed contracts are out of scope.',409);
+  if(contract?.generation_lock) throw new AccessError('Contract generation is in progress. Wait before saving or regenerating.',409);
+  if(['SENT','RETURNED'].includes(contract?.status)&&!amendment) throw new AccessError('This issued contract is immutable. Create Amendment to start a new draft revision.',409);
+}
+export async function validateParent(base44, show, current, parentId) {
+  if(!parentId) return null;
+  const parent=await base44.asServiceRole.entities.ContractDraft.get(parentId);
+  if(parent.show_id!==show.id||parent.status!=='generated') throw new AccessError('A new revision must be cloned from a generated draft of this Show.',409);
+  if(current?.draft_id!==parent.id) throw new AccessError('The current contract changed. Reopen its latest revision.',409);
+  return parent;
+}

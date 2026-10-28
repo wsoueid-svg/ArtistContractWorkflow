@@ -1,0 +1,141 @@
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
+import { fetchEurPerCurrencyUnit } from '../../shared/currencyExchange.ts';
+
+/**
+ * Entity automation handler for FinancialRecord, Invoice, Show, and Contract.
+ * Fetches historical ECB exchange rate from Frankfurter API and locks it on the record.
+ * 
+ * ZERO-TRUST: Backend is sole authority for exchange rate calculation.
+ * NO FLOATS: All math uses string-based rate with precise multiplication.
+ */
+
+
+
+Deno.serve(async (req) => {
+  try {
+    const base44 = createClientFromRequest(req);
+    const body = await req.json();
+
+    const event = body?.event;
+    const data = body?.data;
+    const oldData = body?.old_data;
+
+    if (!event || !data) {
+      return Response.json({ skipped: true, reason: 'No event or data' });
+    }
+
+    // Only process create and update
+    if (event.type !== 'create' && event.type !== 'update') {
+      return Response.json({ skipped: true, reason: `Event type: ${event.type}` });
+    }
+
+    const entityName = event.entity_name;
+    const entityId = event.entity_id;
+
+    // Determine the fields based on entity type
+    let amountField, currencyField, dateField, eurAmountField, rateField;
+
+    if (entityName === 'FinancialRecord') {
+      amountField = 'amount';
+      currencyField = 'currency';
+      dateField = 'date';
+      eurAmountField = 'amount_base_eur';
+      rateField = 'exchange_rate_locked';
+    } else if (entityName === 'Invoice') {
+      amountField = 'total';
+      currencyField = 'currency';
+      dateField = 'issue_date';
+      eurAmountField = 'amount_base_eur';
+      rateField = 'exchange_rate_locked';
+    } else if (entityName === 'Show') {
+      amountField = 'guarantee_fee';
+      currencyField = 'currency';
+      dateField = 'date';
+      eurAmountField = 'guarantee_fee_eur';
+      rateField = 'exchange_rate_locked';
+    } else if (entityName === 'Contract') {
+      amountField = 'value';
+      currencyField = 'currency';
+      dateField = 'start_date';
+      eurAmountField = 'value_base_eur';
+      rateField = 'exchange_rate_locked';
+    } else {
+      return Response.json({ skipped: true, reason: `Unsupported entity: ${entityName}` });
+    }
+
+    const amount = data[amountField];
+    const currency = data[currencyField] || 'EUR';
+    const date = data[dateField];
+
+    // Skip if no amount or no date
+    if (!amount && amount !== 0) {
+      return Response.json({ skipped: true, reason: 'No amount' });
+    }
+
+    // Skip if rate already locked and amount/currency/date haven't changed
+    if (event.type === 'update' && oldData) {
+      const amountChanged = data[amountField] !== oldData[amountField];
+      const currencyChanged = (data[currencyField] || 'EUR') !== (oldData[currencyField] || 'EUR');
+      const dateChanged = data[dateField] !== oldData[dateField];
+      const alreadyHasRate = data[rateField] && data[eurAmountField];
+
+      if (!amountChanged && !currencyChanged && !dateChanged && alreadyHasRate) {
+        return Response.json({ skipped: true, reason: 'No financial fields changed' });
+      }
+    }
+
+    let exchangeRate;
+    let amountEur;
+
+    if (!Number.isSafeInteger(Number(amount))) {
+      return Response.json({ error: `${entityName}.${amountField} must be stored as integer cents.` }, { status: 422 });
+    }
+
+    if (currency === 'EUR') {
+      exchangeRate = '1.000000';
+      amountEur = Number(amount);
+    } else {
+      // Stored convention: EUR per one native-currency unit.
+      // Foreign → EUR multiplies; EUR → foreign divides.
+      const rateDate = date || new Date().toISOString().split('T')[0];
+      const rateToEur = await fetchEurPerCurrencyUnit(rateDate, currency);
+      exchangeRate = rateToEur.toFixed(6);
+      amountEur = Math.round(Number(amount) * rateToEur);
+    }
+
+    // Build update payload
+    const updatePayload = {
+      [rateField]: exchangeRate,
+      [eurAmountField]: amountEur,
+    };
+
+    // Also set recorded_at for FinancialRecord if not already set
+    if (entityName === 'FinancialRecord' && !data.recorded_at) {
+      updatePayload.recorded_at = new Date().toISOString();
+    }
+
+    // Update the entity with locked rate. If the record was deleted between the
+    // trigger and now (fast create→delete during imports), treat it as a skip
+    // instead of a hard failure.
+    try {
+      await base44.asServiceRole.entities[entityName].update(entityId, updatePayload);
+    } catch (updateError) {
+      if (String(updateError?.message || '').includes('404') || String(updateError?.status) === '404') {
+        return Response.json({ skipped: true, reason: 'Entity deleted before rate lock could be written' });
+      }
+      throw updateError;
+    }
+
+    return Response.json({
+      success: true,
+      entity: entityName,
+      id: entityId,
+      currency,
+      exchange_rate_locked: exchangeRate,
+      [eurAmountField]: amountEur,
+    });
+  } catch (error) {
+    console.error('processFinancialCurrency error:', error.message);
+    return Response.json({ error: error.message }, { status: 500 });
+  }
+});

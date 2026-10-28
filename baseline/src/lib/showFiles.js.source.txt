@@ -1,0 +1,39 @@
+import { base44 } from '@/api/base44Client';
+
+/** SD5 type filter — single source of truth for Show Files chips. */
+export const SHOW_FILE_TYPES = ['Contract', 'Rider', 'Visa', 'PoP', 'Invoice', 'Other'];
+
+const DOC_TYPE_MAP = { visa: 'Visa', contract: 'Contract' };
+const nameFromUrl = url => decodeURIComponent(String(url || '').split('?')[0].split('/').pop() || 'File');
+
+export const isFinanceUser = user => !!user && (user.role === 'admin' || user.is_cfo === true || ['Finance Manager', 'Finance Viewer'].includes(user.finance_role));
+
+/** PoP is visible to finance, to agents assigned to the show (they own the advancing milestone), and to its uploader. */
+export const canSeePop = (show, user, agentId) => isFinanceUser(user)
+  || (user && show.advance_pop_uploaded_by_id === user.id)
+  || (agentId && [...(show.responsible_agent_ids || []), ...(show.logistics_agent_ids || []), show.logistics_agent_id].includes(agentId));
+
+export function buildShowFiles({ show, documents = [], contracts = [], memos = [], invoices = [], showPop }) {
+  const rows = [];
+  const add = (key, name, type, date, url) => url && rows.push({ key, name, type, date, url });
+  documents.forEach(d => add(`doc-${d.id}`, d.file_name, /rider/i.test(d.file_name) ? 'Rider' : DOC_TYPE_MAP[d.document_type] || 'Other', d.created_date, d.file_url));
+  contracts.forEach(c => {
+    add(`ct-${c.id}`, c.title || 'Contract PDF', 'Contract', c.created_date, c.contract_file_url);
+    add(`cts-${c.id}`, `${c.title || 'Contract'} (signed)`, 'Contract', c.signed_date || c.updated_date, c.signed_contract_url);
+  });
+  memos.forEach(m => {
+    add(`dm-${m.id}`, m.title || 'Deal memo', 'Other', m.created_date, m.memo_file_url);
+    add(`dms-${m.id}`, `${m.title || 'Deal memo'} (signed)`, 'Other', m.updated_date, m.signed_memo_url);
+  });
+  // Invoice attachments are already stripped server-side for non-finance callers.
+  invoices.forEach(inv => (inv.attachments_urls || []).forEach((url, i) => add(`inv-${inv.id}-${i}`, `${inv.invoice_number || 'Invoice'} · ${nameFromUrl(url)}`, 'Invoice', inv.issue_date || inv.created_date, url)));
+  add('visa', show.visa_file_name || 'Visa document', 'Visa', show.updated_date, show.visa_file_url);
+  if (showPop) add('pop', show.advance_pop_name || 'Proof of payment', 'PoP', show.updated_date, show.advance_pop_url);
+  return rows.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+}
+
+/** Opens a file; private URIs are exchanged for a short-lived signed URL first. */
+export async function openShowFile(url) {
+  const href = /^https?:\/\//.test(url) ? url : (await base44.integrations.Core.CreateFileSignedUrl({ file_uri: url })).signed_url;
+  window.open(href, '_blank', 'noopener');
+}

@@ -1,0 +1,83 @@
+{
+  "must_not_port_database_records": true,
+  "database_dump_included": false,
+  "staging_records_known_from_historical_evidence": [
+    {
+      "label": "STAGING • Fictional Autumn Session",
+      "source_id": "6acea5051de944196dbe5b02",
+      "evidence": "evidence/INCREMENT1_REPORT.md.source.txt"
+    },
+    {
+      "label": "Fictional Echo artist / Fictional Meridian Promotions contact / fictional booking and logistics agents",
+      "evidence": "evidence/INCREMENT1_REPORT.md.source.txt"
+    },
+    {
+      "label": "DEMO artist profiles (Velvet Circuit, Lunar Orchard, Amber Transit)",
+      "evidence": "conversation-history-only; not current database inventory"
+    },
+    {
+      "label": "DEMO • Wizard Save QA <timestamp>",
+      "evidence": "Temporary verification record created and deleted in the previous fix; no record is included."
+    }
+  ],
+  "staging_seed_code": {
+    "added_or_modified_tracked_seed_files": [],
+    "finding": "No new or changed tracked seed/fixture program was found in the clone diff. Historical setup was database/tool activity, not a portable runtime seeder.",
+    "inherited_utilities_do_not_run": [
+      "base44/functions/seedAnalogFinanceMasterTest/entry.ts",
+      "base44/functions/qaConfParser/entry.ts",
+      "base44/functions/qaFinanceSuite/entry.ts",
+      "base44/functions/qaGenerateShowFinancialDrafts/entry.ts"
+    ],
+    "inherited_pdf_smoke_test": {
+      "file": "base44/functions/generateSmartContract/entry.ts",
+      "present_before_clone_changes": true,
+      "action": "Diagnostic sample branch is retained verbatim; do not invoke it during integration or treat it as a migration."
+    }
+  },
+  "optional_independent_changes": [
+    {
+      "path": "package-lock.json",
+      "classification": "optional-platform-package-update",
+      "action": "exclude-from-default-contract-integration-review-separately"
+    },
+    {
+      "path": "package.json",
+      "classification": "optional-platform-package-update",
+      "action": "exclude-from-default-contract-integration-review-separately"
+    },
+    {
+      "path": "src/components/artists/ArtistOnboardingWizard.jsx",
+      "classification": "optional-independent-artist-repair",
+      "action": "exclude-from-default-contract-integration-review-separately"
+    },
+    {
+      "path": "src/components/contract-lab/INCREMENT1_REPORT.md",
+      "classification": "historical-evidence-not-runtime",
+      "action": "read-evidence-only"
+    },
+    {
+      "path": "src/components/contract-lab/WORKFLOW_MAP.md",
+      "classification": "historical-evidence-not-runtime",
+      "action": "read-evidence-only"
+    },
+    {
+      "path": "src/pages/Artists.jsx",
+      "classification": "optional-independent-artist-repair",
+      "action": "exclude-from-default-contract-integration-review-separately"
+    }
+  ],
+  "nonportable_items": [
+    "staging app identifiers",
+    "fixture record identifiers",
+    "OAuth tokens and mailbox grants",
+    "secret values",
+    "generated private files",
+    "browser-local recovery storage",
+    "workflow activation state",
+    "staging LegalEntity/ContractTemplate record IDs"
+  ],
+  "review_not_automatic_exclusion": [
+    "User security-field guards are included for review because new contract permissions trust these fields. Do not silently omit them or blindly overwrite the destination User schema."
+  ]
+}

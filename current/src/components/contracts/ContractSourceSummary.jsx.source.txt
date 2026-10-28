@@ -1,0 +1,17 @@
+import { useOrg } from '@/lib/OrgContext';
+import { getContractualSetWindow } from '@/lib/showTiming';
+
+const date = value => value ? new Date(`${value}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Not set';
+const amount = (value, currency) => value == null || value === '' ? 'Not set' : `${currency} ${Number(value).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+export default function ContractSourceSummary({ show, fields, bookingFee }) {
+  const { activeOrg } = useOrg();
+  const path = activeOrg === 'analog' ? '/analogshowdetail' : '/showdetail';
+  const values = [['Artist', fields.artist_name || 'Not set'], ['Venue', show.venue || 'Not set'], ['Country', show.country || 'Not set'], ['Show date', date(show.date)], ['Contractual set window', getContractualSetWindow(show) || 'Not set'], ['Guarantee', amount(show.guarantee_fee, show.currency || 'EUR')], ['Booking fee', amount(bookingFee, show.currency || 'EUR')], ['Withholding tax', `${show.withholding_tax_rate ?? 0}%`]];
+  return <details className="border-b border-border pb-4" data-testid="contract-source-summary">
+    <summary className="cursor-pointer text-sm font-medium leading-relaxed">{show.event_name || 'Show'}<span className="mt-1 block text-sm font-normal text-muted-foreground">{date(show.date)} • Show and fee details</span></summary>
+    <dl className="mt-4 grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">{values.map(([label, value]) => <div key={label} className="min-w-0"><dt className="text-muted-foreground">{label}</dt><dd className="mt-1 break-words font-medium tabular-nums">{value}</dd></div>)}</dl>
+    <p className="mt-4 text-sm text-muted-foreground">These values come from the show, not this form. Payment amounts and due dates are calculated from the selected template in the document.</p>
+    <a className="mt-3 inline-flex min-h-11 items-center text-sm font-medium underline underline-offset-4" href={`${path}?id=${encodeURIComponent(show.id)}&tab=${activeOrg === 'analog' ? 'deal' : 'overview'}`} target="_blank" rel="noopener noreferrer">Edit show details in a new tab</a>
+  </details>;
+}

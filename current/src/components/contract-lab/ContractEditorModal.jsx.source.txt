@@ -1,0 +1,11 @@
+import { useState } from 'react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import ContractFillForm from '@/components/contracts/ContractFillForm';
+import '@/components/contract-lab/document.css';
+export default function ContractEditorModal({show,open,onClose,draftId=null,cloneId=null,forceAmendment=false,onGenerated}) {
+  const [documentMode,setDocumentMode]=useState(!!(draftId||cloneId));
+  return <Dialog open={open} onOpenChange={value=>{if(!value)onClose();}}><DialogContent className={documentMode?'contract-editor-dialog flex h-[100dvh] w-screen max-w-none flex-col gap-0 overflow-hidden rounded-none p-0 sm:h-[94dvh] sm:w-[94vw] sm:max-w-6xl sm:rounded-lg':'contract-editor-dialog flex max-h-[100dvh] flex-col overflow-hidden p-0 sm:max-w-2xl'}>
+    <DialogHeader className="sr-only"><DialogTitle>{cloneId?'Revise contract':'Contract document'}</DialogTitle><DialogDescription>Review, edit and approve this document before generating its PDF.</DialogDescription></DialogHeader>
+    <ContractFillForm show={show} initialDraftId={draftId} cloneContractId={cloneId} forceAmendment={!!cloneId||forceAmendment} onDocumentMode={setDocumentMode} onClose={onClose} onGenerated={onGenerated}/>
+  </DialogContent></Dialog>;
+}

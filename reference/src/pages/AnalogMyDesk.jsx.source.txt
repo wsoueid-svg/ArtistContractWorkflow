@@ -1,0 +1,87 @@
+import React, { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
+import useDeskScope from '@/hooks/useDeskScope';
+import { saveAnalogShow } from '@/lib/showSave';
+import { useOrg } from '@/lib/OrgContext';
+import ShowDrawer from '@/components/analog/ShowDrawer';
+import useTriageDeepLink from '@/hooks/useTriageDeepLink';
+import ConfThreadPreviewModal from '@/components/analog/ConfThreadPreviewModal';
+import DeskHeader from '@/components/dashboard/DeskHeader';
+import DeskModeToggle from '@/components/dashboard/DeskModeToggle';
+import MyCommissionCard from '@/components/dashboard/MyCommissionCard';
+import MyRosterCard from '@/components/dashboard/MyRosterCard';
+import RecentActivityCard from '@/components/dashboard/RecentActivityCard';
+import UnassignedConfCard from '@/components/dashboard/UnassignedConfCard';
+import MyShowsContractCard from '@/components/dashboard/MyShowsContractCard';
+import BookingFeeInvoiceCard from '@/components/dashboard/BookingFeeInvoiceCard';
+import MyTasksCard from '@/components/dashboard/MyTasksCard';
+import UpcomingShowsCard from '@/components/dashboard/UpcomingShowsCard';
+import RecentContractsCard from '@/components/dashboard/RecentContractsCard';
+import NoBookingAgentProfile from '@/components/dashboard/NoBookingAgentProfile';
+import SpanCard from '@/components/dashboard/SpanCard';
+import useDeskLayout from '@/hooks/useDeskLayout';
+import '@/components/design/desk-rows.css';
+
+const storedMode = () => { try { return sessionStorage.getItem('analog_desk_mode'); } catch { return null; } };
+
+export default function AnalogMyDesk() {
+  const navigate = useNavigate(), queryClient = useQueryClient();
+  const { activeOrg } = useOrg();
+  const [deskMode, setDeskMode] = useState(() => storedMode() || 'booking');
+  const desk = useDeskScope(deskMode);
+  const { user, myAgent, artists, artistMap, agentMap, agents, scopedShows, scopedContracts, scopedTasks, heroItems, kpis, invoiceByShow, contractByShow } = desk;
+  const modes = useMemo(() => {
+    const next = [];
+    if (desk.isBooker) next.push({ value: 'booking', label: 'Booking Desk' });
+    if (desk.isLogistics) next.push({ value: 'logistics', label: 'Logistics Desk' });
+    if (desk.isAdmin) next.push({ value: 'org', label: 'Org View' });
+    return next.length ? next : [{ value: 'booking', label: 'Booking Desk' }];
+  }, [desk.isBooker, desk.isLogistics, desk.isAdmin]);
+  useEffect(() => { if (!modes.some(mode => mode.value === deskMode)) setDeskMode(modes[0].value); }, [modes, deskMode]);
+  const changeMode = value => { setDeskMode(value); try { sessionStorage.setItem('analog_desk_mode', value); } catch { /* session storage unavailable */ } };
+  const [drawerOpen, setDrawerOpen] = useState(false), [initialThreadId, setInitialThreadId] = useState(null), [previewThreadId, setPreviewThreadId] = useState(null);
+  const closeDrawer = () => { setDrawerOpen(false); setInitialThreadId(null); };
+  useTriageDeepLink(threadId => { setInitialThreadId(threadId); setDrawerOpen(true); });
+  const handleSaveShow = async (form, operationToken) => { try { const id = await saveAnalogShow({ form, existingShow: null, artist: artistMap[form.artist_id], user, activeOrg, queryClient, operationToken }); closeDrawer(); if (id) navigate(`/analogshowdetail?id=${id}`); } catch (error) { toast.error('Could not create the show. Please try again.'); throw error; } };
+  const subtitle = `${new Date().toLocaleDateString('en-GB', { weekday: 'long', month: 'long', day: 'numeric' })} · ${kpis.shows} open show${kpis.shows === 1 ? '' : 's'}`;
+  const { layout, setSpan } = useDeskLayout(user);
+  const booking = deskMode === 'booking' && desk.isBooker, logistics = deskMode === 'logistics' && desk.isLogistics;
+
+  const modeLayout = layout[deskMode] || {};
+  // Plain render helper (not a component) so cards keep their identity across renders.
+  const s = (id, d, node, max = 3) => <SpanCard key={id} span={modeLayout[id] ?? d} max={max} onChange={span => setSpan(deskMode, id, span)}>{node}</SpanCard>;
+  const confCard = <UnassignedConfCard threads={desk.confThreads} isLoading={desk.confLoading} onPreview={setPreviewThreadId} onCreateFromThread={threadId => { setInitialThreadId(threadId); setDrawerOpen(true); }} />;
+
+  if (user && !myAgent && !desk.isAdmin) return <NoBookingAgentProfile />;
+
+  return <div className="studio-desk space-y-5"><DeskModeToggle modes={modes} value={deskMode} onChange={changeMode} logisticsUrgency={desk.logisticsUrgency} /><DeskHeader user={user} subtitle={subtitle} kpis={kpis} deskMode={deskMode} agents={agents} agentId={desk.agentId} onAgentChange={desk.setAgentId} />
+    {booking && <div className="grid grid-flow-row-dense grid-cols-1 gap-4 lg:grid-cols-2">
+      {s('commission', 1, <MyCommissionCard agentId={myAgent?.id} />, 2)}
+      {s('roster', 1, <MyRosterCard agentId={myAgent?.id} />, 2)}
+      {s('contracts', 1, <MyShowsContractCard shows={scopedShows} contractByShow={contractByShow} artistMap={artistMap} isLoading={desk.isLoading} title="My Shows • Contracts" />, 2)}
+      {s('invoices', 1, <BookingFeeInvoiceCard shows={scopedShows} invoiceByShow={invoiceByShow} artistMap={artistMap} canView={desk.canViewInvoices} />, 2)}
+      {s('activity', 1, <RecentActivityCard items={heroItems} title="Pick Up Where You Left Off" isLoading={desk.isLoading} />, 2)}
+      {s('upcoming', 1, <UpcomingShowsCard shows={scopedShows} artistMap={artistMap} agentMap={agentMap} contractByShow={contractByShow} title="Upcoming Shows I Manage" />, 2)}
+      {s('recentContracts', 1, <RecentContractsCard contracts={scopedContracts} artistMap={artistMap} />, 2)}
+    </div>}
+    {logistics && <div className="grid grid-flow-row-dense grid-cols-1 gap-4 lg:grid-cols-3">
+      {s('unassignedConf', 1, <div className="h-full rounded-2xl border-l-2 border-yellow-400">{confCard}</div>)}
+      {s('activity', 2, <RecentActivityCard items={heroItems} title="Recent Logistics Activity" isLoading={desk.isLoading} />)}
+      {s('contracts', 1, <MyShowsContractCard shows={scopedShows} contractByShow={contractByShow} artistMap={artistMap} isLoading={desk.isLoading} title="Pending Contracts" />)}
+      {s('upcoming', 2, <UpcomingShowsCard shows={scopedShows} artistMap={artistMap} agentMap={agentMap} contractByShow={contractByShow} title="Upcoming Shows I Manage" />)}
+      {s('tasks', 1, <MyTasksCard tasks={scopedTasks} artistMap={artistMap} />)}
+      {s('recentContracts', 2, <RecentContractsCard contracts={scopedContracts} artistMap={artistMap} />)}
+    </div>}
+    {deskMode === 'org' && <div className="grid grid-flow-row-dense grid-cols-1 gap-4 lg:grid-cols-3">
+      {s('unassignedConf', 1, confCard)}
+      {s('activity', 2, <RecentActivityCard items={heroItems} title="Recent Org Activity" isLoading={desk.isLoading} />)}
+      {s('contracts', 1, <MyShowsContractCard shows={scopedShows} contractByShow={contractByShow} artistMap={artistMap} isLoading={desk.isLoading} title="Contracts to Dispatch" />)}
+      {s('upcoming', 2, <UpcomingShowsCard shows={scopedShows} artistMap={artistMap} agentMap={agentMap} contractByShow={contractByShow} title="Upcoming Shows • Org" />)}
+      {s('invoices', 1, <BookingFeeInvoiceCard shows={scopedShows} invoiceByShow={invoiceByShow} artistMap={artistMap} canView={desk.canViewInvoices} />)}
+      {s('recentContracts', 2, <RecentContractsCard contracts={scopedContracts} artistMap={artistMap} />)}
+      {s('tasks', 1, <MyTasksCard tasks={scopedTasks} artistMap={artistMap} />)}
+    </div>}
+    <ConfThreadPreviewModal threadId={previewThreadId} open={Boolean(previewThreadId)} onClose={() => setPreviewThreadId(null)} onCreateShow={threadId => { setPreviewThreadId(null); setInitialThreadId(threadId); setDrawerOpen(true); }} /><ShowDrawer open={drawerOpen} onClose={closeDrawer} show={null} artists={artists} onSave={handleSaveShow} initialThreadId={initialThreadId} /></div>;
+}

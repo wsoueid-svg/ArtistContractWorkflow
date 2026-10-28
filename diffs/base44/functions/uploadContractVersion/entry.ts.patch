@@ -1,0 +1,36 @@
+diff --git a/base44/functions/uploadContractVersion/entry.ts b/base44/functions/uploadContractVersion/entry.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..1a2263cb0abab304218808d6c8422f5aa2124827
+--- /dev/null
++++ b/base44/functions/uploadContractVersion/entry.ts
+@@ -0,0 +1,29 @@
++import { createClientFromRequest } from 'npm:@base44/sdk@0.8.54';
++import { draftAccess } from '../../shared/contractDocument.ts';
++import { currentContract, assertContractMutable } from '../../shared/contractLifecycle.ts';
++import { nextContractVersion } from '../../shared/contractRevisionContext.ts';
++import { contractPdfFile } from '../../shared/contractFiles.ts';
++export default async function(req) {
++  try {
++    const base44=createClientFromRequest(req),user=await base44.auth.me().catch(e=>e.status===401?null:Promise.reject(e));
++    if(!user)return Response.json({error:'Unauthorized'},{status:401});
++    if(!req.headers.get('content-type')?.includes('multipart/form-data'))return Response.json({error:'Upload a contract PDF using the file form.'},{status:400});
++    const body=Object.fromEntries(await req.formData());
++    if(!body.show_id)return Response.json({error:'Show is required'},{status:400});
++    const show=await draftAccess(base44,user,body.show_id),svc=base44.asServiceRole.entities;
++    const current=await currentContract(base44,show);
++    assertContractMutable(current,false);
++    if(current?.contract_file_url)return Response.json({error:'Use an editable revision or attach a promoter redline; uploading cannot replace a generated contract.'},{status:409});
++    const file=await contractPdfFile(body.file);
++    const {file_uri}=await base44.asServiceRole.integrations.Core.UploadPrivateFile({file});
++    const fresh=await draftAccess(base44,user,show.id),latest=await currentContract(base44,fresh);
++    assertContractMutable(latest,false);
++    if((latest?.id||null)!==(current?.id||null)||latest?.contract_file_url)return Response.json({error:'Current contract changed during upload.'},{status:409});
++    const patch={artist_id:show.artist_id,show_id:show.id,contact_id:show.contract_contact_id||show.client_contact_id||show.contact_id,title:`Contract • ${show.event_name}`,type:'show_agreement',status:'draft',contract_file_url:file_uri,value:Number(show.guarantee_fee||0),currency:show.currency||'EUR',start_date:show.date,version_number:nextContractVersion(current),created_by_org_id:show.created_by_org_id,last_modified_by_user_id:user.id,last_modified_at:new Date().toISOString()};
++    const record=await svc.Contract.create(patch);
++    const linked=await svc.Show.updateMany({id:show.id,updated_date:fresh.updated_date},{$set:{contract_id:record.id,contract_url:file_uri}});
++    if(linked.updated!==1){await svc.Contract.delete(record.id);return Response.json({error:'Show changed during upload. Reopen and retry.'},{status:409});}
++    await svc.Contract.update(record.id,{status:'READY'});
++    return Response.json({record:{...record,status:'READY'}});
++  }catch(error){return Response.json({error:error.message},{status:error.status||500});}
++}
+\ No newline at end of file

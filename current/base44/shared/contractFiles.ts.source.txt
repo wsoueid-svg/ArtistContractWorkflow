@@ -1,0 +1,27 @@
+import { AccessError } from './assertShowAccess.ts';
+export async function contractFileUrl(base44, reference) {
+  if (typeof reference !== 'string' || !reference) throw new AccessError('Contract file is unavailable', 404);
+  if (!/^https?:/i.test(reference)) {
+    const { signed_url } = await base44.asServiceRole.integrations.Core.CreateFileSignedUrl({file_uri:reference,expires_in:300});
+    return signed_url;
+  }
+  // Read-only compatibility for already-issued public documents. Never accept new public uploads.
+  let url = new URL(reference);
+  if (url.hostname === 'base44.app' && /^\/api\/apps\/[a-f0-9]+\/files\/mp\/public\//i.test(url.pathname)) url = new URL(`https://media.base44.com/files/public/${url.pathname.split('/files/mp/public/')[1]}`);
+  if (url.protocol !== 'https:' || url.hostname !== 'media.base44.com' || !url.pathname.startsWith('/files/public/')) throw new AccessError('Unsupported contract file location', 422);
+  return url.href;
+}
+export async function contractPdfFile(file) {
+  if (!(file instanceof File) || !file.size || file.size > 10*1024*1024 || !/\.pdf$/i.test(file.name)) throw new AccessError('Choose a PDF up to 10 MB.', 422);
+  if (new TextDecoder().decode((await file.arrayBuffer()).slice(0,5)) !== '%PDF-') throw new AccessError('The contract must be a valid PDF.', 422);
+  return new File([file],file.name.replace(/[^a-z0-9._ -]/gi,'_').slice(0,180),{type:'application/pdf'});
+}
+export async function contractFileAccess(base44, user, contractId) {
+  if (!user || user.is_active === false) throw new AccessError('Active account required', 403);
+  const record = await base44.entities.Contract.get(contractId);
+  if (record.show_id) {
+    const { assertShowAccess } = await import('./assertShowAccess.ts');
+    await assertShowAccess(base44,record.show_id,user);
+  }
+  return record;
+}

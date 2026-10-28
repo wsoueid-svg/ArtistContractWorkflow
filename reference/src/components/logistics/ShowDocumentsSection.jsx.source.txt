@@ -1,0 +1,356 @@
+import React, { useState } from 'react';
+import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
+import { base44 } from '@/api/base44Client';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Eye, EyeOff, Plus, Trash2, ExternalLink, FileText, Upload, X, Save, Vault } from 'lucide-react';
+import { toast } from 'sonner';
+import DocumentPreviewModal from '@/components/shared/DocumentPreviewModal';
+import ArtistVaultPicker from './ArtistVaultPicker';
+import { openShowFile } from '@/lib/showFiles';
+
+const DOC_TYPES = [
+  { value: 'visa', label: '🛂 Visa' },
+  { value: 'promoter_info', label: '📋 Promoter Info' },
+  { value: 'itinerary', label: '🗓 Itinerary' },
+  { value: 'contract', label: '📄 Contract' },
+  { value: 'internal', label: '🔒 Internal Only' },
+];
+
+function VisibilityToggle({ value, onChange }) {
+  return (
+    <button
+      type="button"
+      onClick={() => onChange(!value)}
+      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all border ${
+        value
+          ? 'bg-green-50 text-green-700 border-green-300 hover:bg-green-100'
+          : 'bg-gray-100 text-gray-500 border-gray-200 hover:bg-gray-200'
+      }`}
+      title={value ? 'Visible in Artist Portal — click to make internal' : 'Internal only — click to share with artist'}
+    >
+      {value ? (
+        <><Eye className="w-3.5 h-3.5" /> Shared</>
+      ) : (
+        <><EyeOff className="w-3.5 h-3.5" /> Internal</>
+      )}
+    </button>
+  );
+}
+
+function DocumentRow({ doc, onToggleVisibility, onDelete, onPreview }) {
+  return (
+    <div
+      onClick={() => onPreview(doc)}
+      className="flex items-center gap-3 p-3 rounded-xl border border-gray-100 bg-white group cursor-pointer hover:border-yellow-300 hover:bg-yellow-50/40 transition-colors"
+      title="Click to preview"
+    >
+      <FileText className="w-4 h-4 text-gray-400 flex-shrink-0" />
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium text-gray-800 truncate">{doc.file_name}</p>
+        <p className="text-xs text-gray-400 capitalize">{doc.document_type?.replace('_', ' ')}</p>
+      </div>
+      {/* Row-level controls must not open the preview */}
+      <div className="flex items-center gap-2 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+        <VisibilityToggle value={doc.is_visible_to_artist} onChange={(v) => onToggleVisibility(doc, v)} />
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); openShowFile(doc.file_url); }}
+          className="text-blue-500 hover:text-blue-700 transition-colors"
+          title="Open in new tab"
+        >
+          <ExternalLink className="w-4 h-4" />
+        </button>
+        <button
+          onClick={(e) => { e.stopPropagation(); onDelete(doc.id); }}
+          className="text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
+          title="Delete"
+        >
+          <Trash2 className="w-4 h-4" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function AddDocumentForm({ show, onClose }) {
+  const queryClient = useQueryClient();
+  const [form, setForm] = useState({
+    file_name: '',
+    file_url: '',
+    document_type: 'internal',
+    is_visible_to_artist: false,
+    notes: '',
+  });
+  const [uploadingFile, setUploadingFile] = useState(false);
+
+  const createMutation = useMutation({
+    mutationFn: (data) =>
+      base44.entities.ShowDocument.create({
+        ...data,
+        show_id: show.id,
+        artist_id: show.artist_id,
+        created_by_org_id: show.created_by_org_id,
+        shared_with_org: show.shared_with_org || null,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['show_documents', show.id] });
+      toast.success('Document added');
+      onClose();
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const handleFileUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingFile(true);
+    try {
+      const { file_uri } = await base44.integrations.Core.UploadPrivateFile({ file });
+      setForm(f => ({ ...f, file_url: file_uri, file_name: f.file_name || file.name }));
+      toast.success('File uploaded');
+    } catch (err) {
+      toast.error('Upload failed: ' + err.message);
+    } finally {
+      setUploadingFile(false);
+    }
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!form.file_name || !form.file_url) {
+      toast.error('File name and URL are required');
+      return;
+    }
+    createMutation.mutate(form);
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="border border-yellow-300 rounded-xl p-4 bg-yellow-50/40 space-y-3">
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <Label className="text-xs">Document Name</Label>
+          <Input
+            value={form.file_name}
+            onChange={e => setForm({ ...form, file_name: e.target.value })}
+            placeholder="e.g. Visa_Paris_2026.pdf"
+            className="mt-1 h-8 text-sm"
+          />
+        </div>
+        <div>
+          <Label className="text-xs">Type</Label>
+          <Select value={form.document_type} onValueChange={v => setForm({ ...form, document_type: v })}>
+            <SelectTrigger className="mt-1 h-8 text-sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {DOC_TYPES.map(t => (
+                <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      <div>
+        <Label className="text-xs">File URL or External Link</Label>
+        <Input
+          value={form.file_url}
+          onChange={e => setForm({ ...form, file_url: e.target.value })}
+          placeholder="https://drive.google.com/... or paste any link"
+          className="mt-1 h-8 text-sm"
+        />
+      </div>
+
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-gray-500">Or upload a file:</span>
+        <label className={`flex items-center gap-1 px-2.5 py-1 rounded-lg border text-xs cursor-pointer transition-colors ${
+          uploadingFile ? 'opacity-50 cursor-not-allowed' : 'border-gray-300 hover:bg-gray-50'
+        }`}>
+          <Upload className="w-3 h-3" />
+          {uploadingFile ? 'Uploading...' : 'Choose File'}
+          <input type="file" className="hidden" onChange={handleFileUpload} disabled={uploadingFile} />
+        </label>
+      </div>
+
+      {/* Idiot-proof visibility toggle */}
+      <div className={`flex items-center justify-between p-3 rounded-xl border-2 transition-all ${
+        form.is_visible_to_artist
+          ? 'bg-green-50 border-green-400'
+          : 'bg-gray-50 border-gray-200'
+      }`}>
+        <div>
+          <p className={`text-sm font-semibold ${form.is_visible_to_artist ? 'text-green-700' : 'text-gray-600'}`}>
+            {form.is_visible_to_artist ? '👁 Shared with Artist Portal' : '🔒 Internal Only'}
+          </p>
+          <p className="text-xs text-gray-400 mt-0.5">
+            {form.is_visible_to_artist
+              ? 'Artists & tour managers can see and download this file'
+              : 'Only Elevate / Analog agents can see this file'}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setForm({ ...form, is_visible_to_artist: !form.is_visible_to_artist })}
+          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+            form.is_visible_to_artist ? 'bg-green-500' : 'bg-gray-300'
+          }`}
+        >
+          <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+            form.is_visible_to_artist ? 'translate-x-6' : 'translate-x-1'
+          }`} />
+        </button>
+      </div>
+
+      <div className="flex justify-end gap-2">
+        <Button type="button" variant="ghost" size="sm" onClick={onClose}>
+          <X className="w-3.5 h-3.5 mr-1" /> Cancel
+        </Button>
+        <Button type="submit" size="sm" disabled={createMutation.isPending || uploadingFile}
+          className="bg-yellow-400 text-black hover:bg-yellow-500">
+          <Save className="w-3.5 h-3.5 mr-1" />
+          {createMutation.isPending ? 'Saving...' : 'Add Document'}
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+export default function ShowDocumentsSection({ show }) {
+  const queryClient = useQueryClient();
+  const [adding, setAdding] = useState(false);
+  const [vaultOpen, setVaultOpen] = useState(false);
+  const [preview, setPreviewState] = useState(null);
+  // Private URIs (generated itineraries) need a short-lived signed URL to render.
+  const setPreview = async (doc) => {
+    if (!doc?.file_url || /^https?:\/\//.test(doc.file_url)) return setPreviewState(doc);
+    const { signed_url } = await base44.integrations.Core.CreateFileSignedUrl({ file_uri: doc.file_url });
+    setPreviewState({ ...doc, file_url: signed_url });
+  };
+
+  const { data: documents = [] } = useQuery({
+    queryKey: ['show_documents', show.id],
+    queryFn: () => base44.entities.ShowDocument.filter({ show_id: show.id }),
+    enabled: !!show.id,
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }) => base44.entities.ShowDocument.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['show_documents', show.id] });
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id) => base44.entities.ShowDocument.delete(id),
+    onMutate: async (id) => {
+      // Optimistic update
+      await queryClient.cancelQueries({ queryKey: ['show_documents', show.id] });
+      const prev = queryClient.getQueryData(['show_documents', show.id]);
+      queryClient.setQueryData(['show_documents', show.id], (old) =>
+        old ? old.filter(d => d.id !== id) : []
+      );
+      return { prev };
+    },
+    onError: (err, _id, ctx) => {
+      queryClient.setQueryData(['show_documents', show.id], ctx.prev);
+      toast.error(err.message);
+    },
+    onSuccess: () => toast.success('Document removed'),
+  });
+
+  const handleToggleVisibility = (doc, value) => {
+    // Optimistic update
+    queryClient.setQueryData(['show_documents', show.id], (old) =>
+      old ? old.map(d => d.id === doc.id ? { ...d, is_visible_to_artist: value } : d) : []
+    );
+    updateMutation.mutate({ id: doc.id, data: { is_visible_to_artist: value } });
+    toast.success(value ? 'Now shared with artist portal' : 'Now internal only');
+  };
+
+  const sharedDocs = documents.filter(d => d.is_visible_to_artist);
+  const internalDocs = documents.filter(d => !d.is_visible_to_artist);
+
+  return (
+    <div className="space-y-3" data-tour="show-documents-section">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <FileText className="w-4 h-4 text-gray-600" />
+          <h4 className="font-semibold text-sm text-gray-800">Show Files</h4>
+          {documents.length > 0 && (
+            <span className="text-xs bg-gray-100 text-gray-600 rounded-full px-2 py-0.5">{documents.length}</span>
+          )}
+        </div>
+        {!adding && (
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => setVaultOpen(v => !v)}>
+              <Vault className="w-3 h-3" /> Artist Vault
+            </Button>
+            <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => setAdding(true)}>
+              <Plus className="w-3 h-3" /> Add File
+            </Button>
+          </div>
+        )}
+      </div>
+
+      {vaultOpen && (
+        <ArtistVaultPicker
+          show={show}
+          existingUrls={documents.map(d => d.file_url)}
+          onClose={() => setVaultOpen(false)}
+        />
+      )}
+
+      {adding && <AddDocumentForm show={show} onClose={() => setAdding(false)} />}
+
+      {sharedDocs.length > 0 && (
+        <div className="space-y-1.5">
+          <p className="text-xs text-green-600 font-semibold uppercase tracking-wide flex items-center gap-1">
+            <Eye className="w-3 h-3" /> Shared with Artist ({sharedDocs.length})
+          </p>
+          {sharedDocs.map(doc => (
+            <DocumentRow
+              key={doc.id}
+              doc={doc}
+              onToggleVisibility={handleToggleVisibility}
+              onDelete={(id) => deleteMutation.mutate(id)}
+              onPreview={setPreview}
+            />
+          ))}
+        </div>
+      )}
+
+      {internalDocs.length > 0 && (
+        <div className="space-y-1.5">
+          <p className="text-xs text-gray-400 font-semibold uppercase tracking-wide flex items-center gap-1">
+            <EyeOff className="w-3 h-3" /> Internal ({internalDocs.length})
+          </p>
+          {internalDocs.map(doc => (
+            <DocumentRow
+              key={doc.id}
+              doc={doc}
+              onToggleVisibility={handleToggleVisibility}
+              onDelete={(id) => deleteMutation.mutate(id)}
+              onPreview={setPreview}
+            />
+          ))}
+        </div>
+      )}
+
+      {documents.length === 0 && !adding && (
+        <p className="text-xs text-gray-400 italic">No files yet. Add visas, itineraries, promoter info, or contracts.</p>
+      )}
+
+      <DocumentPreviewModal
+        open={!!preview}
+        onClose={() => setPreview(null)}
+        fileUrl={preview?.file_url}
+        fileName={preview?.file_name}
+        subtitle={String(preview?.document_type || '').replace(/_/g, ' ')}
+      />
+    </div>
+  );
+}

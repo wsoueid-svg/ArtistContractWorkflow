@@ -1,0 +1,284 @@
+{
+  "name": "LegalEntity",
+  "type": "object",
+  "rls": {
+    "read": {
+      "$and": [
+        {
+          "user_condition": {
+            "data.is_active": true
+          }
+        },
+        {
+          "$or": [
+            {
+              "user_condition": {
+                "role": "admin"
+              }
+            },
+            {
+              "user_condition": {
+                "data.is_cfo": true
+              }
+            },
+            {
+              "user_condition": {
+                "data.finance_role": "Finance Manager"
+              }
+            },
+            {
+              "user_condition": {
+                "data.finance_role": "Finance Viewer"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "create": {
+      "$and": [
+        {
+          "user_condition": {
+            "data.is_active": true
+          }
+        },
+        {
+          "$or": [
+            {
+              "user_condition": {
+                "role": "admin"
+              }
+            },
+            {
+              "user_condition": {
+                "data.is_cfo": true
+              }
+            },
+            {
+              "user_condition": {
+                "data.finance_role": "Finance Manager"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "update": {
+      "$and": [
+        {
+          "user_condition": {
+            "data.is_active": true
+          }
+        },
+        {
+          "$or": [
+            {
+              "user_condition": {
+                "role": "admin"
+              }
+            },
+            {
+              "user_condition": {
+                "data.is_cfo": true
+              }
+            },
+            {
+              "$and": [
+                {
+                  "user_condition": {
+                    "data.finance_role": "Finance Manager"
+                  }
+                },
+                {
+                  "data.onboarding_locked": {
+                    "$ne": true
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "delete": {
+      "$and": [
+        {
+          "user_condition": {
+            "data.is_active": true
+          }
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    }
+  },
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Full legal name e.g. Analog Entertainment SL"
+    },
+    "short_name": {
+      "type": "string",
+      "description": "Short display name e.g. Analog"
+    },
+    "org": {
+      "type": "string",
+      "enum": [
+        "analog",
+        "elevate"
+      ],
+      "default": "elevate",
+      "indexed": true,
+      "description": "Organization that owns invoices issued by this legal entity."
+    },
+    "country": {
+      "type": "string"
+    },
+    "country_code": {
+      "type": "string"
+    },
+    "tax_id": {
+      "type": "string"
+    },
+    "tax_name": {
+      "type": "string"
+    },
+    "onboarding_locked": {
+      "type": "boolean",
+      "default": false,
+      "description": "Onboarding finalisation flag. Once true the entity is frozen: Finance Managers can no longer update it (enforced at RLS), and only Admin or is_cfo users can unlock it for authorised corrections."
+    },
+    "contract_template_key": {
+      "type": "string",
+      "enum": [
+        "cidony",
+        "nysm",
+        "nysm-es",
+        "aesl-en",
+        "aesl-es"
+      ],
+      "description": "Branded contract HTML template this entity issues. Spanish variants (nysm-es / aesl-es) are auto-selected at generation time when the promoter Contact prefers Spanish; this field is the entity's default."
+    },
+    "tax_rates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "rate": {
+            "type": "number"
+          },
+          "name": {
+            "type": "string"
+          },
+          "is_default": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      }
+    },
+    "default_currency": {
+      "type": "string",
+      "default": "EUR"
+    },
+    "allowed_currencies": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "ISO currencies this entity may legally bill. Falls back to default_currency when empty."
+    },
+    "invoice_number_prefix": {
+      "type": "string"
+    },
+    "next_invoice_number": {
+      "type": "number",
+      "default": 1
+    },
+    "payment_terms_default_days": {
+      "type": "number",
+      "default": 30
+    },
+    "bank_account_details": {
+      "type": "object",
+      "properties": {
+        "bank_name": {
+          "type": "string"
+        },
+        "iban": {
+          "type": "string"
+        },
+        "bic_swift": {
+          "type": "string"
+        },
+        "account_holder": {
+          "type": "string"
+        }
+      }
+    },
+    "registered_address": {
+      "type": "object",
+      "properties": {
+        "street": {
+          "type": "string"
+        },
+        "city": {
+          "type": "string"
+        },
+        "postal_code": {
+          "type": "string"
+        },
+        "country": {
+          "type": "string"
+        }
+      }
+    },
+    "invoice_logo_url": {
+      "type": "string"
+    },
+    "invoice_language_default": {
+      "type": "string",
+      "enum": [
+        "en",
+        "es",
+        "fr",
+        "ar"
+      ],
+      "default": "en"
+    },
+    "holded_connection_id": {
+      "type": "string"
+    },
+    "holded_integration_connection_id": {
+      "type": "string",
+      "description": "DEPRECATED alias for holded_connection_id"
+    },
+    "payment_reminder_rules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "days_overdue": {
+            "type": "number"
+          },
+          "email_template_id": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true
+    }
+  },
+  "required": [
+    "name",
+    "country",
+    "default_currency",
+    "invoice_number_prefix"
+  ]
+}

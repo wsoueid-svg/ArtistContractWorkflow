@@ -1,0 +1,18 @@
+import { useState } from 'react';
+import { base44 } from '@/api/base44Client';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+export default function UploadContractModal({show,open,onClose,onSaved}) {
+  const [file,setFile]=useState(null),[saving,setSaving]=useState(false),[error,setError]=useState('');
+  const save=async()=>{
+    setSaving(true);setError('');
+    try {
+      if(!file)throw new Error('Choose a contract PDF.');
+      await base44.functions.invoke('uploadContractVersion',{show_id:show.id,file});
+      await onSaved?.();setFile(null);onClose();
+    }catch(e){setError(e?.response?.data?.error||e.message||'Could not upload contract.');}finally{setSaving(false);}
+  };
+  return <Dialog open={open} onOpenChange={value=>{if(!value&&!saving)onClose();}}><DialogContent className="max-w-md"><DialogHeader><DialogTitle>Upload contract PDF</DialogTitle><DialogDescription>Upload the first contract for this show (stored privately). Existing generated or issued contracts must be revised from the current document; returned files belong in Promoter redlines.</DialogDescription></DialogHeader><div className="space-y-4"><Label htmlFor="show-contract-upload">Contract PDF • up to 10 MB</Label><Input id="show-contract-upload" type="file" accept=".pdf,application/pdf" disabled={saving} onChange={e=>setFile(e.target.files?.[0]||null)}/><p className="text-sm text-muted-foreground">The upload becomes Ready. Sending and signature confirmation are separate actions; fee and currency stay linked to the show.</p>{error&&<p role="alert" className="text-sm text-destructive">{error}</p>}<div className="flex justify-end gap-2"><Button variant="outline" disabled={saving} onClick={onClose}>Cancel</Button><Button disabled={!file||saving} onClick={save}>{saving?'Uploading…':'Save contract'}</Button></div></div></DialogContent></Dialog>;
+}

@@ -1,0 +1,64 @@
+import { base44 } from '@/api/base44Client';
+import { auditStamp } from '@/lib/showEdit';
+
+/**
+ * Ensures artist folder exists in Documents
+ * Returns the artist's documents_folder_path
+ */
+export async function ensureArtistFolder(artist) {
+  if (artist.documents_folder_path) {
+    return artist.documents_folder_path;
+  }
+
+  const folderPath = `/Documents/${artist.name}`;
+  
+  // Update artist record with folder path
+  await base44.entities.Artist.update(artist.id, {
+    documents_folder_path: folderPath,
+  });
+
+  return folderPath;
+}
+
+/**
+ * Creates show folder under artist folder
+ * Returns the show's folder path and updates the show record
+ */
+export async function createShowFolder(show, artist) {
+  // Ensure artist folder exists first
+  const artistFolderPath = await ensureArtistFolder(artist);
+  
+  // Create show folder name: "2025-01-15 - Show Name"
+  const showDate = new Date(show.date).toISOString().split('T')[0];
+  const showFolderName = `${showDate} - ${show.event_name}`;
+  const showFolderPath = `${artistFolderPath}/${showFolderName}`;
+
+  // Update show record with folder path
+  await base44.entities.Show.update(show.id, {
+    documents_folder_path: showFolderPath,
+    ...auditStamp(null, null),
+  });
+
+  // Log activity
+  await base44.entities.ShowActivity.create({
+    show_id: show.id,
+    activity_type: 'folder_created',
+    description: `Show folder created: ${showFolderPath}`,
+    related_entity_type: 'Show',
+    related_entity_id: show.id,
+  });
+
+  return showFolderPath;
+}
+
+/**
+ * Ensures show has its folder structure set up
+ * Call this when a show is created or when viewing show details
+ */
+export async function ensureShowFolderStructure(show, artist) {
+  if (show.documents_folder_path) {
+    return show.documents_folder_path;
+  }
+
+  return await createShowFolder(show, artist);
+}

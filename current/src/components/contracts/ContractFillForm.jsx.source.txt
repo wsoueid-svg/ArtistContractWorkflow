@@ -1,0 +1,167 @@
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import contractPreviewUrl from '@/components/contracts/contractPreviewUrl';
+import { base44 } from '@/api/base44Client';
+import useContractPromoter from '@/components/contracts/useContractPromoter';
+import ContractDocumentEditor from '@/components/contract-lab/ContractDocumentEditor';
+import contractError from '@/components/contract-lab/contractErrors';
+import refreshDocumentBlocks from '@/components/contract-lab/refreshDocumentBlocks';
+import ContractSetupForm from '@/components/contracts/ContractSetupForm';
+
+export default function ContractFillForm({ show, onGenerated, onClose, forceAmendment = false, initialDraftId = null, cloneContractId = null, onDocumentMode }) {
+  const navigate = useNavigate();
+  const [step, setStep] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [done, setDone] = useState(null);
+  const [error, setError] = useState(null);
+  const [contractTemplateId, setContractTemplateId] = useState('');
+  const [legalEntityId, setLegalEntityId] = useState(show?.legal_entity_id || '');
+  const [legalEntity, setLegalEntity] = useState(null);
+  const [document, setDocument] = useState(null);
+  const [reviewFieldsKey, setReviewFieldsKey] = useState('');
+  const [jumpField, setJumpField] = useState(null);
+  useEffect(() => { onDocumentMode?.(step === 4); }, [step, onDocumentMode]);
+  useEffect(() => { if (!jumpField || step === 4) return; const target = window.document.querySelector(`[role="dialog"] [name="${jumpField}"]`); target?.scrollIntoView({block:'center'}); target?.focus(); setJumpField(null); }, [step, jumpField]);
+  useEffect(() => {
+    if (!initialDraftId && !cloneContractId) return;
+    setLoading(true);
+    base44.functions.invoke('getContractDraft', { show_id: show?.id, draft_id: initialDraftId, clone_from_contract_id: cloneContractId, revise: true, force_amendment: forceAmendment }).then(({data}) => {
+      const draft = data.draft;
+      setDocument(draft); setFields(draft.source_snapshot.fields); setReviewFieldsKey(JSON.stringify(draft.source_snapshot.fields));
+      setContractTemplateId(draft.template_id); setLegalEntityId(draft.legal_entity_id); setLegalEntity(draft.source_snapshot.legalEntity); setStep(4);
+    }).catch(e => setError(contractError(e))).finally(() => setLoading(false));
+  }, [initialDraftId, cloneContractId, forceAmendment, show?.id]);
+  const entityLocked = show?.status === 'completed' || !!show?.legal_entity_locked_at;
+
+  const fee = Number(show?.guarantee_fee || 0);
+  const bookingFeeBase = Number(show?.gross_fee ?? show?.guarantee_fee ?? 0);
+  const bookingFeeAmt = Number(show?.booking_fee_amount_fixed || 0) > 0
+    ? Number(show.booking_fee_amount_fixed)
+    : Math.round(bookingFeeBase * Number(show?.booking_fee_rate || 0) / 100);
+  const separateBookingFee = (show?.booking_fee_type || 'exclusive') === 'exclusive';
+  const bookingFeeLine = separateBookingFee ? bookingFeeAmt : 0;
+  const artistFee = fee;
+  const advanceAmt = Math.round(artistFee * 0.5);
+  const balanceAmt = artistFee - advanceAmt;
+
+  const [fields, setFields] = useState({
+    contract_date: new Date().toISOString().split('T')[0],
+    // Promoter
+    company_name: '',
+    company_address: '',
+    company_vat: '',
+    // Artist / Agency
+    artist_name: show?.artist_name || '',
+    agency_name: 'Analog Agency',
+    agency_address: 'CIDONY SA. Ruta 10 s/n, km. 185. Arenas de José Ignacio. P 923 M 55, Jose Ignacio Maldonado',
+    agency_rut: 'RUT 216151090016',
+    // Event
+    event_name: show?.event_name || '',
+    venue: show?.venue || '',
+    country: show?.country || '',
+    date_of_show: show?.date || '',
+    timing: '',
+    billing_requirements: 'A-Z',
+    billing_position: 'A-Z',
+    wht_rate: show?.withholding_tax_rate ?? 0,
+    // Fees
+    currency: show?.currency || 'EUR',
+    booking_fee: bookingFeeAmt,
+    booking_fee_due: new Date().toISOString().split('T')[0],
+    advance_pct: 50,
+    advance_amount: advanceAmt,
+    advance_due: new Date().toISOString().split('T')[0],
+    balance_pct: 50,
+    balance_amount: balanceAmt,
+    balance_due: '',
+    deposit_month: '',
+    // Signatories
+    company_signatory: '',
+    agency_signatory: 'Luis Honrado',
+    contract_notes: show?.contract_notes || '',
+  });
+
+  // Autofill artist name from the show's linked Artist record
+  useEffect(() => {
+    if (!show?.artist_id) return;
+    base44.entities.Artist.get(show.artist_id).then(a => {
+      if (a?.name) setFields(f => (f.artist_name ? f : { ...f, artist_name: a.stage_name || a.name }));
+    }).catch(() => {});
+  }, [show?.artist_id]);
+
+  const promoter = useContractPromoter(show, setFields);
+
+  const set = (name, value) => setFields(f => {
+    const next = { ...f, [name]: value };
+    // Auto-recalculate advance/balance amounts whenever a driving field changes
+    const drivingFields = ['booking_fee', 'advance_pct', 'balance_pct'];
+    if (drivingFields.includes(name)) {
+      const artistNet = parseFloat(show?.guarantee_fee) || 0;
+      const advPct = parseFloat(name === 'advance_pct' ? value : next.advance_pct) || 0;
+      const balPct = parseFloat(name === 'balance_pct' ? value : next.balance_pct) || 0;
+      next.advance_amount = artistNet > 0 ? Math.round(artistNet * advPct / 100) : next.advance_amount;
+      next.balance_amount = artistNet > 0 ? Math.round(artistNet * balPct / 100) : next.balance_amount;
+    }
+    return next;
+  });
+
+  const openDocument = async () => {
+    if (!promoter.ready || promoter.saving) { setError('Select or create a promoter contact and save its link before reviewing.'); setStep(0); return; }
+    if (document && document.source_snapshot?.contact?.id === promoter.contact?.id && reviewFieldsKey === JSON.stringify(fields) && !document.master_changed) { setStep(4); return; }
+    setLoading(true); setError(null);
+    try {
+      const { data } = await base44.functions.invoke('getContractDraft', { show_id: show?.id, template_id: contractTemplateId, fields, build: true, force_amendment: forceAmendment || document?.force_amendment === true });
+      setDocument(document ? {...document,source_snapshot:data.draft.source_snapshot,master_blocks:data.draft.blocks,blocks:refreshDocumentBlocks(document.blocks,data.draft.blocks),master_content_version:data.draft.master_content_version,status:'editing',browser_dirty:true,master_changed:false} : data.draft); setReviewFieldsKey(JSON.stringify(fields)); setStep(4);
+    } catch (e) { setError(contractError(e)); } finally { setLoading(false); }
+  };
+  const handleGenerate = async (draft = document) => {
+    if (!draft?.id || draft.browser_dirty || draft.status !== 'approved') { setError('Save first'); return; }
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await base44.functions.invoke('generateSmartContract', {
+        show_id: show?.id,
+        draft_id: draft.id || null,
+        contract_template_id: contractTemplateId,
+        expected_content_hash: draft.content_hash,
+        force_amendment: forceAmendment || draft.force_amendment === true,
+      });
+      setDone(res.data.file_url);
+      onGenerated?.(res.data.file_url, res.data.contract_id);
+      onClose?.();
+      navigate(contractPreviewUrl(res.data.contract_id, show?.id));
+      return res.data;
+    } catch (e) {
+      setError(contractError(e) || 'Failed to generate contract');
+      return {conflict:e.response?.status===409,error:contractError(e)};
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const selectTemplate = template => {
+    if (!template) return;
+    const entity = template.entity;
+    const currency = String(show?.currency || entity.default_currency || 'EUR').toUpperCase();
+    setContractTemplateId(template.id);
+    setLegalEntityId(template.legal_entity_id);
+    setLegalEntity(entity);
+    const terms = template.default_terms || {};
+    const depositPct = Number(terms.deposit_percentage ?? 50);
+    const balanceTarget = show?.date ? new Date(`${show.date}T00:00:00Z`) : new Date();
+    balanceTarget.setUTCDate(balanceTarget.getUTCDate() - Number(terms.balance_due_offset_days ?? 14));
+    const today = new Date().toISOString().slice(0, 10);
+    const balanceDue = new Date(Math.max(new Date(`${today}T00:00:00Z`).getTime(), balanceTarget.getTime())).toISOString().slice(0, 10);
+    setFields(f => ({ ...f, currency, agency_name: entity.name || f.agency_name,
+      agency_address: [entity.registered_address?.street, entity.registered_address?.city, entity.registered_address?.postal_code, entity.registered_address?.country || entity.country].filter(Boolean).join(', ') || f.agency_address,
+      agency_rut: entity.tax_id || f.agency_rut, agency_signatory: template.agency_signatory_name || f.agency_signatory,
+      advance_pct: depositPct, balance_pct: 100 - depositPct,
+      advance_amount: Math.round(fee * depositPct / 100), balance_amount: fee - Math.round(fee * depositPct / 100),
+      booking_fee_due: today, advance_due: today, balance_due: balanceDue }));
+  };
+
+  if (loading && !document && (initialDraftId || cloneContractId)) return <p className="p-6 text-sm text-muted-foreground">Opening document revision…</p>;
+  if (error && !document && (initialDraftId || cloneContractId)) return <p role="alert" className="p-6 text-sm text-destructive">{error}</p>;
+  if (step === 4 && document) return <ContractDocumentEditor document={document} onBack={(target = 3, field = null) => { if (done) { onClose?.(); return; } setStep(0); setJumpField(field); }} onGenerate={handleGenerate} generating={loading} generationError={error} onChange={setDocument} />;
+  return <ContractSetupForm show={show} fields={fields} onFieldChange={set} promoter={promoter} templateId={contractTemplateId} onTemplateSelect={selectTemplate} entity={legalEntity} entityLocked={entityLocked} bookingFee={bookingFeeAmt} onReview={openDocument} onClose={onClose} busy={loading} error={error} />;
+}

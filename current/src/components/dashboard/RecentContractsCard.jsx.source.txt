@@ -1,0 +1,58 @@
+import React from 'react';
+import { Link } from 'react-router-dom';
+import { FileText, FileX } from 'lucide-react';
+import DealCard, { EmptyRow } from './DealCard';
+import DealStatusBadge from '@/components/shared/DealStatusBadge';
+
+const fmtWhen = (iso) => {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  return isNaN(d) ? '—' : d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+};
+
+/**
+ * RecentContractsCard — the newest contracts on this desk, capped at 5 visible
+ * rows with internal scrolling like every other desk card.
+ */
+export default function RecentContractsCard({ contracts = [], artistMap = {} }) {
+  const rows = [...contracts]
+    .sort((a, b) => String(b.last_modified_at || b.updated_date || '').localeCompare(String(a.last_modified_at || a.updated_date || '')))
+    .slice(0, 25);
+
+  return (
+    <DealCard icon={FileText} title="Recent Contracts" count={rows.length} to="/contracts" toLabel="All contracts">
+      {rows.length === 0 ? (
+        <EmptyRow icon={FileX} text="No contracts on your desk yet" />
+      ) : (
+        <ul className="max-h-[260px] overflow-y-auto scrollbar-thin">
+          {rows.map(c => (
+            <li key={c.id} className="odd:bg-white even:bg-slate-50">
+              <Link
+                to={c.show_id ? `/showdetail?id=${encodeURIComponent(c.show_id)}&tab=contract` : '/contracts'}
+                className="flex items-center gap-3 px-4 py-2.5 hover:bg-yellow-50 transition-colors min-h-[52px]"
+              >
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-slate-900 truncate">
+                    {c.snapshot_artist_name || artistMap[c.artist_id]?.name || c.title}
+                  </p>
+                  <p className="text-[11px] text-slate-400 truncate">
+                    {c.snapshot_event_name || c.title}
+                  </p>
+                </div>
+                {c.value != null && (
+                  <span className="hidden sm:inline text-xs font-semibold tabular-nums text-slate-700 flex-shrink-0">
+                    {c.currency || ''} {Number(c.value).toLocaleString()}
+                  </span>
+                )}
+                <span className="text-[11px] text-slate-400 tabular-nums flex-shrink-0 w-14 text-right">
+                  {fmtWhen(c.last_modified_at || c.updated_date)}
+                </span>
+                <DealStatusBadge kind="contract" status={c.status} />
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+    </DealCard>
+  );
+}

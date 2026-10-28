@@ -1,0 +1,48 @@
+import { useRef, useState } from 'react';
+import useContractDraft from '@/components/contract-lab/useContractDraft';
+import useContractShowDetails from '@/components/contract-lab/useContractShowDetails';
+import ContractShowDetails from '@/components/contract-lab/ContractShowDetails';
+import ContractRevisionChanges from '@/components/contracts/ContractRevisionChanges';
+import ContractRedlines from '@/components/contracts/redlines/ContractRedlines';
+import ContractBlock from '@/components/contract-lab/ContractBlock';
+import DocumentToolbar from '@/components/contract-lab/DocumentToolbar';
+import FormattingToolbar from '@/components/contract-lab/FormattingToolbar';
+import DocumentValidation from '@/components/contract-lab/DocumentValidation';
+import AppendixSection from '@/components/contract-lab/AppendixSection';
+import RecoveryChoice from '@/components/contract-lab/RecoveryChoice';
+import DraftCompare from '@/components/contract-lab/DraftCompare';
+import documentValidation from '@/components/contract-lab/documentValidation';
+import { base44 } from '@/api/base44Client';
+import { lockedBlock } from '@/components/contract-lab/documentText';
+import { Button } from '@/components/ui/button';
+import '@/components/contract-lab/document.css';
+export default function ContractDocumentEditor({document:initial,onBack,onGenerate,generating,generationError,onChange,readOnly=false}) {
+  const editor=useContractDraft(initial,onChange,readOnly),details=useContractShowDetails(editor),blocks=editor.doc.blocks,activeEditor=useRef(null),[showChanges,setShowChanges]=useState(false),issues=documentValidation(editor.doc),frozen=editor.frozen||generating||details.saving;
+  const editable=b=>b&&!lockedBlock(b);
+  const action=(type,block)=>{
+    if(frozen)return;const list=[...blocks],i=list.findIndex(b=>b.id===block.id);if(!editable(block))return;
+    if(type==='remove')list.splice(i,1);
+    if(type==='restore')list[i]={...block,rich_text:block.baseline_html};
+    if(type==='above'||type==='below')list.splice(i+(type==='below'?1:0),0,{id:`custom-${crypto.randomUUID()}`,kind:'clause',slot:block.slot,rich_text:'<p><br></p>',baseline_html:'',master:false});
+    if(type==='up'||type==='down'){const same=block.kind==='appendix'?list.filter(b=>b.kind==='appendix'):list;const j=same.findIndex(b=>b.id===block.id)+(type==='up'?-1:1),neighbor=same[j];if(!editable(neighbor)||neighbor.slot!==block.slot)return;const at=list.findIndex(b=>b.id===neighbor.id);[list[i],list[at]]=[list[at],list[i]];}
+    editor.replace(list);
+  };
+  const removed=editor.doc.master_blocks.filter(b=>editable(b)&&!blocks.some(x=>x.id===b.id));
+  const restoreRemoved=block=>{const list=[...blocks],next=list.findIndex(b=>lockedBlock(b)&&b.slot===block.slot);list.splice(next<0?list.length:next,0,block);editor.replace(list);};
+  const jump=issue=>{if(['venue','country'].includes(issue.id)){details.open(issue.id);return;}if(issue.blockId){window.document.getElementById(`contract-block-${issue.blockId}`)?.scrollIntoView({behavior:'smooth',block:'center'});}else onBack(issue.step,issue.id);};
+  const generate=async()=>{const result=await onGenerate({...editor.doc,browser_dirty:editor.dirty});if(result?.success)editor.generated(result);else if(result?.conflict){if(/Signed|Dispatch is in progress|generation is in progress|issued revision is locked/i.test(result.error)){editor.lock(result.error);return;}const response=await base44.functions.invoke('getContractDraft',{show_id:editor.doc.show_id,draft_id:editor.doc.id,force_amendment:editor.doc.force_amendment===true});editor.setComparison({browser:editor.doc,server:response.data.draft});}};
+  const keys=e=>{if(!(e.metaKey||e.ctrlKey))return;if(e.key.toLowerCase()==='s'){e.preventDefault();if(!frozen)editor.save();}if(e.key.toLowerCase()==='z'){e.preventDefault();e.stopPropagation();if(!frozen)(e.shiftKey?editor.redo:editor.undo)();}};
+  const termsSlot=(blocks.find(b=>b.id==='terms-heading')?.slot??-2)+1;let clause=0;
+  return <div className="contract-document flex min-h-0 flex-1 flex-col" data-testid="contract-document-editor" onKeyDownCapture={keys}>
+    <DocumentToolbar editor={{...editor,saving:editor.saving||details.saving}} onBack={onBack} onGenerate={generate} generating={generating} generationError={generationError} issues={issues} readOnly={readOnly}/>
+    <FormattingToolbar activeEditor={activeEditor} editor={editor} showChanges={showChanges} onShowChanges={setShowChanges} readOnly={frozen}/>
+    {!frozen&&<DocumentValidation issues={issues} onJump={jump}/>}
+    <div className="document-scroll min-h-0 flex-1 overflow-y-auto"><div className="document-recovery"><ContractRevisionChanges document={editor.doc}/>{editor.doc.source_contract_id&&<ContractRedlines showId={editor.doc.show_id} contractId={editor.doc.source_contract_id} readOnly={frozen}/>}{details.field&&<ContractShowDetails details={details} fields={editor.doc.source_snapshot.fields}/>}<RecoveryChoice editor={editor}/>{editor.comparison&&<DraftCompare comparison={editor.comparison} onClose={()=>editor.setComparison(null)} onLoadServer={editor.loadServer} onKeepBrowser={editor.recovery?editor.recover:editor.rebaseBrowser}/>}</div>
+      <article className="document-paper" aria-label="Contract document">
+        {blocks.filter(b=>b.kind!=='appendix').map(block=>{const index=blocks.findIndex(b=>b.id===block.id);return <ContractBlock key={block.id} block={block} number={block.kind==='clause'&&block.slot===termsSlot?++clause:null} readOnly={frozen} showChanges={showChanges} activeEditor={activeEditor} canUp={editable(blocks[index-1])&&blocks[index-1].slot===block.slot} canDown={editable(blocks[index+1])&&blocks[index+1].slot===block.slot} onEdit={html=>editor.replace(blocks.map(b=>b.id===block.id?{...b,rich_text:html}:b))} onAction={action}/>;})}
+        {(!frozen||showChanges)&&removed.length>0&&<section className="removed-clauses"><h3 className="text-sm font-semibold">Removed master clauses</h3>{removed.map(block=><div key={block.id} className="mt-2">{showChanges&&<del className="block text-sm" dangerouslySetInnerHTML={{__html:block.rich_text}}/>}{!frozen&&<Button variant="outline" onClick={()=>restoreRemoved(block)}>Restore {block.id}</Button>}</div>)}</section>}
+        <AppendixSection editor={editor} activeEditor={activeEditor} showChanges={showChanges} readOnly={frozen} onAction={action}/>
+      </article>
+    </div>
+  </div>;
+}

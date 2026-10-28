@@ -1,0 +1,17 @@
+import { useState } from 'react';
+import { Bold, Italic, Underline, List, ListOrdered, Undo2, Redo2, SlidersHorizontal } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+export default function FormattingToolbar({activeEditor,editor,showChanges,onShowChanges,readOnly}) {
+  const [expanded,setExpanded]=useState(false);
+  const format=(name,value=true)=>{const active=activeEditor.current;if(!active)return;const quill=active.quill;quill.focus();if(active.range)quill.setSelection(active.range);const current=quill.getFormat();quill.format(name,current[name]===value?false:value,'user');};
+  const formats=[['bold','Bold',Bold,true],['italic','Italic',Italic,true],['underline','Underline',Underline,true],['list','Bullet list',List,'bullet'],['list','Numbered list',ListOrdered,'ordered']];
+  return <div className="document-format-bar"><div className="flex min-w-0 flex-wrap items-center gap-1">
+    {!readOnly&&<><Button variant="ghost" aria-expanded={expanded} onClick={()=>setExpanded(!expanded)}><SlidersHorizontal className="h-4 w-4"/>Formatting</Button><div className={`${expanded?'flex':'hidden'} flex-wrap items-center gap-1`}>
+      {formats.map(([name,label,Icon,value])=><Button key={label} variant="ghost" size="icon" aria-label={label} title={label} onMouseDown={e=>e.preventDefault()} onClick={()=>format(name,value)}><Icon className="h-4 w-4"/></Button>)}
+      <span className="mx-1 h-5 border-l border-border"/>
+      <Button size="icon" variant="ghost" aria-label="Undo" title="Undo (Ctrl/Cmd+Z)" disabled={!editor.canUndo} onMouseDown={e=>e.preventDefault()} onClick={editor.undo}><Undo2 className="h-4 w-4"/></Button>
+      <Button size="icon" variant="ghost" aria-label="Redo" title="Redo (Ctrl/Cmd+Shift+Z)" disabled={!editor.canRedo} onMouseDown={e=>e.preventDefault()} onClick={editor.redo}><Redo2 className="h-4 w-4"/></Button>
+    </div></>}
+    <Button variant="ghost" className="ml-auto text-xs" aria-pressed={showChanges} onClick={()=>onShowChanges(!showChanges)}>Show changes</Button>
+  </div>{showChanges&&<p className="mt-1 text-xs text-muted-foreground">Underlined additions · struck-through removals · formatting differences shown below each edited clause</p>}</div>;
+}

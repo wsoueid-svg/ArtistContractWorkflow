@@ -1,0 +1,167 @@
+import React from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { base44 } from '@/api/base44Client';
+import { Card, CardContent } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
+import { DollarSign } from 'lucide-react';
+import { getCurrencySymbol } from '../shared/CurrencyUtils';
+import { calculateShowFinancials } from '@/lib/finance/showCalculations';
+import { auditStamp } from '@/lib/showEdit';
+import { useAuth } from '@/lib/AuthContext';
+import { useOrg } from '@/lib/OrgContext';
+
+export default function FeesPanel({ show }) {
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const { activeOrg } = useOrg();
+
+  const updateMutation = useMutation({
+    mutationFn: (data) => base44.entities.Show.update(show.id, { ...data, ...auditStamp(user, activeOrg) }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['show', show.id] }),
+  });
+
+  const toggle = (field, value) => updateMutation.mutate({ [field]: value });
+
+  const fee = show.guarantee_fee;
+  const sym = getCurrencySymbol(show.currency);
+  const fmt = (n) => Number(n).toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  const advancePct = show.offer_details?.advance_pct != null ? parseFloat(show.offer_details.advance_pct) : 50;
+  const bookingRate = parseFloat(show.booking_fee_rate) || 0;
+  const whtRate = parseFloat(show.withholding_tax_rate) || 0;
+  const vatRate = parseFloat(show.deal_vat_rate) || 0;
+  const bookingFeeType = show.booking_fee_type || 'exclusive';
+
+  // Use stored values if available (from ABOSS import), otherwise calculate
+  const calc = calculateShowFinancials(show);
+  const bookingFeeAmount = show.booking_fee_amount_fixed
+    ? Number(show.booking_fee_amount_fixed)
+    : (fee && bookingRate ? (fee * bookingRate / 100) : null);
+  const whtAmount = show.wht_amount_fixed != null
+    ? Number(show.wht_amount_fixed)
+    : (fee && whtRate ? (fee * whtRate / 100) : null);
+  const vatAmount = calc.vat_amount || null;
+  const grossFee = show.gross_fee || calc.gross_fee || null;
+  const nettFee = show.nett_fee || calc.nett_fee || null;
+  const dueToBooker = show.due_to_booker != null ? Number(show.due_to_booker) : calc.due_to_booker;
+  const dueToArtist = show.due_to_artist != null ? Number(show.due_to_artist) : calc.due_to_artist;
+
+  const advanceAmount = fee ? (fee * advancePct / 100) : null;
+
+  return (
+    <Card>
+      <CardContent className="p-6">
+        <div className="flex items-center gap-2 mb-4">
+          <DollarSign className="w-5 h-5 text-yellow-500" />
+          <h3 className="font-bold text-lg">Fees & Payments</h3>
+        </div>
+
+        <div className="space-y-5">
+          {/* Artist Fee */}
+          <div>
+            <p className="font-semibold text-sm text-gray-700 mb-3">
+              Artist Fee {fee ? `— ${sym}${fmt(fee)}` : ''}
+            </p>
+            <div className="space-y-3 pl-1">
+              <div className="flex items-center gap-3">
+                <Checkbox
+                  id="advance_paid"
+                  checked={!!show.advance_paid}
+                  onCheckedChange={(checked) => toggle('advance_paid', checked)}
+                />
+                <Label htmlFor="advance_paid" className="cursor-pointer">
+                  Advance paid ({advancePct}%){advanceAmount ? ` — ${sym}${fmt(advanceAmount)}` : ''}
+                </Label>
+                {show.advance_paid && (
+                  <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">✓ Paid</span>
+                )}
+              </div>
+              <div className="flex items-center gap-3">
+                <Checkbox
+                  id="payment_received"
+                  checked={!!show.payment_received}
+                  onCheckedChange={(checked) => toggle('payment_received', checked)}
+                />
+                <Label htmlFor="payment_received" className="cursor-pointer">
+                  Full payment received (100%){fee ? ` — ${sym}${fmt(fee)}` : ''}
+                </Label>
+                {show.payment_received && (
+                  <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">✓ Paid</span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="border-t pt-4">
+            <p className="font-semibold text-sm text-gray-700 mb-3">
+              Booking Fee {bookingRate > 0 ? `(${bookingRate}%)` : ''}{bookingFeeAmount ? ` — ${sym}${fmt(bookingFeeAmount)}` : ''}
+            </p>
+            <div className="flex items-center gap-3 pl-1">
+              <Checkbox
+                id="booking_fee_paid"
+                checked={!!show.booking_fee_paid}
+                onCheckedChange={(checked) => toggle('booking_fee_paid', checked)}
+              />
+              <Label htmlFor="booking_fee_paid" className="cursor-pointer">
+                Booking fee fully paid
+              </Label>
+              {show.booking_fee_paid && (
+                <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">✓ Paid</span>
+              )}
+            </div>
+          </div>
+
+          {/* Financial Waterfall */}
+          <div className="border-t pt-4 space-y-2">
+            <p className="font-semibold text-sm text-gray-700 mb-2">Financial Waterfall</p>
+
+            {grossFee != null && (
+              <div className="flex justify-between text-sm pl-1">
+                <span className="text-gray-500">Gross Fee</span>
+                <span className="font-medium">{sym}{fmt(grossFee)}</span>
+              </div>
+            )}
+
+            {whtAmount != null && (
+              <div className="flex justify-between text-sm pl-1">
+                <span className="text-gray-500">WHT ({whtRate}%)</span>
+                <span className="text-red-600">−{sym}{fmt(whtAmount)}</span>
+              </div>
+            )}
+
+            {vatAmount != null && vatAmount > 0 && (
+              <div className="flex justify-between text-sm pl-1">
+                <span className="text-gray-500">VAT ({vatRate}%)</span>
+                <span className="text-red-600">−{sym}{fmt(vatAmount)}</span>
+              </div>
+            )}
+
+            {nettFee != null && (
+              <div className="flex justify-between text-sm pl-1 border-t pt-2">
+                <span className="text-gray-500">Nett Fee</span>
+                <span className="font-medium">{sym}{fmt(nettFee)}</span>
+              </div>
+            )}
+
+            <div className="border-t pt-2 mt-2 space-y-2">
+              <div className="flex justify-between text-sm pl-1">
+                <span className="text-gray-500">
+                  Due to Booker
+                  <span className="text-xs text-gray-400 ml-1">
+                    ({bookingFeeType === 'inclusive' ? 'incl.' : 'on top'})
+                  </span>
+                </span>
+                <span className="font-semibold text-green-600">{sym}{fmt(dueToBooker)}</span>
+              </div>
+              <div className="flex justify-between text-sm pl-1">
+                <span className="text-gray-500">Due to Artist</span>
+                <span className="font-semibold text-blue-600">{sym}{fmt(dueToArtist)}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}

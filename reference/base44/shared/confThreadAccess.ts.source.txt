@@ -1,0 +1,32 @@
+const uniqueIds = (values) => Array.from(new Set((values || []).filter(Boolean).map(String)));
+
+export function buildConfThreadAccess(thread, show = null) {
+  return uniqueIds([
+    ...(thread?.scanned_by_user_ids || []),
+    ...(thread?.matched_user_ids || []),
+    ...(show?.responsible_agent_ids || []),
+    ...(show?.logistics_agent_ids || []),
+    show?.logistics_agent_id,
+  ]);
+}
+
+export function linkedThreadIds(show) {
+  return uniqueIds([
+    ...(show?.gmail_thread_ids || []),
+    show?.gmail_thread_id,
+    show?.active_thread_id,
+  ]);
+}
+
+export async function syncConfThreadAccessForShow(entities, show) {
+  if (!show?.id) return { updated: 0 };
+  const assigned = await entities.ConfThread.filter({ assigned_show_id: show.id }, '-last_message_at', 500);
+  const linked = await Promise.all(linkedThreadIds(show).map((threadId) => entities.ConfThread.filter({ thread_id: threadId }, '-last_message_at', 1)));
+  const threads = Array.from(new Map([...assigned, ...linked.flat()].map((thread) => [thread.id, thread])).values());
+  if (!threads.length) return { updated: 0 };
+  await entities.ConfThread.bulkUpdate(threads.map((thread) => ({
+    id: thread.id,
+    accessible_user_ids: buildConfThreadAccess(thread, show),
+  })));
+  return { updated: threads.length };
+}

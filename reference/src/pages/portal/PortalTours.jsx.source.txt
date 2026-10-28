@@ -1,0 +1,73 @@
+import React from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { Route as RouteIcon, ChevronRight, Lock } from 'lucide-react';
+import { usePortal } from '@/lib/portal/PortalContext';
+import { formatShowDate } from '@/lib/portal/timezone';
+
+const STATUS = {
+  planning: 'bg-slate-100 text-slate-600',
+  confirmed: 'bg-green-100 text-green-700',
+  ongoing: 'bg-yellow-100 text-yellow-700',
+  completed: 'bg-slate-100 text-slate-500',
+  cancelled: 'bg-red-100 text-red-700',
+};
+
+/** The artist's tours. Tapping one lists only that tour's shows. */
+export default function PortalTours() {
+  const { tours, permissions } = usePortal();
+  const [searchParams] = useSearchParams();
+  const artist = searchParams.get('artist');
+  const search = artist ? `?artist=${artist}` : '';
+
+  if (!permissions.can_view_tours) {
+    return (
+      <div className="rounded-2xl border border-slate-200 bg-white p-6 text-center">
+        <Lock className="mx-auto h-5 w-5 text-slate-300" aria-hidden="true" />
+        <p className="mt-3 text-sm font-semibold text-slate-900">Tours aren’t shared with you</p>
+        <p className="mt-1 text-xs text-slate-500">Ask your agent to enable tour access.</p>
+      </div>
+    );
+  }
+
+  if (!tours.length) {
+    return (
+      <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center">
+        <RouteIcon className="mx-auto h-6 w-6 text-slate-300" aria-hidden="true" />
+        <p className="mt-3 text-sm font-semibold text-slate-900">No tours yet</p>
+        <p className="mt-1 text-xs text-slate-500">Routed tours will show up here.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      {tours.map((tour) => (
+        <Link
+          key={tour.id}
+          to={`/portal/tours/${tour.id}${search}`}
+          className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 active:bg-yellow-50"
+        >
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <p className="truncate text-sm font-bold text-slate-900">{tour.name}</p>
+              {tour.status && (
+                <span className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase ${STATUS[tour.status] || 'bg-slate-100 text-slate-600'}`}>
+                  {tour.status}
+                </span>
+              )}
+            </div>
+            <p className="mt-1 text-xs text-slate-500">
+              {formatShowDate(tour.start_date, { short: true })}
+              {tour.end_date ? ` — ${formatShowDate(tour.end_date, { short: true })}` : ''}
+            </p>
+            <p className="mt-1 text-[11px] text-slate-400">
+              {tour.show_count} {tour.show_count === 1 ? 'show' : 'shows'}
+              {tour.countries?.length ? ` · ${tour.countries.join(', ')}` : ''}
+            </p>
+          </div>
+          <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" aria-hidden="true" />
+        </Link>
+      ))}
+    </div>
+  );
+}

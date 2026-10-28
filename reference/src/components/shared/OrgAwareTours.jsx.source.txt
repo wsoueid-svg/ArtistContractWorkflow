@@ -1,0 +1,13 @@
+import React from 'react';
+import { useOrg } from '@/lib/OrgContext';
+import AnalogTours from '@/pages/AnalogTours';
+import Tours from '@/pages/Tours';
+
+/**
+ * OrgAwareTours — renders the dedicated Analog Tours view for Analog org,
+ * and the standard Elevate Tours page otherwise.
+ */
+export default function OrgAwareTours() {
+  const { activeOrg } = useOrg();
+  return activeOrg === 'analog' ? <AnalogTours /> : <Tours />;
+}

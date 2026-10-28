@@ -1,0 +1,57 @@
+/**
+ * Show Financial Calculations
+ *
+ * Calculates Due to Booker and Due to Artist from the guaranteed fee,
+ * withholding tax, VAT, and booking fee inputs.
+ *
+ * Booking fee type:
+ * - 'exclusive' (on top of guaranteed fee): Booking fee is added on top of the guarantee.
+ *   The promoter pays guarantee + booking fee. The artist receives the guarantee minus WHT/VAT.
+ *   The booker receives the booking fee.
+ *
+ * - 'inclusive' (included in guaranteed fee): Booking fee is carved out of the guarantee.
+ *   The promoter pays only the guarantee. The artist receives the guarantee minus WHT/VAT
+ *   minus the booking fee. The booker receives the booking fee from within the guarantee.
+ *
+ * During ABOSS import, due_to_booker and due_to_artist are ingested directly from the
+ * pre-calculated ABOSS CSV columns — this utility is used for manual app entry only.
+ */
+
+export function calculateShowFinancials(show) {
+  const guaranteeFee = Number(show.guarantee_fee) || 0;
+  const whtRate = (Number(show.withholding_tax_rate) || 0) / 100;
+  const vatRate = (Number(show.deal_vat_rate) || 0) / 100;
+  const bookingFeeAmount = Number(show.booking_fee_amount_fixed) || 0;
+  const bookingFeeType = show.booking_fee_type || 'exclusive';
+  const isExclusive = bookingFeeType === 'exclusive';
+
+  // WHT and VAT apply to the guaranteed fee
+  const whtAmount = guaranteeFee * whtRate;
+  const vatAmount = guaranteeFee * vatRate;
+  const netGuarantee = guaranteeFee - whtAmount - vatAmount;
+
+  let dueToBooker, dueToArtist, grossFee;
+
+  if (isExclusive) {
+    // Booking fee is on top of (exclusive) the guaranteed fee
+    grossFee = guaranteeFee + bookingFeeAmount;
+    dueToArtist = netGuarantee;
+    dueToBooker = bookingFeeAmount;
+  } else {
+    // Booking fee is included in (inclusive) the guaranteed fee
+    grossFee = guaranteeFee;
+    dueToArtist = netGuarantee - bookingFeeAmount;
+    dueToBooker = bookingFeeAmount;
+  }
+
+  const round2 = (n) => Math.round(n * 100) / 100;
+
+  return {
+    gross_fee: round2(grossFee),
+    wht_amount: round2(whtAmount),
+    vat_amount: round2(vatAmount),
+    nett_fee: round2(netGuarantee),
+    due_to_booker: round2(dueToBooker),
+    due_to_artist: round2(dueToArtist),
+  };
+}

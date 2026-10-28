@@ -1,0 +1,15 @@
+diff --git a/src/components/contract-lab/draftRecovery.js b/src/components/contract-lab/draftRecovery.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..894ceee39c16911370d4da8251cab24129f6b9c7
+--- /dev/null
++++ b/src/components/contract-lab/draftRecovery.js
+@@ -0,0 +1,8 @@
++export const recoveryKey = (userId, showId, draftId) => `contract-draft:${userId}:${showId}:${draftId}`;
++export function readRecovery(key) {
++  try { const text=localStorage.getItem(key); if(!text) return null; const entry=JSON.parse(text); if(!entry || !Array.isArray(entry.document?.blocks) || !Number.isFinite(entry.savedAt) || !entry.document.show_id) return {malformed:true}; return entry; }
++  catch { return {malformed:true}; }
++}
++export function writeRecovery(key,document) { const savedAt=Date.now();localStorage.setItem(key,JSON.stringify({savedAt,document}));return savedAt; }
++export function blockContent(blocks) { return JSON.stringify(blocks.map(({id,kind,slot,rich_text})=>({id,kind,slot,rich_text}))); }
++export function hasDocumentEdits(document) { return blockContent(document.blocks)!==blockContent(document.master_blocks||document.source_master_blocks||document.blocks); }
+\ No newline at end of file

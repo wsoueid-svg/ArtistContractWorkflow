@@ -1,0 +1,104 @@
+diff --git a/base44/shared/contractTemplates/layout.ts b/base44/shared/contractTemplates/layout.ts
+index 7aec7b4cd2d1e1fef96b82e330294ffadbc3acab..0fcec5f76d66c2ee472bce1ffb8d7b54b4d98758 100644
+--- a/base44/shared/contractTemplates/layout.ts
++++ b/base44/shared/contractTemplates/layout.ts
+@@ -7,6 +7,7 @@
+  * editions stay structurally identical.
+  */
+ import { CONTRACT_CSS } from './styles.ts';
++import { ANALOG_BANNER_URL, representationText } from './representation.ts';
+ 
+ export function esc(value: unknown) {
+   return String(value ?? '')
+@@ -119,10 +120,11 @@ export function buildContractHtml(opts: {
+   <title>${esc(L.headline)} — ${esc(ctx.artistName)}</title>
+   <style>${CONTRACT_CSS}</style>
+ </head>
+-<body>
++<body class="${brand.key === 'nysm' ? 'nysm-contract' : 'analog-contract'}">
+ 
++  <!--block:heading:protected-->
+   <div class="masthead">
+-    <div class="wordmark">${esc(brand.wordmark)}</div>
++    ${brand.key === 'nysm' ? `<div class="wordmark">${esc(brand.wordmark)}</div>` : `<img src="${ANALOG_BANNER_URL}" width="851" height="130" class="analog-banner" alt="Analog. Confirmation of Artist" />`}
+     <div class="doc-kind">${esc(L.docKind)}</div>
+   </div>
+ 
+@@ -132,16 +134,19 @@ export function buildContractHtml(opts: {
+     <div class="dated-value">${esc(ctx.contractDate)}</div>
+   </div>
+ 
++  <!--/block-->
++  <!--block:parties:protected-->
+   <h2 class="section">${esc(L.between)}</h2>
+   <p>${esc(ctx.companyName)} — ${esc(ctx.companyAddress)} — ${esc(ctx.companyVat)}</p>
+ 
+   <h2 class="section">${esc(L.and)}</h2>
+-  <p>${esc(ctx.artistName)}, c/o ${esc(ctx.agencyName)} — ${esc(ctx.agencyAddress)} (${esc(ctx.agencyTaxId)}).</p>
+-
+-  <p>${esc(pack.preamble)}</p>
++  <p>${representationText(brand.key === 'aesl' ? `aesl-${pack.lang}` : brand.key) ? esc(representationText(`aesl-${pack.lang}`)) : `${esc(ctx.artistName)}, c/o ${esc(ctx.agencyName)} — ${esc(ctx.agencyAddress)} (${esc(ctx.agencyTaxId)}).`}</p>
++  <!--/block-->
++  <!--block:preamble:clause--><p>${esc(pack.preamble)}</p><!--/block-->
+ 
+   <div class="rule"></div>
+ 
++  <!--block:event:protected-->
+   <h2 class="section">${esc(L.schedule)}</h2>
+   <p class="tight">${esc(L.scheduleIntro)}</p>
+   <div class="schedule-list">
+@@ -152,9 +157,11 @@ export function buildContractHtml(opts: {
+     ${scheduleRow(L.billing, ctx.billingRequirements)}
+   </div>
+ 
+-  <p>${esc(pack.billingPositionSentence(ctx.artistName, ctx.billingPosition))}</p>
+-  <p>${esc(pack.billingNote)}</p>
++  <!--/block-->
++  <!--block:billing-position:clause--><p>${esc(pack.billingPositionSentence(ctx.artistName, ctx.billingPosition))}</p><!--/block-->
++  <!--block:billing-note:clause--><p>${esc(pack.billingNote)}</p><!--/block-->
+ 
++  <!--block:economics:economics-->
+   <p class="strong tight">${esc(L.whtHeading)}</p>
+   <p>${esc(pack.whtClause)} — ${esc(ctx.whtRate)}%.</p>
+   <p>${esc(pack.whtProof)}</p>
+@@ -163,6 +170,7 @@ export function buildContractHtml(opts: {
+   <p class="tight">${esc(ctx.agencyName)} — ${esc(ctx.agencyAddress)} — ${esc(ctx.agencyTaxId)}</p>
+ 
+   <table class="payments">
++    ${brand.key === 'nysm' ? '' : '<colgroup><col style="width:28%"><col style="width:16%"><col style="width:14%"><col style="width:14%"><col style="width:14%"><col style="width:14%"></colgroup>'}
+     <thead>
+       <tr>
+         <th>${esc(L.colDescription)}</th>
+@@ -187,17 +195,19 @@ export function buildContractHtml(opts: {
+   ${pack.paymentTail.map(clause => `<p>${esc(clause)}</p>`).join('')}
+   <p class="strong">${esc(pack.vatNote)}</p>
+   <p>${rich(pack.transferNote)}</p>
++  <!--/block-->
+ 
+-  <p class="strong tight">${esc(pack.expensesIntro)}</p>
+-  ${pack.expenseItems.map(item => `<p class="tight strong">${esc(item)}</p>`).join('')}
++  <!--block:expenses-intro:clause--><p class="strong tight">${esc(pack.expensesIntro)}</p><!--/block-->
++  ${pack.expenseItems.map((item, i) => `<!--block:expense-${i + 1}:clause--><p class="tight strong">${esc(item)}</p><!--/block-->`).join('')}
+ 
+-  ${notesBlock}
++  ${notesBlock ? `<!--block:notes:appendix-->${notesBlock}<!--/block-->` : ''}
+ 
+-  <h2 class="section">${esc(L.terms)}</h2>
++  <!--block:terms-heading:protected--><h2 class="section">${esc(L.terms)}</h2><!--/block-->
+   <ol class="clauses">
+-    ${pack.terms.map(term => `<li>${esc(term)}</li>`).join('')}
++    ${pack.terms.map((term, i) => `<li><!--block:term-${i + 1}:clause-->${esc(term)}<!--/block--></li>`).join('')}
+   </ol>
+ 
++  <!--block:signatures:protected-->
+   <p>${esc(L.signatureIntro)}</p>
+ 
+   <table class="signatures">
+@@ -212,6 +222,7 @@ export function buildContractHtml(opts: {
+       </td>
+     </tr>
+   </table>
++  <!--/block-->
+ 
+ </body>
+ </html>`;

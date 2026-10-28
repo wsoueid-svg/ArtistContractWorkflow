@@ -1,0 +1,27 @@
+import React from 'react';
+import { useOrg } from '@/lib/OrgContext';
+import Home from '@/pages/Home';
+import AnalogMyDesk from '@/pages/AnalogMyDesk';
+
+/**
+ * DashboardSwitcher — renders the correct dashboard based on activeOrg.
+ * Elevate → Home dashboard
+ * Analog  → My Desk command center (the org-wide grid lives on /shows)
+ */
+export default function DashboardSwitcher() {
+  const { activeOrg } = useOrg();
+
+  if (!activeOrg) {
+    return (
+      <div className="flex min-h-[50vh] items-center justify-center" aria-label="Loading organization">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-slate-200 border-t-slate-800" />
+      </div>
+    );
+  }
+
+  if (activeOrg === 'analog') {
+    return <AnalogMyDesk />;
+  }
+
+  return <Home />;
+}

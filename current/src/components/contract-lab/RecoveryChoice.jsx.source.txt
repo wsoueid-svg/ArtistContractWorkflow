@@ -1,0 +1,6 @@
+import { Button } from '@/components/ui/button';
+import { formatTime } from '@/components/contract-lab/documentText';
+export default function RecoveryChoice({editor}) {
+  if(!editor.recovery)return null;
+  return <section className="recovery-choice" role="alert"><h3 className="font-semibold">A newer browser copy is available</h3><p className="mt-1 text-xs text-muted-foreground">Browser: {formatTime(new Date(editor.recovery.savedAt).toISOString())}<br/>Server: {formatTime(editor.doc.approved_at)}<br/>Neither copy is applied automatically. Compare before deciding.</p><div className="mt-3 flex flex-wrap gap-2"><Button onClick={editor.recover}>Recover</Button><Button variant="outline" onClick={editor.compare}>Compare</Button><Button variant="outline" onClick={editor.discard}>Discard</Button></div></section>;
+}

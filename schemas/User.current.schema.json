@@ -1,0 +1,236 @@
+{
+  "name": "User",
+  "type": "object",
+  "properties": {
+    "role": {
+      "type": "string",
+      "enum": [
+        "admin",
+        "user",
+        "artist",
+        "tour_manager"
+      ],
+      "default": "user",
+      "description": "System role."
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true,
+      "description": "Master access toggle.",
+      "rls": {
+        "update": {
+          "user_condition": {
+            "collaborator_role": "editor"
+          }
+        }
+      }
+    },
+    "invite_status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "accepted"
+      ],
+      "default": "pending",
+      "description": "Onboarding state."
+    },
+    "invited_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "deactivated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "user_type": {
+      "type": "string",
+      "enum": [
+        "staff",
+        "artist",
+        "artist_team"
+      ],
+      "default": "staff"
+    },
+    "linked_artist_id": {
+      "type": "string"
+    },
+    "org_access": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "elevate",
+          "analog"
+        ]
+      },
+      "default": [
+        "analog"
+      ],
+      "description": "Organizations this user may access.",
+      "rls": {
+        "update": {
+          "user_condition": {
+            "collaborator_role": "editor"
+          }
+        }
+      }
+    },
+    "active_org": {
+      "type": "string",
+      "enum": [
+        "elevate",
+        "analog"
+      ],
+      "default": "analog",
+      "description": "Currently active organization context."
+    },
+    "analog_role": {
+      "type": "string",
+      "enum": [
+        "admin",
+        "agent",
+        "logistics"
+      ],
+      "default": "agent"
+    },
+    "finance_role": {
+      "type": "string",
+      "enum": [
+        "Finance Manager",
+        "Finance Viewer"
+      ],
+      "rls": {
+        "update": {
+          "user_condition": {
+            "collaborator_role": "editor"
+          }
+        }
+      }
+    },
+    "is_cfo": {
+      "type": "boolean",
+      "default": false,
+      "rls": {
+        "update": {
+          "user_condition": {
+            "collaborator_role": "editor"
+          }
+        }
+      }
+    },
+    "is_admin": {
+      "type": "boolean",
+      "default": false
+    },
+    "permissions": {
+      "type": "object",
+      "properties": {
+        "can_view_finances": {
+          "type": "boolean"
+        },
+        "can_view_contracts": {
+          "type": "boolean"
+        },
+        "can_view_reports": {
+          "type": "boolean"
+        },
+        "can_view_documents": {
+          "type": "boolean"
+        },
+        "can_manage_shows": {
+          "type": "boolean"
+        },
+        "can_manage_artists": {
+          "type": "boolean"
+        },
+        "can_view_shows": {
+          "type": "boolean"
+        },
+        "can_view_releases": {
+          "type": "boolean"
+        },
+        "can_view_tours": {
+          "type": "boolean"
+        },
+        "can_view_logistics": {
+          "type": "boolean"
+        },
+        "can_view_marketing": {
+          "type": "boolean"
+        },
+        "can_confirm_shows": {
+          "type": "boolean",
+          "default": false
+        }
+      }
+    },
+    "access_requests": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "module": {
+            "type": "string"
+          },
+          "requested_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "approved",
+              "denied"
+            ]
+          }
+        }
+      }
+    },
+    "associated_artist_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "managed_artists": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "phone": {
+      "type": "string"
+    },
+    "avatar_url": {
+      "type": "string"
+    },
+    "preferred_language": {
+      "type": "string",
+      "enum": [
+        "en",
+        "es"
+      ]
+    },
+    "gmail_sync_status": {
+      "type": "string",
+      "enum": [
+        "IDLE",
+        "SYNCING",
+        "ERROR_AUTH"
+      ],
+      "default": "IDLE"
+    },
+    "sync_started_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "last_gmail_scan_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "gmail_connected_email": {
+      "type": "string"
+    }
+  }
+}

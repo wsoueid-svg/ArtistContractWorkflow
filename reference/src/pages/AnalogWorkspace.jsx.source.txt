@@ -1,0 +1,748 @@
+import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import DealStatusBadge from '@/components/shared/DealStatusBadge';
+import CompositeInvoiceBadge from '@/components/analog/CompositeInvoiceBadge';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useVirtualizer } from '@tanstack/react-virtual';
+import { base44 } from '@/api/base44Client';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, isToday, parseISO } from 'date-fns';
+import {
+  ChevronLeft, ChevronRight, Plus, Search, LayoutGrid,
+  Calendar as CalendarIcon, X, ArrowUp, ArrowDown, ArrowUpDown, SlidersHorizontal, Kanban,
+} from 'lucide-react';
+import { toast } from 'sonner';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Checkbox } from '@/components/ui/checkbox';
+import ShowDrawer from '@/components/analog/ShowDrawer';
+import StatusPill from '@/components/analog/StatusPill';
+import AnalogDashboardSummary from '@/components/analog/AnalogDashboardSummary';
+import useMyAgent from '@/hooks/useMyAgent';
+import { useAuth } from '@/lib/AuthContext';
+import { resolveAnalogStaffScope } from '@/lib/analogStaffScope';
+import { getInvoiceChaseStatus } from '@/lib/invoiceChase';
+import ShowsPipelineBoard from '@/components/shows/ShowsPipelineBoard';
+import PageHeader from '@/components/shared/PageHeader';
+import { useOrg } from '@/lib/OrgContext';
+import { auditStamp } from '@/lib/showEdit';
+import { saveAnalogShow } from '@/lib/showSave';
+import { canConfirmShow } from '@/components/shows/ShowStatusChip';
+import MobileLargeTitle from '@/components/mobile/MobileLargeTitle';
+import Fab from '@/components/mobile/Fab';
+import MobileFilterBar from '@/components/analog/workspace/MobileFilterBar';
+import WorkspaceFilterSheet from '@/components/analog/workspace/WorkspaceFilterSheet';
+import MobileShowList from '@/components/analog/workspace/MobileShowList';
+import useScrollToToday from '@/hooks/useScrollToToday';
+import { readTriageParam } from '@/hooks/useTriageDeepLink';
+
+const STATUS_LABELS = { confirmed: 'CON', pending: 'OPT', cancelled: 'CXL', completed: 'DONE' };
+const STATUS_COLORS = {
+  confirmed: 'bg-emerald-100 text-emerald-800',
+  pending: 'bg-amber-100 text-amber-800',
+  cancelled: 'bg-red-100 text-red-700',
+  completed: 'bg-gray-100 text-gray-600',
+};
+
+const COLUMNS = [
+  { key: 'date',    label: 'Date' },
+  { key: 'artist',  label: 'Artist' },
+  { key: 'event',   label: 'Event' },
+  { key: 'venue',   label: 'Venue / City' },
+  { key: 'country', label: 'Country' },
+  { key: 'status',  label: 'Status' },
+  { key: 'booked_by', label: 'Booking Agent' },
+  { key: 'logistics_agent', label: 'Logistics Agent' },
+  { key: 'contract_status', label: 'Contract' },
+  { key: 'invoice_status', label: 'Invoice' },
+  { key: 'conf_thread', label: 'CONF Thread' },
+  { key: 'fee',     label: 'Guarantee' },
+];
+
+const DEFAULT_WIDTHS = { date: 100, artist: 130, event: 260, venue: 160, country: 90, status: 80, booked_by: 140, logistics_agent: 130, contract_status: 100, invoice_status: 110, conf_thread: 100, fee: 100 };
+
+const DEFAULT_VISIBLE = ['date', 'artist', 'event', 'venue', 'status', 'booked_by', 'fee'];
+const ROW_HEIGHT_SHOW = 32;
+const ROW_HEIGHT_DIVIDER = 28;
+const INVOICE_STATUS_RANK = {
+  Paid: 0, Cancelled: 0, Draft: 1, Sent: 2, Viewed: 2,
+  'Pending Holded Approval': 3, 'Partially Paid': 4,
+  'Needs Review': 5, Disputed: 6, Overdue: 7,
+};
+const worstInvoiceStatusRank = (invoices = []) => invoices.reduce(
+  (worst, invoice) => Math.max(worst, INVOICE_STATUS_RANK[invoice.status] ?? -1), -1,
+);
+
+export default function AnalogWorkspace() {
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const { theme, activeOrg } = useOrg();
+  const { user } = useAuth();
+  const { data: myAgent = null, isLoading: isLoadingAgent } = useMyAgent(Boolean(user && user.role !== 'admin'));
+  const scope = useMemo(() => resolveAnalogStaffScope(user, myAgent), [user, myAgent]);
+
+  const [filterSheetOpen, setFilterSheetOpen] = useState(false);
+
+  // View & drawer
+  const [view, setView] = useState('grid');
+  const [selectedShow, setSelectedShow] = useState(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [calMonth, setCalMonth] = useState(new Date());
+  const [initialThreadId, setInitialThreadId] = useState(null);
+
+  // Dashboard → "create show from this CONF email" deep link
+  useEffect(() => {
+    const tid = new URLSearchParams(window.location.search).get('new_show_thread');
+    if (tid) { setInitialThreadId(tid); setSelectedShow(null); setDrawerOpen(true); }
+  }, []);
+  // ?triage_thread deep link — reopens the split view once shows are loaded,
+  // editing the show already bound to that thread when one exists.
+  const triageRef = useRef(readTriageParam());
+
+  // Filters
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [artistFilter, setArtistFilter] = useState(null);
+  const [agentFilter, setAgentFilter] = useState(null);
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [paymentChase, setPaymentChase] = useState(null);
+
+  // Grid config — column visibility & widths persisted per user
+  const [visibleColumns, setVisibleColumns] = useState(() => {
+    try {
+      const v = JSON.parse(localStorage.getItem('analog-grid-cols'));
+      return Array.isArray(v) && v.length ? v : DEFAULT_VISIBLE;
+    } catch { return DEFAULT_VISIBLE; }
+  });
+  const [colWidths, setColWidths] = useState(() => {
+    try { return { ...DEFAULT_WIDTHS, ...(JSON.parse(localStorage.getItem('analog-grid-widths')) || {}) }; }
+    catch { return { ...DEFAULT_WIDTHS }; }
+  });
+  const resizingRef = useRef(false);
+  const [sortColumn, setSortColumn] = useState('date');
+  const [sortDirection, setSortDirection] = useState('asc');
+
+  const startResize = (e, key) => {
+    e.preventDefault();
+    resizingRef.current = true;
+    const startX = e.clientX;
+    const startW = colWidths[key] || 100;
+    const onMove = (ev) => setColWidths(w => ({ ...w, [key]: Math.max(60, startW + ev.clientX - startX) }));
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      setColWidths(w => { localStorage.setItem('analog-grid-widths', JSON.stringify(w)); return w; });
+      setTimeout(() => { resizingRef.current = false; }, 0);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  };
+
+  // ── Data ───────────────────────────────────────────────────────
+  const dashboardAgentId = scope.isAdmin ? null : scope.myAgentId;
+  const { data: showsResponse, isLoading: isLoadingShows } = useQuery({
+    queryKey: ['analog-shows', activeOrg, dashboardAgentId],
+    enabled: Boolean(user && (scope.isAdmin || !isLoadingAgent)),
+    queryFn: () => base44.functions.invoke('getShowsForOrg', dashboardAgentId ? { agent_id: dashboardAgentId } : {}).then(r => r.data),
+  });
+  const shows = showsResponse?.shows || [];
+  const isLoading = isLoadingShows || (!scope.isAdmin && isLoadingAgent);
+  useEffect(() => {
+    const tid = triageRef.current;
+    if (!tid || !showsResponse) return;
+    triageRef.current = null;
+    const existing = shows.find(s => s.gmail_thread_id === tid) || null;
+    setSelectedShow(existing);
+    setInitialThreadId(existing ? null : tid);
+    setDrawerOpen(true);
+  }, [showsResponse, shows]);
+
+  const { data: artists = [] } = useQuery({
+    queryKey: ['artists', activeOrg],
+    queryFn: () => base44.entities.Artist.filter({ org: ['analog', 'both'] }, '-created_date', 200),
+  });
+
+  const { data: bookingAgents = [] } = useQuery({
+    queryKey: ['booking-agents', activeOrg],
+    queryFn: () => base44.entities.BookingAgent.list('name', 500),
+    staleTime: 60 * 1000,
+  });
+  const { data: rosterAssignments = [] } = useQuery({
+    queryKey: ['roster-assignments', scope.myAgentId],
+    enabled: Boolean(scope.isBooker && scope.myAgentId),
+    queryFn: () => base44.entities.RosterAssignment.filter({ agent_id: scope.myAgentId }, '-start_date', 500),
+  });
+
+  const agentMap = useMemo(() => {
+    const m = {};
+    bookingAgents.forEach(a => { m[a.id] = a; });
+    return m;
+  }, [bookingAgents]);
+
+  // Scoped lifecycle summaries are returned with shows; invoice arrays preserve split billing.
+  const contracts = showsResponse?.contract_summaries || [];
+  const invoices = showsResponse?.invoice_summaries || [];
+  const contractMap = useMemo(() => {
+    const m = {};
+    contracts.forEach(c => { if (c.show_id && !m[c.show_id]) m[c.show_id] = c; });
+    return m;
+  }, [contracts]);
+  const invoiceByShow = useMemo(() => {
+    const m = {};
+    invoices.forEach(invoice => {
+      if (!invoice.show_id) return;
+      if (!m[invoice.show_id]) m[invoice.show_id] = [];
+      m[invoice.show_id].push(invoice);
+    });
+    return m;
+  }, [invoices]);
+
+  const artistMap = useMemo(() => {
+    const m = {};
+    artists.forEach(a => { m[a.id] = a; });
+    return m;
+  }, [artists]);
+  const dashboardArtists = useMemo(() => {
+    if (!scope.isBooker) return artists;
+    const allowed = new Set(shows.map(show => show.artist_id));
+    rosterAssignments.forEach(assignment => allowed.add(assignment.artist_id));
+    return artists.filter(artist => allowed.has(artist.id));
+  }, [artists, shows, rosterAssignments, scope.isBooker]);
+
+  // ── Handlers ───────────────────────────────────────────────────
+  const toggleColumn = (key) => setVisibleColumns(prev => {
+    const next = prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key];
+    localStorage.setItem('analog-grid-cols', JSON.stringify(next));
+    return next;
+  });
+
+  const handleSort = (key) => {
+    if (sortColumn === key) setSortDirection(d => d === 'asc' ? 'desc' : 'asc');
+    else { setSortColumn(key); setSortDirection('asc'); }
+  };
+
+  const clearAllFilters = () => { setSearch(''); setStatusFilter('all'); setArtistFilter(null); setAgentFilter(null); setDateFrom(''); setDateTo(''); setPaymentChase(null); };
+
+  // ── Filtered + Sorted ─────────────────────────────────────────
+  const filtered = useMemo(() => {
+    let result = shows.filter(s => {
+      if (search) {
+        const q = search.toLowerCase();
+        const match = [s.event_name, s.venue, s.city, artistMap[s.artist_id]?.name].some(v => v?.toLowerCase().includes(q));
+        if (!match) return false;
+      }
+      if (statusFilter !== 'all' && s.status !== statusFilter) return false;
+      if (artistFilter && s.artist_id !== artistFilter) return false;
+      if (agentFilter && !(s.responsible_agent_ids || []).includes(agentFilter)) return false;
+      if (dateFrom && (!s.date || s.date < dateFrom)) return false;
+      if (dateTo && (!s.date || s.date > dateTo)) return false;
+      if (paymentChase) {
+        if (!(s.responsible_agent_ids || []).includes(scope.myAgentId)) return false;
+        if (getInvoiceChaseStatus(s, invoiceByShow[s.id] || []) !== paymentChase) return false;
+      }
+      return true;
+    });
+
+    result.sort((a, b) => {
+      let va, vb;
+      switch (sortColumn) {
+        case 'date': va = a.date || ''; vb = b.date || ''; break;
+        case 'artist': va = (artistMap[a.artist_id]?.name || '').toLowerCase(); vb = (artistMap[b.artist_id]?.name || '').toLowerCase(); break;
+        case 'event': va = (a.event_name || '').toLowerCase(); vb = (b.event_name || '').toLowerCase(); break;
+        case 'venue': va = (a.venue || '').toLowerCase(); vb = (b.venue || '').toLowerCase(); break;
+        case 'country': va = (a.country || '').toLowerCase(); vb = (b.country || '').toLowerCase(); break;
+        case 'status': va = a.status || ''; vb = b.status || ''; break;
+        case 'booked_by': va = (a.responsible_agent_ids || []).map(id => agentMap[id]?.name).filter(Boolean).join(', ').toLowerCase(); vb = (b.responsible_agent_ids || []).map(id => agentMap[id]?.name).filter(Boolean).join(', ').toLowerCase(); break;
+        case 'fee': va = a.guarantee_fee || 0; vb = b.guarantee_fee || 0; break;
+        case 'logistics_agent': va = ((a.logistics_agent_ids || []).map(id => agentMap[id]?.name).filter(Boolean).join(', ') || agentMap[a.logistics_agent_id]?.name || '').toLowerCase(); vb = ((b.logistics_agent_ids || []).map(id => agentMap[id]?.name).filter(Boolean).join(', ') || agentMap[b.logistics_agent_id]?.name || '').toLowerCase(); break;
+        case 'contract_status': va = contractMap[a.id]?.status || ''; vb = contractMap[b.id]?.status || ''; break;
+        case 'invoice_status': va = worstInvoiceStatusRank(invoiceByShow[a.id]); vb = worstInvoiceStatusRank(invoiceByShow[b.id]); break;
+        case 'conf_thread': va = a.gmail_thread_id ? 1 : 0; vb = b.gmail_thread_id ? 1 : 0; break;
+        default: va = a.date || ''; vb = b.date || '';
+      }
+      if (va < vb) return sortDirection === 'asc' ? -1 : 1;
+      if (va > vb) return sortDirection === 'asc' ? 1 : -1;
+      return 0;
+    });
+    return result;
+  }, [shows, search, statusFilter, artistFilter, agentFilter, dateFrom, dateTo, paymentChase, scope.myAgentId, artistMap, agentMap, contractMap, invoiceByShow, sortColumn, sortDirection]);
+
+  // Month dividers only when sorted by date
+  const virtualRows = useMemo(() => {
+    const rows = [];
+    let lastMonth = null;
+    filtered.forEach(show => {
+      if (sortColumn === 'date') {
+        const month = show.date ? show.date.slice(0, 7) : 'unknown';
+        if (month !== lastMonth) {
+          rows.push({ type: 'divider', month, id: `divider-${month}` });
+          lastMonth = month;
+        }
+      }
+      rows.push({ type: 'show', show, id: show.id });
+    });
+    return rows;
+  }, [filtered, sortColumn]);
+
+  // ── Virtualizer ────────────────────────────────────────────────
+  const parentRef = useRef(null);
+  const virtualizer = useVirtualizer({
+    count: virtualRows.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: (i) => virtualRows[i]?.type === 'divider' ? ROW_HEIGHT_DIVIDER : ROW_HEIGHT_SHOW,
+    overscan: 10,
+  });
+
+  // Start the list at today's date on first load instead of the oldest show.
+  useScrollToToday({
+    virtualizer,
+    rows: virtualRows,
+    enabled: !isLoading && view === 'grid' && sortColumn === 'date' && sortDirection === 'asc',
+  });
+
+  // ── Mutations ──────────────────────────────────────────────────
+  const updateShow = useMutation({
+    mutationFn: ({ id, data }) => base44.entities.Show.update(id, { ...data, ...auditStamp(user, activeOrg) }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['analog-shows', activeOrg] });
+      toast.success('Show updated successfully.');
+    },
+    onError: () => toast.error('Could not update the show. Please try again.'),
+  });
+  // ── Calendar ───────────────────────────────────────────────────
+  const calDays = useMemo(() => eachDayOfInterval({ start: startOfMonth(calMonth), end: endOfMonth(calMonth) }), [calMonth]);
+  const showsByDate = useMemo(() => {
+    const map = {};
+    filtered.forEach(s => { if (!s.date) return; const key = s.date.slice(0, 10); if (!map[key]) map[key] = []; map[key].push(s); });
+    return map;
+  }, [filtered]);
+
+  // ── Drawer ─────────────────────────────────────────────────────
+  const openDrawer = (show) => { setSelectedShow(show); setDrawerOpen(true); };
+  const openShowDetail = (show) => navigate(`/analogshowdetail?id=${show.id}`);
+  const openNewShow = () => { setSelectedShow(null); setDrawerOpen(true); };
+  const handleSave = async (data, operationToken) => {
+    try {
+      const savedId = await saveAnalogShow({
+        form: data,
+        existingShow: selectedShow,
+        artist: artistMap[data.artist_id],
+        user,
+        activeOrg,
+        queryClient,
+        operationToken,
+      });
+      setDrawerOpen(false);
+      setInitialThreadId(null);
+      if (savedId) navigate(`/analogshowdetail?id=${savedId}`);
+    } catch (err) {
+      console.error('[AnalogWorkspace] save error:', err);
+      toast.error('Could not save the show. Please try again.');
+      // Drawer stays open so the user can retry without losing the form
+    }
+  };
+
+  // ── Grid template from visible columns (resizable px widths) ───
+  const activeCols = COLUMNS.filter(c => visibleColumns.includes(c.key));
+  // minmax(px, fr): columns never shrink below their set width (horizontal scroll
+  // kicks in) but stretch proportionally to fill wider screens.
+  const gridTemplate = activeCols.map(c => { const w = colWidths[c.key] || 100; return `minmax(${w}px, ${w}fr)`; }).join(' ');
+  const totalWidth = activeCols.reduce((s, c) => s + (colWidths[c.key] || 100), 0);
+
+  const hasActiveFilters = search || statusFilter !== 'all' || artistFilter || agentFilter || dateFrom || dateTo || paymentChase;
+
+  // ── Mobile filter chips + confirm action ───────────────────────
+  const canConfirm = canConfirmShow(user);
+  const mobileChips = [
+    statusFilter !== 'all' && { key: 'status', label: `Status: ${STATUS_LABELS[statusFilter]}`, onClear: () => setStatusFilter('all') },
+    (dateFrom || dateTo) && { key: 'dates', label: `Dates: ${dateFrom || '…'} → ${dateTo || '…'}`, onClear: () => { setDateFrom(''); setDateTo(''); } },
+    artistFilter && { key: 'artist', label: `Artist: ${artistMap[artistFilter]?.name || 'Unknown'}`, onClear: () => setArtistFilter(null) },
+    agentFilter && { key: 'agent', label: `Agent: ${agentMap[agentFilter]?.name || 'Unknown'}`, onClear: () => setAgentFilter(null) },
+    paymentChase && { key: 'chase', label: `Chasing: ${paymentChase.charAt(0).toUpperCase() + paymentChase.slice(1)}`, onClear: () => setPaymentChase(null) },
+  ].filter(Boolean);
+
+  const handleConfirmShow = (show) => {
+    if (!canConfirm) {
+      toast.error("You don't have permission to confirm or complete shows.");
+      return;
+    }
+    updateShow.mutate({ id: show.id, data: { status: 'confirmed' } });
+  };
+
+  const handleRefresh = async () => {
+    await queryClient.invalidateQueries({ queryKey: ['analog-shows', activeOrg] });
+  };
+
+  return (
+    <div className="space-y-3">
+      {/* Header — large iOS title on mobile, PageHeader on desktop */}
+      <MobileLargeTitle title="Workspace" subtitle={`${filtered.length} shows`} />
+      <div className="hidden md:block">
+        <PageHeader
+          title="Analog Workspace"
+          subtitle={`${filtered.length} shows`}
+          actions={
+            <button onClick={openNewShow} aria-label="New Show" data-tour="analog-new-show"
+              className={`flex items-center gap-1.5 px-3 py-2 min-h-[44px] md:min-h-0 ${theme.bg} ${theme.text} text-sm font-semibold rounded-xl transition-colors`}>
+              <Plus className="w-4 h-4" /> New Show
+            </button>
+          }
+        />
+      </div>
+
+      {/* Mobile primary action */}
+      <Fab onClick={openNewShow} label="New Show" />
+
+      {/* Mobile sticky search + chips + Filters */}
+      <MobileFilterBar
+        search={search}
+        setSearch={setSearch}
+        onOpenFilters={() => setFilterSheetOpen(true)}
+        activeCount={mobileChips.length}
+        chips={mobileChips}
+      />
+      <WorkspaceFilterSheet
+        open={filterSheetOpen}
+        onClose={() => setFilterSheetOpen(false)}
+        statusFilter={statusFilter} setStatusFilter={setStatusFilter}
+        dateFrom={dateFrom} setDateFrom={setDateFrom}
+        dateTo={dateTo} setDateTo={setDateTo}
+        agentFilter={agentFilter} setAgentFilter={setAgentFilter}
+        bookingAgents={bookingAgents}
+        view={view} setView={setView}
+        onClearAll={clearAllFilters}
+      />
+
+      {/* ── Dashboard Summary Cards ────────────────────────────── */}
+      <AnalogDashboardSummary shows={shows} artists={dashboardArtists} contracts={contracts} contractMap={contractMap}
+        invoiceByShow={invoiceByShow} scope={scope} paymentChase={paymentChase}
+        artistMap={artistMap} userId={user?.id}
+        onPaymentChase={bucket => setPaymentChase(current => current === bucket ? null : bucket)} />
+
+      {/* ── Filter bar (desktop) ───────────────────────────────── */}
+      <div className="hidden md:flex flex-wrap items-center gap-2">
+        {/* Search */}
+        <div className="flex items-center gap-1.5 bg-white border border-gray-200 rounded-xl px-3 py-2 flex-1 min-w-[160px]">
+          <Search className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+          <input value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Search…" className="text-sm outline-none flex-1 bg-transparent placeholder-gray-400" />
+          {search && <button onClick={() => setSearch('')} aria-label="Clear search"><X className="w-3.5 h-3.5 text-gray-400" /></button>}
+        </div>
+
+        {/* Date range */}
+        <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-xl px-2 py-1.5">
+          <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+            className="text-[11px] 2xl:text-[13px] bg-transparent outline-none w-[100px] text-gray-600" />
+          <span className="text-gray-300 text-[10px]">→</span>
+          <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+            className="text-[11px] 2xl:text-[13px] bg-transparent outline-none w-[100px] text-gray-600" />
+          {(dateFrom || dateTo) && (
+            <button onClick={() => { setDateFrom(''); setDateTo(''); }} aria-label="Clear dates"><X className="w-3 h-3 text-gray-400" /></button>
+          )}
+        </div>
+
+        {/* Status pills */}
+        <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-xl p-1">
+          {['all', 'confirmed', 'pending', 'cancelled'].map(s => (
+            <button key={s} onClick={() => setStatusFilter(s)}
+              className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors ${statusFilter === s ? 'bg-black text-white' : 'text-gray-500 hover:bg-gray-100'}`}>
+              {s === 'all' ? 'All' : STATUS_LABELS[s]}
+            </button>
+          ))}
+        </div>
+
+        {/* Agent filter */}
+        <select
+          value={agentFilter || ''}
+          onChange={e => setAgentFilter(e.target.value || null)}
+          className="bg-white border border-gray-200 rounded-xl px-2.5 py-2 text-xs text-gray-600 outline-none cursor-pointer hover:bg-gray-50"
+        >
+          <option value="">All Agents</option>
+          {bookingAgents.filter(a => (a.agent_type || 'booking') !== 'logistics').map(a => (
+            <option key={a.id} value={a.id}>{a.name}{a.status === 'former' ? ' (ex)' : ''}</option>
+          ))}
+        </select>
+
+        {/* Column selector */}
+        <Popover>
+          <PopoverTrigger asChild>
+            <button className="flex items-center gap-1.5 px-2.5 py-2 bg-white border border-gray-200 rounded-xl text-xs text-gray-600 hover:bg-gray-50 transition-colors" aria-label="Columns">
+              <SlidersHorizontal className="w-3.5 h-3.5" /> Columns
+            </button>
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-44 p-2">
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-2 pb-1.5">Toggle Columns</p>
+            {COLUMNS.map(col => (
+              <label key={col.key} className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-gray-50 cursor-pointer">
+                <Checkbox checked={visibleColumns.includes(col.key)} onCheckedChange={() => toggleColumn(col.key)} className="h-3.5 w-3.5" />
+                <span className="text-xs text-gray-700">{col.label}</span>
+              </label>
+            ))}
+          </PopoverContent>
+        </Popover>
+
+        {/* View toggle */}
+        <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-xl p-1">
+          <button onClick={() => setView('grid')} aria-label="Grid view"
+            className={`p-1.5 rounded-lg transition-colors ${view === 'grid' ? 'bg-black text-white' : 'text-gray-400 hover:bg-gray-100'}`}>
+            <LayoutGrid className="w-3.5 h-3.5" />
+          </button>
+          <button onClick={() => setView('calendar')} aria-label="Calendar view"
+            className={`p-1.5 rounded-lg transition-colors ${view === 'calendar' ? 'bg-black text-white' : 'text-gray-400 hover:bg-gray-100'}`}>
+            <CalendarIcon className="w-3.5 h-3.5" />
+          </button>
+          <button onClick={() => setView('board')} aria-label="Pipeline board view"
+            className={`p-1.5 rounded-lg transition-colors ${view === 'board' ? 'bg-black text-white' : 'text-gray-400 hover:bg-gray-100'}`}>
+            <Kanban className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+
+      {paymentChase && (
+        <div className="hidden md:flex items-center gap-2">
+          <span className="inline-flex items-center gap-1.5 bg-gray-800 text-white text-xs font-semibold px-3 py-1.5 rounded-full">
+            Chasing: {paymentChase.charAt(0).toUpperCase() + paymentChase.slice(1)}
+            <button onClick={() => setPaymentChase(null)} aria-label="Clear chase filter"><X className="w-3 h-3" /></button>
+          </span>
+        </div>
+      )}
+
+      {/* Active artist filter chip */}
+      {artistFilter && (
+        <div className="hidden md:flex items-center gap-2">
+          <span className="inline-flex items-center gap-1.5 bg-black text-white text-xs font-semibold px-3 py-1.5 rounded-full">
+            Artist: {artistMap[artistFilter]?.name || 'Unknown'}
+            <button onClick={() => setArtistFilter(null)} aria-label="Clear artist filter"><X className="w-3 h-3" /></button>
+          </span>
+        </div>
+      )}
+
+      {/* Active agent filter chip */}
+      {agentFilter && (
+        <div className="hidden md:flex items-center gap-2">
+          <span className="inline-flex items-center gap-1.5 bg-gray-800 text-white text-xs font-semibold px-3 py-1.5 rounded-full">
+            Agent: {agentMap[agentFilter]?.name || 'Unknown'}
+            <button onClick={() => setAgentFilter(null)} aria-label="Clear agent filter"><X className="w-3 h-3" /></button>
+          </span>
+        </div>
+      )}
+
+      {(artistFilter || agentFilter || paymentChase) && hasActiveFilters && (
+        <button onClick={clearAllFilters} className="hidden md:inline text-[11px] 2xl:text-[13px] text-slate-600 hover:text-gray-900 underline">Clear all filters</button>
+      )}
+
+      {/* ── Mobile stacked list (replaces the column grid below md) ─ */}
+      {view === 'grid' && (
+        <div className="md:hidden">
+          <MobileShowList
+            rows={virtualRows}
+            artistMap={artistMap}
+            canConfirm={canConfirm}
+            isLoading={isLoading}
+            onOpen={openShowDetail}
+            onEdit={openDrawer}
+            onConfirm={handleConfirmShow}
+            onRefresh={handleRefresh}
+            onCreate={openNewShow}
+          />
+        </div>
+      )}
+
+      {/* ── Grid View (desktop) ──────────────────────────────────── */}
+      {view === 'grid' && (
+        <div className="hidden md:block bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div className="overflow-x-auto scrollbar-thin">
+          <div style={{ minWidth: totalWidth }}>
+          {/* Sortable + resizable header */}
+          <div className="border-b border-gray-100 bg-gray-50" style={{ display: 'grid', gridTemplateColumns: gridTemplate }}>
+            {activeCols.map(col => {
+              const active = sortColumn === col.key;
+              const SIcon = active ? (sortDirection === 'asc' ? ArrowUp : ArrowDown) : ArrowUpDown;
+              return (
+                <div key={col.key} className="relative">
+                  <button onClick={() => { if (!resizingRef.current) handleSort(col.key); }}
+                    className={`w-full flex items-center gap-1 text-[11px] 2xl:text-[13px] font-semibold px-3 py-2.5 transition-colors hover:text-gray-900 ${active ? 'text-gray-900' : 'text-gray-500'} ${col.key === 'fee' ? 'justify-end' : 'text-left'}`}>
+                    {col.label}
+                    <SIcon className={`w-3 h-3 flex-shrink-0 ${active ? '' : 'opacity-40'}`} />
+                  </button>
+                  <span onMouseDown={e => startResize(e, col.key)}
+                    className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-yellow-400/70 active:bg-yellow-400" />
+                </div>
+              );
+            })}
+          </div>
+
+          {isLoading ? (
+            <div className="p-8 text-center text-sm text-gray-400">Loading…</div>
+          ) : virtualRows.length === 0 ? (
+            <div className="p-12 text-center">
+              <CalendarIcon className="w-8 h-8 text-gray-200 mx-auto mb-2" />
+              <p className="text-sm text-gray-400">No shows found</p>
+            </div>
+          ) : (
+            <div ref={parentRef} style={{ height: 'max(280px, calc(100dvh - 320px))', overflowY: 'auto' }} className="scrollbar-thin">
+              <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
+                {virtualizer.getVirtualItems().map(vi => {
+                  const row = virtualRows[vi.index];
+                  return (
+                    <div key={vi.key} style={{ position: 'absolute', top: vi.start, left: 0, right: 0, height: vi.size }}>
+                      {row.type === 'divider' ? (
+                        <div className="flex items-center bg-gray-800 px-4 h-full">
+                          <span className="text-white text-[11px] 2xl:text-[13px] font-bold tracking-widest uppercase">
+                            {row.month ? format(parseISO(row.month + '-01'), 'MMMM yyyy') : 'Unknown'}
+                          </span>
+                        </div>
+                      ) : (
+                        <ShowRow show={row.show} artist={artistMap[row.show.artist_id]}
+                          agentMap={agentMap} contract={contractMap[row.show.id]} invoices={invoiceByShow[row.show.id] || []}
+                          onClick={() => openShowDetail(row.show)} onArtistClick={setArtistFilter}
+                          visibleColumns={visibleColumns} gridTemplate={gridTemplate} />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+          </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Calendar View ────────────────────────────────────────── */}
+      {view === 'calendar' && (
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+            <button onClick={() => setCalMonth(m => new Date(m.getFullYear(), m.getMonth() - 1, 1))} className="p-1 rounded hover:bg-gray-100" aria-label="Previous month">
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <span className="text-sm font-semibold text-gray-900">{format(calMonth, 'MMMM yyyy')}</span>
+            <button onClick={() => setCalMonth(m => new Date(m.getFullYear(), m.getMonth() + 1, 1))} className="p-1 rounded hover:bg-gray-100" aria-label="Next month">
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+          <div className="grid grid-cols-7 border-b border-gray-100">
+            {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(d => (
+              <div key={d} className="text-center text-[10px] font-semibold text-gray-400 py-2">{d}</div>
+            ))}
+          </div>
+          <div className="grid grid-cols-7">
+            {Array.from({ length: (getDay(calDays[0]) + 6) % 7 }).map((_, i) => (
+              <div key={`empty-${i}`} className="border-b border-r border-gray-50 min-h-[72px]" />
+            ))}
+            {calDays.map(day => {
+              const key = format(day, 'yyyy-MM-dd');
+              const dayShows = showsByDate[key] || [];
+              return (
+                <div key={key} className={`border-b border-r border-gray-50 min-h-[72px] p-1.5 ${isToday(day) ? 'bg-amber-50' : ''}`}>
+                  <div className={`text-[11px] 2xl:text-[13px] font-semibold mb-1 w-5 h-5 flex items-center justify-center rounded-full ${isToday(day) ? 'bg-black text-white' : 'text-gray-400'}`}>
+                    {format(day, 'd')}
+                  </div>
+                  <div className="space-y-0.5">
+                    {dayShows.slice(0, 3).map(s => (
+                      <button key={s.id} onClick={() => openShowDetail(s)} className="w-full text-left">
+                        <div className={`text-[9px] font-semibold px-1 py-0.5 rounded truncate ${STATUS_COLORS[s.status] || 'bg-gray-100 text-gray-600'}`}>
+                          {artistMap[s.artist_id]?.name || s.event_name}
+                        </div>
+                      </button>
+                    ))}
+                    {dayShows.length > 3 && (
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <button className="text-[9px] font-semibold text-gray-500 hover:text-gray-900 pl-1">+{dayShows.length - 3} more</button>
+                        </PopoverTrigger>
+                        <PopoverContent align="start" className="w-60 p-2">
+                          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-1 pb-1.5">{format(day, 'dd MMM yyyy')} · {dayShows.length} shows</p>
+                          <div className="space-y-0.5 max-h-56 overflow-y-auto scrollbar-thin">
+                            {dayShows.map(s => (
+                              <button key={s.id} onClick={() => openShowDetail(s)} className="w-full text-left text-[11px] 2xl:text-[13px] px-2 py-1.5 rounded-lg hover:bg-gray-50 flex items-center gap-1.5">
+                                <span className={`px-1 py-0.5 rounded text-[9px] font-semibold flex-shrink-0 ${STATUS_COLORS[s.status] || 'bg-gray-100 text-gray-600'}`}>{STATUS_LABELS[s.status] || '—'}</span>
+                                <span className="truncate text-gray-700">{artistMap[s.artist_id]?.name || s.event_name}</span>
+                              </button>
+                            ))}
+                          </div>
+                        </PopoverContent>
+                      </Popover>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── Pipeline Board View ─────────────────────────────────── */}
+      {view === 'board' && (
+        isLoading ? (
+          <div className="p-8 text-center text-sm text-gray-400 bg-white rounded-xl border border-gray-200">Loading…</div>
+        ) : (
+          <ShowsPipelineBoard
+            shows={filtered}
+            artistMap={artistMap}
+            onCardClick={openShowDetail}
+            onStatusChange={(id, status) => {
+              if (['confirmed', 'completed'].includes(status) && !canConfirmShow(user)) {
+                toast.error("You don't have permission to confirm or complete shows.");
+                return;
+              }
+              updateShow.mutate({ id, data: { status } });
+            }}
+          />
+        )
+      )}
+
+      {/* Drawer */}
+      <ShowDrawer open={drawerOpen} onClose={() => { setDrawerOpen(false); setInitialThreadId(null); }} show={selectedShow} artists={artists} onSave={handleSave} initialThreadId={initialThreadId} />
+    </div>
+  );
+}
+
+// ── Show Row ──────────────────────────────────────────────────────
+function ShowRow({ show, artist, agentMap = {}, contract, invoices, onClick, onArtistClick, visibleColumns, gridTemplate }) {
+  const cell = (key) => {
+    switch (key) {
+      case 'logistics_agent':
+        return <span className="px-3 text-[11px] 2xl:text-[13px] text-gray-500 truncate">{(show.logistics_agent_ids || []).map(id => agentMap[id]?.name).filter(Boolean).join(', ') || agentMap[show.logistics_agent_id]?.name || '—'}</span>;
+      case 'contract_status':
+        return <span className="px-3"><DealStatusBadge kind="contract" status={contract?.status} /></span>;
+      case 'invoice_status':
+        return <span className="min-w-0 px-3"><CompositeInvoiceBadge invoices={invoices} /></span>;
+      case 'conf_thread':
+        return <span className="px-3"><DealStatusBadge kind="conf" status={show.gmail_thread_id} /></span>;
+      case 'date':
+        return <span className="px-3 text-[11px] 2xl:text-[13px] text-gray-500 tabular-nums whitespace-nowrap truncate">{show.date ? format(parseISO(show.date), 'dd MMM yyyy') : '—'}</span>;
+      case 'artist':
+        return (
+          <button onClick={e => { e.stopPropagation(); onArtistClick(show.artist_id); }}
+            className="px-3 text-[11px] 2xl:text-[13px] font-medium text-blue-700 hover:text-blue-900 hover:underline truncate text-left w-full"
+            title={`Filter by ${artist?.name}`}>
+            {artist?.name || '—'}
+          </button>
+        );
+      case 'event':
+        return <span className="px-3 text-[11px] 2xl:text-[13px] text-gray-700 truncate">{show.event_name || '—'}</span>;
+      case 'venue':
+        return <span className="px-3 text-[11px] 2xl:text-[13px] text-gray-500 truncate">{[show.venue, show.city].filter(Boolean).join(', ') || '—'}</span>;
+      case 'country':
+        return <span className="px-3 text-[11px] 2xl:text-[13px] text-gray-500 truncate">{show.country || '—'}</span>;
+      case 'status':
+        return <span className="px-3"><StatusPill status={show.status} size="xs" /></span>;
+      case 'booked_by':
+        return <span className="px-3 text-[11px] 2xl:text-[13px] text-gray-500 truncate">{(show.responsible_agent_ids || []).map(id => agentMap[id]?.name).filter(Boolean).join(', ') || '—'}</span>;
+      case 'fee':
+        return <span className="px-3 text-right text-[11px] 2xl:text-[13px] tabular-nums text-gray-700">{show.guarantee_fee ? `${show.currency || 'EUR'} ${show.guarantee_fee.toLocaleString()}` : '—'}</span>;
+      default: return null;
+    }
+  };
+
+  return (
+    <div onClick={onClick}
+      className="flex items-center hover:bg-gray-50 cursor-pointer transition-colors border-b border-gray-50 h-full"
+      style={{ display: 'grid', gridTemplateColumns: gridTemplate }}>
+      {/* Iterate in COLUMNS order (not toggle order) so cells line up with the header */}
+      {COLUMNS.filter(c => visibleColumns.includes(c.key)).map(c => (
+        <div key={c.key} className="contents">{cell(c.key)}</div>
+      ))}
+    </div>
+  );
+}

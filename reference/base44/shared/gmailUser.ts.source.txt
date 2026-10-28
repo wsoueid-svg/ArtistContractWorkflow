@@ -1,0 +1,56 @@
+// Per-user Gmail helpers: app-user connector token, root Message-ID extraction,
+// and the User.gmail_sync_status state-lock mutex (with stale-lock breaker).
+import { header } from './gmailThread.ts';
+
+export const GMAIL_CONNECTOR_ID = '6a9851f6298f03badb17ca43';
+export const STALE_LOCK_MS = 5 * 60 * 1000;
+
+// Access token of the CURRENT app user's own Gmail connection (never a shared mailbox).
+export async function getUserGmailToken(base44) {
+  try {
+    const conn = await base44.asServiceRole.connectors.getCurrentAppUserConnection(GMAIL_CONNECTOR_ID);
+    return conn?.accessToken || null;
+  } catch (_e) {
+    return null;
+  }
+}
+
+// 401/403 from Gmail = token revoked / consent withdrawn. 400 is NOT an auth error.
+export function isGmailAuthError(err) {
+  return err?.status === 401 || err?.status === 403;
+}
+
+// Root Message-ID of a thread's first message: the first References entry (original
+// message when forwarded), else In-Reply-To, else its own Message-ID.
+export function rootMessageId(firstMsg) {
+  const refs = header(firstMsg, 'References').match(/<[^>]+>/g);
+  if (refs?.length) return refs[0];
+  const inReplyTo = header(firstMsg, 'In-Reply-To').match(/<[^>]+>/)?.[0];
+  if (inReplyTo) return inReplyTo;
+  return header(firstMsg, 'Message-ID').match(/<[^>]+>/)?.[0] || header(firstMsg, 'Message-ID') || '';
+}
+
+// Acquire the per-user sync mutex. Returns { acquired, user }.
+// A SYNCING lock older than STALE_LOCK_MS is a dead lock (crash/timeout) and is force-broken.
+export async function acquireSyncLock(svc, userId) {
+  const fresh = await svc.User.get(userId);
+  const startedAt = fresh?.sync_started_at ? new Date(fresh.sync_started_at).getTime() : 0;
+  const lockHeld = fresh?.gmail_sync_status === 'SYNCING' && Date.now() - startedAt < STALE_LOCK_MS;
+  if (lockHeld) return { acquired: false, user: fresh };
+  await svc.User.update(userId, { gmail_sync_status: 'SYNCING', sync_started_at: new Date().toISOString() });
+  return { acquired: true, user: fresh };
+}
+
+// Release the lock. status: 'IDLE' | 'ERROR_AUTH'. Stamps last_gmail_scan_at only on success.
+export async function releaseSyncLock(svc, userId, status, extra = {}) {
+  const patch = { gmail_sync_status: status, ...extra };
+  if (status === 'IDLE' && extra.completed) patch.last_gmail_scan_at = new Date().toISOString();
+  delete patch.completed;
+  await svc.User.update(userId, patch);
+}
+
+// Personal unassigned queue size for the cached/no-op scan response.
+export async function countUnassignedFor(svc, userId) {
+  const rows = await svc.ConfThread.filter({ is_assigned: false, scanned_by_user_ids: userId }, '-last_message_at', 500).catch(() => []);
+  return rows.filter((r) => !r.is_dismissed_globally && !(r.dismissed_by_user_ids || []).includes(userId)).length;
+}

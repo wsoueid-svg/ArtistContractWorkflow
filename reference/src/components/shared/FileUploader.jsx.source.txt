@@ -1,0 +1,125 @@
+import React, { useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Upload, Loader2, ExternalLink, ShieldAlert } from 'lucide-react';
+import { base44 } from '@/api/base44Client';
+import {
+  validateFile,
+  getAllowedAcceptString,
+  MAX_FILE_SIZE_LABEL,
+  sanitizeUrl,
+} from '@/lib/validation';
+
+/**
+ * FileUploader — Enterprise-grade file upload component.
+ *
+ * Security layers:
+ *  1. Client-side MIME whitelist (only images, PDF, audio, video, text)
+ *  2. File size cap (5 MB max)
+ *  3. Dangerous extension blocklist (.exe, .js, .svg, .html, etc.)
+ *  4. Extension-to-MIME cross-check (prevents spoofing)
+ *  5. URL sanitization on manual URL input (blocks javascript:, data:)
+ *  6. Path traversal stripping from filenames
+ *
+ * Backend functions perform ADDITIONAL re-validation after upload.
+ */
+export default function FileUploader({ value, onChange, label, accept }) {
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState(null);
+
+  const handleFileUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // ── Security Gate: validate file before upload ──────────────────────────
+    const validation = validateFile(file);
+    if (!validation.valid) {
+      setUploadError(validation.error);
+      // Clear the input so the user can try again
+      e.target.value = '';
+      return;
+    }
+
+    setUploading(true);
+    setUploadError(null);
+
+    try {
+      const result = await base44.integrations.Core.UploadFile({ file });
+      onChange(result.file_url);
+    } catch (error) {
+      setUploadError(error.message || 'Upload failed');
+    } finally {
+      setUploading(false);
+      // Clear the input to allow re-uploading the same file after an error
+      e.target.value = '';
+    }
+  };
+
+  const handleUrlChange = (e) => {
+    const raw = e.target.value;
+    // Sanitize manual URL input — block dangerous schemes
+    const cleaned = sanitizeUrl(raw);
+    // If the URL was dangerous, show an error
+    if (raw && !cleaned && raw.trim() !== '') {
+      setUploadError('Invalid or dangerous URL detected.');
+      return;
+    }
+    setUploadError(null);
+    onChange(cleaned || raw);
+  };
+
+  return (
+    <div>
+      {label && <Label>{label}</Label>}
+      <div className="flex gap-2 mt-1">
+        <Input
+          value={value || ''}
+          onChange={handleUrlChange}
+          placeholder="Enter URL or upload file..."
+          className="flex-1"
+        />
+        <label className="cursor-pointer">
+          <input
+            type="file"
+            className="hidden"
+            accept={accept || getAllowedAcceptString()}
+            onChange={handleFileUpload}
+            disabled={uploading}
+          />
+          <Button
+            type="button"
+            variant="outline"
+            disabled={uploading}
+            className="pointer-events-none"
+          >
+            {uploading ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Upload className="w-4 h-4" />
+            )}
+          </Button>
+        </label>
+        {value && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={() => window.open(value, '_blank', 'noopener,noreferrer')}
+          >
+            <ExternalLink className="w-4 h-4" />
+          </Button>
+        )}
+      </div>
+      {uploadError && (
+        <p className="text-xs text-red-500 mt-1 flex items-center gap-1">
+          <ShieldAlert className="w-3 h-3 flex-shrink-0" />
+          {uploadError}
+        </p>
+      )}
+      <p className="text-[10px] text-gray-400 mt-1">
+        Max {MAX_FILE_SIZE_LABEL}. Allowed: JPEG, PNG, WebP, GIF, PDF, MP3, WAV, MP4, TXT, CSV.
+      </p>
+    </div>
+  );
+}

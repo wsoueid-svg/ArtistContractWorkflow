@@ -1,0 +1,427 @@
+import React, { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { base44 } from '@/api/base44Client';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { 
+  FileText, Upload, CheckCircle2, XCircle, Clock, 
+  ExternalLink, FolderOpen, Plus, Eye, Download, Link2
+} from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import AssetUploadForm from './AssetUploadForm';
+import AssetApprovalModal from './AssetApprovalModal';
+
+export default function MarketingAssetsPanel({ show, artist }) {
+  const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
+  const [approvalModalOpen, setApprovalModalOpen] = useState(false);
+  const [selectedAsset, setSelectedAsset] = useState(null);
+  const [dropboxUrl, setDropboxUrl] = useState('');
+  const [dropboxImportOpen, setDropboxImportOpen] = useState(false);
+  const [dropboxAssetName, setDropboxAssetName] = useState('');
+  const queryClient = useQueryClient();
+
+  const importFromDropboxMutation = useMutation({
+    mutationFn: async () => {
+      // Convert Dropbox share URL to direct download link
+      const directUrl = dropboxUrl
+        .replace('www.dropbox.com', 'dl.dropboxusercontent.com')
+        .replace('?dl=0', '?dl=1')
+        .replace('&dl=0', '&dl=1');
+      return base44.entities.MarketingAsset.create({
+        show_id: show.id,
+        artist_id: artist.id,
+        name: dropboxAssetName || 'Imported from Dropbox',
+        asset_type: 'presskit',
+        file_url: directUrl,
+        status: 'received',
+        is_current: false,
+        version: 1,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['marketing-assets'] });
+      setDropboxImportOpen(false);
+      setDropboxUrl('');
+      setDropboxAssetName('');
+    },
+  });
+
+  const { data: assets = [], isLoading } = useQuery({
+    queryKey: ['marketing-assets', show.id],
+    queryFn: () => base44.entities.MarketingAsset.filter({ show_id: show.id }, '-created_date'),
+  });
+
+  const { data: checklist } = useQuery({
+    queryKey: ['marketing-checklist', show.id],
+    queryFn: () => base44.entities.MarketingChecklist.filter({ show_id: show.id }),
+  });
+
+  const statusColors = {
+    requested: 'bg-blue-100 text-blue-700 border-blue-300',
+    received: 'bg-purple-100 text-purple-700 border-purple-300',
+    pending_approval: 'bg-yellow-100 text-yellow-700 border-yellow-300',
+    approved: 'bg-green-100 text-green-700 border-green-300',
+    rejected: 'bg-red-100 text-red-700 border-red-300',
+    superseded: 'bg-gray-100 text-gray-700 border-gray-300',
+  };
+
+  const statusIcons = {
+    requested: Clock,
+    received: Upload,
+    pending_approval: Clock,
+    approved: CheckCircle2,
+    rejected: XCircle,
+    superseded: FileText,
+  };
+
+  const currentAssets = assets.filter((a) => a.is_current || a.status === 'approved');
+  const previousAssets = assets.filter((a) => !a.is_current && a.status === 'superseded');
+  const pendingAssets = assets.filter(
+    (a) => ['requested', 'received', 'pending_approval'].includes(a.status)
+  );
+
+  const getAssetTypeLabel = (type) => {
+    return type.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Header with Actions */}
+      <div className="flex justify-between items-center">
+        <div>
+          <h3 className="text-xl font-bold text-black">Marketing Assets</h3>
+          <p className="text-sm text-gray-600">
+            {currentAssets.length} approved • {pendingAssets.length} pending
+          </p>
+        </div>
+        <div className="flex gap-2">
+          {show.dropbox_folder_url && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => window.open(show.dropbox_folder_url, '_blank')}
+            >
+              <FolderOpen className="w-4 h-4 mr-2" />
+              Dropbox Folder
+            </Button>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setDropboxImportOpen(true)}
+          >
+            <Link2 className="w-4 h-4 mr-2" />
+            Import from Dropbox
+          </Button>
+          <Button
+            size="sm"
+            onClick={() => setUploadDialogOpen(true)}
+            className="bg-yellow-400 text-black hover:bg-yellow-500"
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Upload Asset
+          </Button>
+        </div>
+      </div>
+
+      {/* Marketing Checklist Progress */}
+      {checklist?.[0] && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Marketing Checklist</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {checklist[0].items?.map((item, idx) => (
+                <div key={idx} className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    checked={item.completed}
+                    readOnly
+                    className="w-4 h-4"
+                  />
+                  <span className={item.completed ? 'line-through text-gray-500' : ''}>
+                    {item.task}
+                  </span>
+                  {item.asset_type && (
+                    <Badge variant="outline" className="text-xs">
+                      {getAssetTypeLabel(item.asset_type)}
+                    </Badge>
+                  )}
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Pending Approval Assets */}
+      {pendingAssets.length > 0 && (
+        <div>
+          <h4 className="font-semibold text-black mb-3">Pending Approval</h4>
+          <div className="grid gap-3">
+            {pendingAssets.map((asset) => {
+              const StatusIcon = statusIcons[asset.status];
+              return (
+                <Card key={asset.id} className="border-2 border-yellow-400">
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 bg-yellow-100 rounded">
+                          <FileText className="w-5 h-5 text-yellow-700" />
+                        </div>
+                        <div>
+                          <h5 className="font-semibold text-black">{asset.name}</h5>
+                          <p className="text-sm text-gray-600">
+                            {getAssetTypeLabel(asset.asset_type)} • v{asset.version}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge className={statusColors[asset.status]}>
+                          <StatusIcon className="w-3 h-3 mr-1" />
+                          {asset.status.replace('_', ' ')}
+                        </Badge>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setSelectedAsset(asset);
+                            setApprovalModalOpen(true);
+                          }}
+                        >
+                          <Eye className="w-4 h-4 mr-1" />
+                          Review
+                        </Button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Asset Upload History by Date */}
+      {assets.length > 0 && (
+        <details className="mt-2">
+          <summary className="cursor-pointer font-semibold text-black flex items-center gap-2">
+            <Clock className="w-4 h-4" /> Asset History by Date
+          </summary>
+          <div className="space-y-3 mt-3">
+            {Object.entries(
+              assets.reduce((acc, asset) => {
+                const dateKey = asset.created_date
+                  ? new Date(asset.created_date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+                  : 'Unknown';
+                if (!acc[dateKey]) acc[dateKey] = [];
+                acc[dateKey].push(asset);
+                return acc;
+              }, {})
+            ).sort(([a], [b]) => new Date(b) - new Date(a)).map(([dateKey, dateAssets]) => (
+              <div key={dateKey}>
+                <h5 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">{dateKey}</h5>
+                <div className="space-y-1">
+                  {dateAssets.map(asset => {
+                    const StatusIcon = statusIcons[asset.status] || FileText;
+                    return (
+                      <div key={asset.id} className="flex items-center justify-between bg-gray-50 border rounded px-3 py-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <StatusIcon className="w-4 h-4 text-gray-500 flex-shrink-0" />
+                          <span className="text-sm font-medium truncate">{asset.name}</span>
+                          <Badge className={`text-xs ${statusColors[asset.status] || ''}`}>{asset.status?.replace('_', ' ')}</Badge>
+                          <span className="text-xs text-gray-400">v{asset.version}</span>
+                        </div>
+                        {asset.file_url && (
+                          <Button size="sm" variant="ghost" onClick={() => window.open(asset.file_url, '_blank')}>
+                            <Eye className="w-3 h-3" />
+                          </Button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
+
+      {/* Current Approved Assets */}
+      {currentAssets.length > 0 && (
+        <div>
+          <h4 className="font-semibold text-black mb-3">Approved Assets</h4>
+          <div className="grid md:grid-cols-2 gap-3">
+            {currentAssets.map((asset) => (
+              <Card key={asset.id}>
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-green-100 rounded">
+                        <CheckCircle2 className="w-5 h-5 text-green-700" />
+                      </div>
+                      <div>
+                        <h5 className="font-semibold text-black">{asset.name}</h5>
+                        <p className="text-sm text-gray-600">
+                          {getAssetTypeLabel(asset.asset_type)}
+                        </p>
+                        {asset.approved_at && (
+                          <p className="text-xs text-gray-500">
+                            Approved {new Date(asset.approved_at).toLocaleDateString()}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex gap-1">
+                      {asset.file_url && (
+                        <>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => window.open(asset.file_url, '_blank')}
+                          >
+                            <Eye className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => window.open(asset.file_url, '_blank')}
+                          >
+                            <Download className="w-4 h-4" />
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Previous Versions */}
+      {previousAssets.length > 0 && (
+        <details className="mt-4">
+          <summary className="cursor-pointer font-semibold text-gray-600">
+            Previous Versions ({previousAssets.length})
+          </summary>
+          <div className="grid gap-2 mt-3">
+            {previousAssets.map((asset) => (
+              <Card key={asset.id} className="bg-gray-50">
+                <CardContent className="p-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <FileText className="w-4 h-4 text-gray-500" />
+                      <span className="text-sm text-gray-600">
+                        {asset.name} • v{asset.version}
+                      </span>
+                    </div>
+                    {asset.file_url && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => window.open(asset.file_url, '_blank')}
+                      >
+                        <ExternalLink className="w-3 h-3" />
+                      </Button>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </details>
+      )}
+
+      {/* Empty State */}
+      {assets.length === 0 && !isLoading && (
+        <Card>
+          <CardContent className="p-12 text-center">
+            <FileText className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+            <h4 className="font-semibold text-gray-900 mb-2">No marketing assets yet</h4>
+            <p className="text-gray-600 mb-4">Upload flyers, timetables, and other assets</p>
+            <Button onClick={() => setUploadDialogOpen(true)}>
+              <Upload className="w-4 h-4 mr-2" />
+              Upload First Asset
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Dropbox Import Dialog */}
+      <Dialog open={dropboxImportOpen} onOpenChange={setDropboxImportOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Import from Dropbox</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div>
+              <label className="text-sm font-medium block mb-1">Asset Name</label>
+              <input
+                className="w-full border rounded px-3 py-2 text-sm"
+                placeholder="e.g. Artist Press Kit"
+                value={dropboxAssetName}
+                onChange={(e) => setDropboxAssetName(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium block mb-1">Dropbox Share Link</label>
+              <input
+                className="w-full border rounded px-3 py-2 text-sm"
+                placeholder="https://www.dropbox.com/s/..."
+                value={dropboxUrl}
+                onChange={(e) => setDropboxUrl(e.target.value)}
+              />
+              <p className="text-xs text-gray-500 mt-1">Paste a shared Dropbox link to import the file as an asset.</p>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setDropboxImportOpen(false)}>Cancel</Button>
+              <Button
+                className="bg-yellow-400 text-black hover:bg-yellow-500"
+                disabled={!dropboxUrl || importFromDropboxMutation.isPending}
+                onClick={() => importFromDropboxMutation.mutate()}
+              >
+                Import
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Upload Dialog */}
+      <Dialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Upload Marketing Asset</DialogTitle>
+          </DialogHeader>
+          <AssetUploadForm
+            show={show}
+            artist={artist}
+            onSuccess={() => {
+              setUploadDialogOpen(false);
+              queryClient.invalidateQueries({ queryKey: ['marketing-assets'] });
+            }}
+            onCancel={() => setUploadDialogOpen(false)}
+          />
+        </DialogContent>
+      </Dialog>
+
+      {/* Approval Modal */}
+      {selectedAsset && (
+        <AssetApprovalModal
+          open={approvalModalOpen}
+          onOpenChange={setApprovalModalOpen}
+          asset={selectedAsset}
+          onSuccess={() => {
+            setApprovalModalOpen(false);
+            setSelectedAsset(null);
+            queryClient.invalidateQueries({ queryKey: ['marketing-assets'] });
+          }}
+        />
+      )}
+    </div>
+  );
+}

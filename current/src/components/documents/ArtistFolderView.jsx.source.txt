@@ -1,0 +1,464 @@
+import React, { useState } from 'react';
+import { base44 } from '@/api/base44Client';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { Label } from '@/components/ui/label';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select';
+import {
+  ArrowLeft, ExternalLink, Upload, FolderOpen, FileText, Lock,
+  AlertTriangle, Trash2, Plus, Loader2, Edit2, Check, X, Archive
+} from 'lucide-react';
+import ContractForm from '../contracts/ContractForm';
+import { saveContractRecord, deleteContractRecord } from '@/components/contracts/contractRecordApi';
+import StageBadge from '../shared/StageBadge';
+
+const TYPE_COLORS = {
+  passport: 'bg-blue-100 text-blue-700',
+  national_id: 'bg-purple-100 text-purple-700',
+  visa: 'bg-green-100 text-green-700',
+  work_permit: 'bg-yellow-100 text-yellow-700',
+  tax_certificate: 'bg-indigo-100 text-indigo-700',
+  contract: 'bg-pink-100 text-pink-700',
+  invoice: 'bg-orange-100 text-orange-700',
+  rider: 'bg-red-100 text-red-700',
+  tech_rider: 'bg-red-100 text-red-700',
+  stage_plot: 'bg-teal-100 text-teal-700',
+  press_kit: 'bg-sky-100 text-sky-700',
+  promo_photo: 'bg-sky-100 text-sky-700',
+  other: 'bg-gray-100 text-gray-700',
+};
+
+const CATEGORIES = ['identity', 'legal', 'financial', 'tour', 'artist_personal', 'press_marketing', 'general'];
+
+const CATEGORY_LABELS = {
+  identity: '🪪 Identity',
+  legal: '⚖️ Legal',
+  financial: '💰 Financial',
+  tour: '✈️ Tour',
+  artist_personal: '👤 Personal',
+  press_marketing: '📣 Press & Marketing',
+  general: '📁 General',
+};
+
+export default function ArtistFolderView({ artist, onBack }) {
+  const queryClient = useQueryClient();
+  const [uploading, setUploading] = useState(false);
+  const [editingDropbox, setEditingDropbox] = useState(false);
+  const [dropboxUrl, setDropboxUrl] = useState(artist.dropbox_folder_url || '');
+  const [filterCategory, setFilterCategory] = useState('all');
+  const [showUploadForm, setShowUploadForm] = useState(false);
+  const [newDoc, setNewDoc] = useState({ title: '', type: 'other', category: 'general', is_sensitive: false, expiry_date: '' });
+  const [showContractForm, setShowContractForm] = useState(false);
+  const [editingContract, setEditingContract] = useState(null);
+
+  const isArchived = artist.status === 'archived';
+
+  const { data: documents = [] } = useQuery({
+    queryKey: ['documents', artist.id],
+    queryFn: () => base44.entities.Document.filter({ artist_id: artist.id }, '-created_date'),
+  });
+
+  const { data: contracts = [] } = useQuery({
+    queryKey: ['contracts-artist', artist.id],
+    queryFn: () => base44.entities.Contract.filter({ artist_id: artist.id }, '-created_date'),
+  });
+
+  const { data: contacts = [] } = useQuery({
+    queryKey: ['contacts'],
+    queryFn: () => base44.entities.Contact.list(),
+  });
+
+  const createDocMutation = useMutation({
+    mutationFn: (data) => base44.entities.Document.create(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['documents', artist.id] });
+      queryClient.invalidateQueries({ queryKey: ['documents'] });
+      setShowUploadForm(false);
+      setNewDoc({ title: '', type: 'other', category: 'general', is_sensitive: false, expiry_date: '' });
+    },
+  });
+
+  const deleteDocMutation = useMutation({
+    mutationFn: (id) => base44.entities.Document.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['documents', artist.id] });
+      queryClient.invalidateQueries({ queryKey: ['documents'] });
+    },
+  });
+
+  const createContractMutation = useMutation({
+    mutationFn: (data) => saveContractRecord(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['contracts-artist', artist.id] });
+      queryClient.invalidateQueries({ queryKey: ['contracts'] });
+      setShowContractForm(false);
+      setEditingContract(null);
+    },
+  });
+
+  const updateContractMutation = useMutation({
+    mutationFn: ({ id, data }) => saveContractRecord(data, id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['contracts-artist', artist.id] });
+      queryClient.invalidateQueries({ queryKey: ['contracts'] });
+      setShowContractForm(false);
+      setEditingContract(null);
+    },
+  });
+
+  const deleteContractMutation = useMutation({
+    mutationFn: (id) => deleteContractRecord(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['contracts-artist', artist.id] });
+      queryClient.invalidateQueries({ queryKey: ['contracts'] });
+    },
+  });
+
+  const updateArtistMutation = useMutation({
+    mutationFn: (data) => base44.entities.Artist.update(artist.id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['artists'] });
+      setEditingDropbox(false);
+    },
+  });
+
+  const handleFileUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file || !newDoc.title) return;
+    setUploading(true);
+    const { file_url } = await base44.integrations.Core.UploadFile({ file });
+    const ext = file.name.split('.').pop()?.toUpperCase() || '';
+    createDocMutation.mutate({
+      ...newDoc,
+      artist_id: artist.id,
+      file_url,
+      file_type: ext,
+    });
+    setUploading(false);
+    e.target.value = '';
+  };
+
+  const saveDropbox = () => updateArtistMutation.mutate({ dropbox_folder_url: dropboxUrl });
+
+  const handleContractSubmit = (data) => {
+    const payload = { ...data, artist_id: artist.id };
+    if (editingContract) return updateContractMutation.mutateAsync({ id: editingContract.id, data: payload });
+    return createContractMutation.mutateAsync(payload);
+  };
+
+  const filtered = filterCategory === 'all'
+    ? documents
+    : documents.filter(d => d.category === filterCategory);
+
+  const isExpiringSoon = (date) => {
+    if (!date) return false;
+    const days = Math.ceil((new Date(date) - new Date()) / (1000 * 60 * 60 * 24));
+    return days <= 30 && days >= 0;
+  };
+  const isExpired = (date) => date && new Date(date) < new Date();
+
+  // Identity docs — quick access for logistics
+  const identityDocs = documents.filter(d => d.category === 'identity' || ['passport', 'national_id', 'visa', 'work_permit'].includes(d.type));
+
+  return (
+    <div className="space-y-5">
+      {/* Header */}
+      <div className="flex items-center gap-3">
+        <Button variant="ghost" size="sm" onClick={onBack} className="gap-1.5">
+          <ArrowLeft className="w-4 h-4" /> Back
+        </Button>
+        <div className="flex items-center gap-3 flex-1">
+          <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg flex-shrink-0 ${isArchived ? 'bg-gray-200 text-gray-500' : 'bg-yellow-400 text-black'}`}>
+            {(artist.stage_name || artist.name)?.charAt(0).toUpperCase()}
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-xl font-bold text-black">{artist.stage_name || artist.name}</h2>
+              {isArchived && (
+                <Badge className="bg-amber-100 text-amber-700 text-xs flex items-center gap-1">
+                  <Archive className="w-3 h-3" /> Archived
+                </Badge>
+              )}
+            </div>
+            <p className="text-xs text-gray-500">{documents.length} files · {contracts.length} contracts</p>
+          </div>
+        </div>
+      </div>
+
+      {isArchived && (
+        <div className="px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-700 flex items-center gap-2">
+          <Archive className="w-4 h-4 flex-shrink-0" />
+          This artist is archived. All data is preserved and viewable, but new uploads are disabled.
+        </div>
+      )}
+
+      {/* Dropbox Bridge */}
+      <div className="bg-[#0061FF]/5 border border-[#0061FF]/20 rounded-2xl p-4">
+        <div className="flex items-center gap-2 mb-2">
+          <svg viewBox="0 0 24 24" fill="#0061FF" className="w-4 h-4 flex-shrink-0">
+            <path d="M6 2L0 6l6 4 6-4L6 2zM18 2l-6 4 6 4 6-4-6-4zM0 14l6 4 6-4-6-4-6 4zM18 10l-6 4 6 4 6-4-6-4zM6 19.5L12 23l6-3.5-6-4-6 4z"/>
+          </svg>
+          <span className="text-sm font-semibold text-[#0061FF]">Dropbox Folder</span>
+        </div>
+        {editingDropbox ? (
+          <div className="flex gap-2 mt-2">
+            <Input value={dropboxUrl} onChange={e => setDropboxUrl(e.target.value)}
+              placeholder="https://www.dropbox.com/sh/..." className="flex-1 text-sm h-8" />
+            <Button size="sm" className="h-8 bg-[#0061FF] text-white hover:bg-[#0050DD]" onClick={saveDropbox}>
+              <Check className="w-3.5 h-3.5" />
+            </Button>
+            <Button size="sm" variant="ghost" className="h-8"
+              onClick={() => { setEditingDropbox(false); setDropboxUrl(artist.dropbox_folder_url || ''); }}>
+              <X className="w-3.5 h-3.5" />
+            </Button>
+          </div>
+        ) : artist.dropbox_folder_url ? (
+          <div className="flex items-center gap-2">
+            <a href={artist.dropbox_folder_url} target="_blank" rel="noopener noreferrer"
+              className="flex-1 flex items-center gap-2 bg-[#0061FF] text-white px-3 py-2 rounded-lg text-sm font-medium hover:bg-[#0050DD] transition">
+              <FolderOpen className="w-4 h-4" /> Open in Dropbox <ExternalLink className="w-3.5 h-3.5 ml-auto" />
+            </a>
+            {!isArchived && (
+              <Button size="sm" variant="ghost" className="h-9 text-gray-400 hover:text-gray-700" onClick={() => setEditingDropbox(true)}>
+                <Edit2 className="w-3.5 h-3.5" />
+              </Button>
+            )}
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 mt-1">
+            <p className="text-sm text-gray-500 flex-1">No Dropbox folder linked yet.</p>
+            {!isArchived && (
+              <Button size="sm" variant="outline" className="h-8 text-xs border-[#0061FF] text-[#0061FF] hover:bg-[#0061FF]/5"
+                onClick={() => setEditingDropbox(true)}>
+                <Plus className="w-3.5 h-3.5 mr-1" /> Link Dropbox
+              </Button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Identity Quick Access (shown when identity docs exist) */}
+      {identityDocs.length > 0 && (
+        <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4">
+          <p className="text-xs font-bold text-blue-700 uppercase tracking-wider mb-2">🪪 Identity Documents (Quick Access)</p>
+          <div className="flex flex-wrap gap-2">
+            {identityDocs.map(doc => (
+              <a key={doc.id} href={doc.file_url} target="_blank" rel="noopener noreferrer"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-blue-200 rounded-lg text-xs font-medium text-blue-800 hover:border-blue-400 transition">
+                <FileText className="w-3.5 h-3.5" />
+                {doc.title}
+                {doc.expiry_date && isExpired(doc.expiry_date) && <AlertTriangle className="w-3 h-3 text-red-500" />}
+                {doc.expiry_date && isExpiringSoon(doc.expiry_date) && !isExpired(doc.expiry_date) && <AlertTriangle className="w-3 h-3 text-yellow-500" />}
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Tabs: Files | Contracts */}
+      <Tabs defaultValue="files">
+        <TabsList className="bg-gray-100 rounded-xl">
+          <TabsTrigger value="files" className="data-[state=active]:bg-black data-[state=active]:text-yellow-400 rounded-lg">
+            <FileText className="w-4 h-4 mr-1.5" /> Files ({documents.length})
+          </TabsTrigger>
+          <TabsTrigger value="contracts" className="data-[state=active]:bg-black data-[state=active]:text-yellow-400 rounded-lg">
+            <FileText className="w-4 h-4 mr-1.5" /> Contracts ({contracts.length})
+          </TabsTrigger>
+        </TabsList>
+
+        {/* Files Tab */}
+        <TabsContent value="files" className="mt-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex gap-1.5 flex-wrap">
+              {['all', ...CATEGORIES].map(cat => (
+                <button key={cat} onClick={() => setFilterCategory(cat)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-medium transition ${filterCategory === cat ? 'bg-black text-yellow-400' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+                  {cat === 'all' ? 'All' : CATEGORY_LABELS[cat] || cat.replace('_', ' ')}
+                </button>
+              ))}
+            </div>
+            {!isArchived && (
+              <Button size="sm" className="h-8 text-xs bg-black text-yellow-400 hover:bg-gray-900 gap-1.5"
+                onClick={() => setShowUploadForm(!showUploadForm)}>
+                <Plus className="w-3.5 h-3.5" /> Upload File
+              </Button>
+            )}
+          </div>
+
+          {/* Upload Form */}
+          {showUploadForm && !isArchived && (
+            <div className="bg-gray-50 border border-dashed border-gray-300 rounded-xl p-4 space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs text-gray-600">Document Title *</Label>
+                  <Input value={newDoc.title} onChange={e => setNewDoc(d => ({ ...d, title: e.target.value }))}
+                    placeholder="e.g. Passport 2025" className="mt-1 h-8 text-sm" />
+                </div>
+                <div>
+                  <Label className="text-xs text-gray-600">Type</Label>
+                  <Select value={newDoc.type} onValueChange={v => setNewDoc(d => ({ ...d, type: v }))}>
+                    <SelectTrigger className="mt-1 h-8 text-sm"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {Object.keys(TYPE_COLORS).map(t => (
+                        <SelectItem key={t} value={t}>{t.replace(/_/g, ' ')}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-xs text-gray-600">Category</Label>
+                  <Select value={newDoc.category} onValueChange={v => setNewDoc(d => ({ ...d, category: v }))}>
+                    <SelectTrigger className="mt-1 h-8 text-sm"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {CATEGORIES.map(c => (
+                        <SelectItem key={c} value={c}>{CATEGORY_LABELS[c] || c.replace('_', ' ')}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-xs text-gray-600">Expiry Date (optional)</Label>
+                  <Input type="date" value={newDoc.expiry_date}
+                    onChange={e => setNewDoc(d => ({ ...d, expiry_date: e.target.value }))}
+                    className="mt-1 h-8 text-sm" />
+                </div>
+              </div>
+              <label className={`cursor-pointer inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition ${newDoc.title ? 'bg-yellow-400 text-black hover:bg-yellow-500' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}>
+                {uploading ? (
+                  <><Loader2 className="w-4 h-4 animate-spin" /> Uploading...</>
+                ) : (
+                  <><Upload className="w-4 h-4" /> Choose File & Upload</>
+                )}
+                <input type="file" className="hidden" disabled={!newDoc.title || uploading} onChange={handleFileUpload} />
+              </label>
+            </div>
+          )}
+
+          {/* Files List */}
+          {filtered.length === 0 ? (
+            <div className="text-center py-10 bg-white border border-dashed border-gray-200 rounded-xl">
+              <FileText className="w-10 h-10 text-gray-200 mx-auto mb-2" />
+              <p className="text-sm text-gray-400">No files in this category</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {filtered.map(doc => {
+                const expiring = isExpiringSoon(doc.expiry_date);
+                const expired = isExpired(doc.expiry_date);
+                return (
+                  <div key={doc.id} className={`flex items-center gap-3 p-3 rounded-xl border bg-white hover:border-yellow-300 transition ${expired ? 'border-red-200' : expiring ? 'border-yellow-200' : 'border-gray-100'}`}>
+                    <FileText className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-medium text-black truncate">{doc.title}</span>
+                        {doc.is_sensitive && <Lock className="w-3 h-3 text-gray-500" />}
+                        <Badge className={`text-xs ${TYPE_COLORS[doc.type || 'other']}`}>{doc.type?.replace(/_/g, ' ') || 'other'}</Badge>
+                        {doc.file_type && <span className="text-xs text-gray-400">{doc.file_type}</span>}
+                      </div>
+                      {doc.expiry_date && (
+                        <p className={`text-xs mt-0.5 flex items-center gap-1 ${expired ? 'text-red-600' : expiring ? 'text-yellow-600' : 'text-gray-400'}`}>
+                          {(expired || expiring) && <AlertTriangle className="w-3 h-3" />}
+                          Expires {new Date(doc.expiry_date).toLocaleDateString()}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      {doc.file_url && (
+                        <a href={doc.file_url} target="_blank" rel="noopener noreferrer">
+                          <Button size="sm" variant="ghost" className="h-7 px-2 text-gray-500 hover:text-black">
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </Button>
+                        </a>
+                      )}
+                      {!isArchived && (
+                        <Button size="sm" variant="ghost" className="h-7 px-2 text-red-400 hover:text-red-600"
+                          onClick={() => { if (confirm('Delete this file?')) deleteDocMutation.mutate(doc.id); }}>
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </TabsContent>
+
+        {/* Contracts Tab */}
+        <TabsContent value="contracts" className="mt-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-gray-500">{contracts.length} contract{contracts.length !== 1 ? 's' : ''} for this artist</p>
+            {!isArchived && (
+              <Button size="sm" className="h-8 text-xs bg-black text-yellow-400 hover:bg-gray-900 gap-1.5"
+                onClick={() => { setEditingContract(null); setShowContractForm(true); }}>
+                <Plus className="w-3.5 h-3.5" /> New Contract
+              </Button>
+            )}
+          </div>
+
+          {contracts.length === 0 ? (
+            <div className="text-center py-10 bg-white border border-dashed border-gray-200 rounded-xl">
+              <FileText className="w-10 h-10 text-gray-200 mx-auto mb-2" />
+              <p className="text-sm text-gray-400">No contracts yet</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {contracts.map(contract => {
+                const contact = contacts.find(c => c.id === contract.contact_id);
+                return (
+                  <div key={contract.id}
+                    className="flex items-center gap-3 p-3 rounded-xl border bg-white hover:border-yellow-300 transition border-gray-100 cursor-pointer"
+                    onClick={() => { setEditingContract(contract); setShowContractForm(true); }}>
+                    <div className="p-2 bg-black rounded-lg flex-shrink-0">
+                      <FileText className="w-3.5 h-3.5 text-yellow-400" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-medium text-black truncate">{contract.title}</span>
+                        <StageBadge stage={contract.status || 'draft'} />
+                      </div>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        {contract.type?.replace('_', ' ')}
+                        {contract.value && ` · ${contract.currency || 'USD'} ${contract.value.toLocaleString()}`}
+                        {contact && ` · ${contact.name}`}
+                      </p>
+                    </div>
+                    {contract.contract_file_url && (
+                      <a href={`/contract-preview?contract=${encodeURIComponent(contract.id)}`} target="_blank" rel="noopener noreferrer"
+                        onClick={e => e.stopPropagation()}>
+                        <Button size="sm" variant="ghost" className="h-7 px-2 text-gray-500 hover:text-black">
+                          <ExternalLink className="w-3.5 h-3.5" />
+                        </Button>
+                      </a>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </TabsContent>
+      </Tabs>
+
+      {/* Contract Form Modal */}
+      {showContractForm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <ContractForm
+              contract={editingContract}
+              artists={[artist]}
+              contacts={contacts}
+              onSubmit={handleContractSubmit}
+              onDelete={async id => { await deleteContractMutation.mutateAsync(id); setShowContractForm(false); setEditingContract(null); }}
+              onCancel={() => { setShowContractForm(false); setEditingContract(null); }}
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

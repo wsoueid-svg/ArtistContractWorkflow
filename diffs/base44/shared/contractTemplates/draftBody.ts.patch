@@ -1,0 +1,26 @@
+diff --git a/base44/shared/contractTemplates/draftBody.ts b/base44/shared/contractTemplates/draftBody.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..2aa894c796d8b3fd57136a3f06297a84fdf4eb21
+--- /dev/null
++++ b/base44/shared/contractTemplates/draftBody.ts
+@@ -0,0 +1,19 @@
++// Canonical rich text is already allowlisted by validateDraftBlocks. Use the shared
++// shell, typography, protected schedule/signatures and numbered-clause styling.
++export function renderDraftBody(blocks,pack) {
++  const appendices=blocks.filter(b=>b.kind==='appendix');
++  let html='',inTerms=false;
++  for(const block of blocks.filter(b=>b.kind!=='appendix')) {
++    if(block.kind==='protected'||block.kind==='economics') {
++      if(inTerms){html+='</ol>';inTerms=false;}
++      html+=block.rich_text;
++      if(block.id==='terms-heading'){html+='<ol class="clauses">';inTerms=true;}
++    } else html+=inTerms?`<li>${block.rich_text}</li>`:`<div class="draft-clause">${block.rich_text}</div>`;
++  }
++  if(inTerms)html+='</ol>';
++  // The accepted master has no embedded rider. Preserve that fact rather than
++  // silently attaching the artist-specific, unused RIDER_* pack. Appendices are
++  // after every canonical block (therefore also after a rider if one is present).
++  if(appendices.length)html+=`<h2 class="section">${pack.lang==='es'?'Anexos':'Appendices'}</h2>`+appendices.map(b=>`<div class="notes-box">${b.rich_text}</div>`).join('');
++  return html;
++}
+\ No newline at end of file

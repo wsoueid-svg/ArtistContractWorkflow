@@ -1,0 +1,21 @@
+diff --git a/base44/functions/contractFileAccess/entry.ts b/base44/functions/contractFileAccess/entry.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..9bb3182e2bec2a998f1114faecc12ea73cd0367f
+--- /dev/null
++++ b/base44/functions/contractFileAccess/entry.ts
+@@ -0,0 +1,14 @@
++import { createClientFromRequest } from 'npm:@base44/sdk@0.8.54';
++import { contractFileAccess, contractFileUrl } from '../../shared/contractFiles.ts';
++export default async function(req) {
++  try {
++    const base44=createClientFromRequest(req),user=await base44.auth.me().catch(e=>e.status===401?null:Promise.reject(e));
++    if(!user)return Response.json({error:'Unauthorized'},{status:401});
++    const body=await req.json().catch(()=>({}));
++    if(!/^[a-f0-9]{24}$/i.test(body.contract_id||''))return Response.json({error:'Valid contract is required'},{status:400});
++    const contract=await contractFileAccess(base44,user,body.contract_id);
++    if(body.variant && !['original','signed'].includes(body.variant))return Response.json({error:'Unsupported document variant'},{status:400});
++    const reference=body.variant==='signed'?contract.signed_contract_url:contract.contract_file_url;
++    return Response.json({contract,url:reference?await contractFileUrl(base44,reference):null,expires_in:300},{headers:{'Cache-Control':'no-store'}});
++  }catch(error){return Response.json({error:error.message},{status:error.status||500});}
++}
+\ No newline at end of file

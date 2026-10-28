@@ -1,0 +1,30 @@
+diff --git a/src/components/contracts/ContractSignatureControl.jsx b/src/components/contracts/ContractSignatureControl.jsx
+index a86dedbeb90dc2167a46142c07bfb78ce2498454..2de3b9d4d0d3cd41a965fc2db8d95a8dd576bed3 100644
+--- a/src/components/contracts/ContractSignatureControl.jsx
++++ b/src/components/contracts/ContractSignatureControl.jsx
+@@ -6,7 +6,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
+ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+ 
+ const COPY = {
+-  signed: { title: 'Digitally sign this contract?', body: 'Locks this exact PDF version with a hash and records your account and the time in the audit log. The PDF itself is not changed.', confirm: 'Confirm signature' },
++  signed: { title: 'Record signature confirmation?', body: 'Confirm only after checking the agreement was signed outside this app. This records your staff account, time and the PDF hash; it does not collect the promoter’s electronic signature or alter the PDF.', confirm: 'Record confirmation' },
+   manual_signed: { title: 'Mark as signed (manual)?', body: 'Use this when the promoter returned a signed copy outside the app. Your account, the time and a hash of the document are recorded.', confirm: 'Confirm' },
+   revert_signed: { title: 'Revert this signature?', body: 'The contract returns to Returned status. The revert is recorded in the audit log.', confirm: 'Revert' },
+ };
+@@ -18,6 +18,7 @@ export default function ContractSignatureControl({ contract, onChange }) {
+   if (!contract?.contract_file_url) return null;
+   const isSigned = contract.status === 'SIGNED';
+   const canManual = ['SENT', 'RETURNED'].includes(contract.status);
++  if(!isSigned&&!canManual)return <p className="text-sm text-muted-foreground">Send this contract before recording a signature confirmation.</p>;
+ 
+   const run = async () => {
+     const action = pending;
+@@ -46,7 +47,7 @@ export default function ContractSignatureControl({ contract, onChange }) {
+       ) : (
+         <div className="inline-flex">
+           <Button size="sm" disabled={loading} onClick={() => setPending('signed')} className={`min-h-[44px] bg-emerald-600 text-xs text-white hover:bg-emerald-700 ${canManual ? 'rounded-r-none' : ''}`}>
+-            {loading ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <ShieldCheck className="mr-1 h-3 w-3" />}Mark as Signed
++            {loading ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <ShieldCheck className="mr-1 h-3 w-3" />}Record signature confirmation
+           </Button>
+           {canManual && (
+             <DropdownMenu>

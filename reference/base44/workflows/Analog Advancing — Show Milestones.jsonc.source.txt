@@ -1,0 +1,40 @@
+{
+  "name": "Analog Advancing \u2014 Show Milestones",
+  "description": "Completes Analog advancing payment tasks when show payment flags change.",
+  "trigger": {
+    "config": {
+      "trigger_type": "entity",
+      "entity_name": "Show",
+      "events": [
+        "update"
+      ]
+    },
+    "condition": "${ (.trigger.data.created_by_org_id == \"analog\" or .trigger.data.is_aboss_import == true) and ((.trigger.changed_fields | index(\"advance_paid\") != null) or (.trigger.changed_fields | index(\"payment_received\") != null)) }"
+  },
+  "definition": {
+    "document": {
+      "dsl": "1.0.0",
+      "name": "analog_advancing_show_milestones",
+      "version": "1.0",
+      "namespace": "base44"
+    },
+    "do": [
+      {
+        "sync_advancing_tasks": {
+          "call": "invoke_backend_function",
+          "with": {
+            "function_name": "syncAnalogAdvancingTasks",
+            "args": {
+              "show_id": "${ .trigger.entity_id }"
+            }
+          },
+          "then": "end",
+          "x-base44": {
+            "title": "Complete show tasks",
+            "description": "Sync advancing milestones"
+          }
+        }
+      }
+    ]
+  }
+}

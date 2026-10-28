@@ -1,0 +1,9 @@
+export default function ContractNextStep({ current, draft, pending, locked }) {
+  let text = 'Confirm the promoter and template, then review the document. Nothing is sent until you choose Send contract.';
+  if (locked) text = 'This contract is being processed. Editing and sending are temporarily locked.';
+  else if (current?.status === 'SIGNED') text = 'The signed revision is locked. Its PDF and revision history remain available.';
+  else if (pending) text = draft.status === 'approved' ? 'Your draft is saved and approved. Generate its PDF next; this does not send it.' : 'Continue your saved draft, review its wording, then save and generate the PDF.';
+  else if (['SENT', 'RETURNED'].includes(current?.status)) text = current.draft_id ? 'This issued PDF is preserved. Create an amendment for changes, or record a received signature below.' : 'This uploaded PDF has no editable document snapshot. View the file or record a received signature below.';
+  else if (current?.status === 'READY') text = 'The PDF is ready. Review it, then send it to the promoter. Generating a PDF does not send email.';
+  return <p className="mt-3 max-w-prose text-sm leading-relaxed text-muted-foreground" data-testid="contract-next-step">{text}</p>;
+}

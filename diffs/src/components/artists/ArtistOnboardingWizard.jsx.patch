@@ -1,0 +1,71 @@
+diff --git a/src/components/artists/ArtistOnboardingWizard.jsx b/src/components/artists/ArtistOnboardingWizard.jsx
+index 3173adb9a3f01e796464f6969ec1b98e5a1666ab..5797e25fa21b65119027f8185687fbe6f5e8e188 100644
+--- a/src/components/artists/ArtistOnboardingWizard.jsx
++++ b/src/components/artists/ArtistOnboardingWizard.jsx
+@@ -1,4 +1,4 @@
+-import React, { useState } from 'react';
++import React, { useRef, useState } from 'react';
+ import { Button } from '@/components/ui/button';
+ import { Input } from '@/components/ui/input';
+ import { Textarea } from '@/components/ui/textarea';
+@@ -32,6 +32,24 @@ export default function ArtistOnboardingWizard({ onSubmit, onCancel }) {
+   const [step, setStep] = useState(1);
+   const [formData, setFormData] = useState(EMPTY_FORM);
+   const [genreInput, setGenreInput] = useState('');
++  const [submitting, setSubmitting] = useState(false);
++  const [error, setError] = useState('');
++  const submitLock = useRef(false);
++
++  const handleCreate = async () => {
++    if (submitLock.current || !formData.name.trim()) return;
++    submitLock.current = true;
++    setSubmitting(true);
++    setError('');
++    try {
++      await onSubmit({ ...formData, name: formData.name.trim() });
++    } catch (err) {
++      setError(err?.response?.data?.message || err?.message || 'Could not create the artist. Please try again.');
++    } finally {
++      submitLock.current = false;
++      setSubmitting(false);
++    }
++  };
+ 
+   const set = (field, value) => setFormData(prev => ({ ...prev, [field]: value }));
+   const setContact = (field, value) => setFormData(prev => ({ ...prev, contact_info: { ...prev.contact_info, [field]: value } }));
+@@ -56,7 +74,7 @@ export default function ArtistOnboardingWizard({ onSubmit, onCancel }) {
+           <h2 className="text-2xl font-bold text-black">Add New Artist</h2>
+           <p className="text-sm text-gray-500 mt-0.5">Step {step} of {STEPS.length} — {STEPS[step - 1].description}</p>
+         </div>
+-        <button onClick={onCancel} className="text-gray-400 hover:text-black transition">
++        <button onClick={onCancel} disabled={submitting} aria-label="Close artist wizard" className="text-gray-400 hover:text-black transition">
+           <X className="w-5 h-5" />
+         </button>
+       </div>
+@@ -205,9 +223,10 @@ export default function ArtistOnboardingWizard({ onSubmit, onCancel }) {
+         )}
+       </div>
+ 
++      {error && <p role="alert" className="px-6 pb-3 text-sm text-destructive">{error}</p>}
+       {/* Footer */}
+       <div className="flex items-center justify-between px-6 py-4 border-t bg-gray-50 flex-shrink-0">
+-        <Button variant="outline" onClick={step === 1 ? onCancel : () => setStep(s => s - 1)}>
++        <Button variant="outline" disabled={submitting} onClick={step === 1 ? onCancel : () => setStep(s => s - 1)}>
+           {step === 1 ? 'Cancel' : <><ChevronLeft className="w-4 h-4 mr-1" />Back</>}
+         </Button>
+         {step < STEPS.length ? (
+@@ -221,10 +240,11 @@ export default function ArtistOnboardingWizard({ onSubmit, onCancel }) {
+         ) : (
+           <Button
+             className="bg-yellow-400 text-black hover:bg-yellow-500 font-semibold"
+-            disabled={!formData.name.trim()}
+-            onClick={() => onSubmit(formData)}
++            disabled={!formData.name.trim() || submitting}
++            aria-busy={submitting}
++            onClick={handleCreate}
+           >
+-            <Check className="w-4 h-4 mr-1" /> Create Artist
++            <Check className="w-4 h-4 mr-1" /> {submitting ? 'Creating…' : 'Create Artist'}
+           </Button>
+         )}
+       </div>

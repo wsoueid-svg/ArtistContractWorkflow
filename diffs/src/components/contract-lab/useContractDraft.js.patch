@@ -1,0 +1,51 @@
+diff --git a/src/components/contract-lab/useContractDraft.js b/src/components/contract-lab/useContractDraft.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..22fd73baeef1f356ff1ec786fc0c258c6367062f
+--- /dev/null
++++ b/src/components/contract-lab/useContractDraft.js
+@@ -0,0 +1,44 @@
++import { useEffect, useRef, useState } from 'react';
++import { useQueryClient } from '@tanstack/react-query';
++import { base44 } from '@/api/base44Client';
++import { hasDocumentEdits } from '@/components/contract-lab/draftRecovery';
++import useContractRecovery from '@/components/contract-lab/useContractRecovery';
++import contractError from '@/components/contract-lab/contractErrors';
++import refreshDocumentBlocks from '@/components/contract-lab/refreshDocumentBlocks';
++import refreshContractWorkspace from '@/components/contracts/refreshContractWorkspace';
++export default function useContractDraft(initial,onChange,readOnly=false) {
++  const [doc,setDoc]=useState({...initial,master_blocks:initial.master_blocks||initial.blocks});
++  const [dirty,setDirty]=useState(!!initial.browser_dirty),[saving,setSaving]=useState(false),[error,setError]=useState(''),[comparison,setComparison]=useState(null),[historyVersion,setHistoryVersion]=useState(0);
++  const history=useRef([]),future=useRef([]),inFlight=useRef(false),queryClient=useQueryClient(),recovery=useContractRecovery(doc,dirty,readOnly);
++  const [lockReason,setLockReason]=useState('');
++  const frozen=readOnly||!!lockReason||['generated','generating'].includes(doc.status);
++  const lock=message=>{setLockReason(message);setError(message);};
++  useEffect(()=>{onChange?.({...doc,browser_dirty:dirty});},[doc,dirty,onChange]);
++  const replace=blocks=>{if(frozen||saving)return;history.current.push(doc.blocks);if(history.current.length>80)history.current.shift();future.current=[];setDoc(d=>({...d,blocks:blocks.map((b,order)=>({...b,order}))}));setDirty(true);setError('');setHistoryVersion(v=>v+1);};
++  const undo=()=>{if(frozen||saving||!history.current.length)return;future.current.push(doc.blocks);setDoc(d=>({...d,blocks:history.current.pop()}));setDirty(true);setHistoryVersion(v=>v+1);};
++  const redo=()=>{if(frozen||saving||!future.current.length)return;history.current.push(doc.blocks);setDoc(d=>({...d,blocks:future.current.pop()}));setDirty(true);setHistoryVersion(v=>v+1);};
++  const invalidate=()=>refreshContractWorkspace(queryClient,doc.show_id);
++  const save=async()=>{
++    if(frozen||inFlight.current||recovery.recovery||comparison)return;
++    inFlight.current=true;setSaving(true);setError('');
++    try {
++      const {data}=await base44.functions.invoke('saveContractDraft',{show_id:doc.show_id,draft_id:doc.id||null,template_id:doc.template_id,parent_draft_id:doc.parent_draft_id,force_amendment:doc.force_amendment===true,fields:doc.source_snapshot.fields,blocks:doc.blocks,master_content_version:doc.master_content_version,expected_revision_no:doc.revision_no,expected_lock_token:doc.lock_token});
++      recovery.clear();history.current=[];future.current=[];setDoc(data.draft);setDirty(false);invalidate();return data.draft;
++    }catch(e){
++      setError(contractError(e));
++      if(e.response?.status===409&&/signed|dispatch|generation.*progress|immutable/i.test(e.response?.data?.error||''))lock(contractError(e));
++      if(e.response?.status===409&&doc.id&&!/signed|dispatch|generat|immutable/i.test(e.response?.data?.error||'')){
++        const refreshed=await base44.functions.invoke('getContractDraft',{show_id:doc.show_id,draft_id:doc.id,force_amendment:doc.force_amendment===true});
++        setComparison({browser:doc,server:refreshed.data.draft});
++      }
++    }finally{inFlight.current=false;setSaving(false);}
++  };
++  const compare=()=>setComparison({browser:recovery.recovery.document,server:doc,browserAt:recovery.recovery.savedAt});
++  const recover=()=>{replace(recovery.recovery.document.blocks);recovery.setRecovery(null);setComparison(null);};
++  const discard=()=>{recovery.clear();setComparison(null);};
++  const loadServer=()=>{setDoc(comparison.server);setDirty(!!comparison.server.browser_dirty);history.current=[];future.current=[];setHistoryVersion(v=>v+1);setComparison(null);setError('');recovery.clear();};
++  const rebaseBrowser=()=>{const browser=comparison.browser,server=comparison.server,master=server.master_blocks||server.blocks,protectedBlocks=master.filter(b=>['protected','economics'].includes(b.kind)),old=browser.blocks.filter(b=>['protected','economics'].includes(b.kind));const blocks=[];for(const locked of protectedBlocks){const previous=old.find(b=>b.id===locked.id);if(previous)blocks.push(...browser.blocks.filter(b=>!['protected','economics'].includes(b.kind)&&b.slot===previous.slot).map(b=>({...b,slot:locked.slot})));blocks.push(locked);}blocks.push(...browser.blocks.filter(b=>!['protected','economics'].includes(b.kind)&&b.slot===old.length).map(b=>({...b,slot:protectedBlocks.length})));history.current=[];future.current=[];setDoc({...server,blocks:blocks.map((b,order)=>({...b,order}))});setDirty(true);setComparison(null);recovery.setRecovery(null);setError('Review refreshed terms and save again. Your wording was kept by your choice.');};
++  const refreshSource=fresh=>{setDoc(current=>({...current,source_snapshot:fresh.source_snapshot,master_content_version:fresh.master_content_version,master_blocks:fresh.blocks,blocks:refreshDocumentBlocks(current.blocks,fresh.blocks),required_inputs:fresh.required_inputs,status:'editing',browser_dirty:true,source_refreshed:true,master_changed:false}));setDirty(true);setError('');history.current=[];future.current=[];setHistoryVersion(v=>v+1);};
++  const generated=result=>{setDoc(d=>({...d,status:'generated',contract_id:result.contract_id,target_contract_version:result.version_number,pdf_url:result.file_url,generated_at:new Date().toISOString()}));setDirty(false);recovery.clear();invalidate();};
++  return {doc,dirty,saving,error,notice:recovery.notice,localAt:recovery.localAt,recovery:recovery.recovery,comparison,setComparison,replace,undo,redo,save,compare,recover,discard,loadServer,rebaseBrowser,generated,hasEdits:hasDocumentEdits(doc),canUndo:!frozen&&history.current.length>0,canRedo:!frozen&&future.current.length>0,historyVersion,frozen,lock,lockReason,refreshSource};
++}
+\ No newline at end of file

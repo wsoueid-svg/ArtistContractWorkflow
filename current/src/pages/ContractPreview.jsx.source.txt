@@ -1,0 +1,27 @@
+import { Link, useSearchParams } from 'react-router-dom';
+import { FileText, Loader2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import useContractPdf from '@/components/contracts/preview/useContractPdf';
+import ContractPdfDownload from '@/components/contracts/preview/ContractPdfDownload';
+import ContractPdfViewer from '@/components/contracts/preview/ContractPdfViewer';
+import { useOrg } from '@/lib/OrgContext';
+import ContractRevisionAction from '@/components/contracts/ContractRevisionAction';
+import ContractRedlines from '@/components/contracts/redlines/ContractRedlines';
+
+export default function ContractPreview() {
+  const [params] = useSearchParams(), pdf = useContractPdf(params.get('contract'), params.get('show'), params.get('variant') || 'original');
+  const { activeOrg } = useOrg(), contract = pdf.contract;
+  const back = contract?.show_id ? `${activeOrg === 'analog' ? '/analogshowdetail' : '/showdetail'}?id=${encodeURIComponent(contract.show_id)}&tab=contract` : '/contracts';
+  return <div className="mx-auto max-w-6xl space-y-6 pb-4" data-testid="contract-pdf-preview">
+    <header className="flex flex-col gap-4 border-b border-border pb-6 sm:flex-row sm:items-start sm:justify-between">
+      <div className="min-w-0 space-y-3"><Button asChild variant="ghost" className="min-h-11 px-0"><Link to={back}>Back to contract</Link></Button><div className="flex items-center gap-2 text-sm text-muted-foreground"><FileText className="h-4 w-4" />Contract preview</div><h1 className="break-words text-2xl font-semibold text-foreground">{contract?.title || 'Contract PDF'}</h1><p className="text-sm text-muted-foreground">View and download the exact saved document.</p></div>
+      {!pdf.loading && <div className="flex flex-col items-start gap-3"><ContractPdfDownload file={pdf.file} url={pdf.url} filename={pdf.filename} />{contract&&<ContractRevisionAction showId={contract.show_id} contractId={contract.id}/>}</div>}
+    </header>
+    {pdf.loading ? <div className="flex min-h-96 items-center justify-center gap-3 text-muted-foreground" role="status"><Loader2 className="h-5 w-5 animate-spin" />Loading contract PDF…</div> : pdf.error ? <section className="space-y-4 rounded-lg border border-border bg-card p-6"><h2 className="text-lg font-semibold">Document unavailable</h2><p role="alert" className="text-muted-foreground">{pdf.error}</p><Button variant="outline" className="min-h-11" onClick={pdf.retry}>Try again</Button></section> : <>
+      <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">{[['Artist', contract.artist], ['Event', contract.event], ['Revision', contract.revision], ['Contract status', contract.status]].map(([label, value]) => <div key={label} className="min-w-0"><dt className="text-sm text-muted-foreground">{label}</dt><dd className="mt-1 break-words text-base font-medium">{value ?? 'Not recorded'}</dd></div>)}</dl>
+      {pdf.url ? <ContractPdfViewer url={pdf.url} title={contract.title} /> : <p role="status" className="rounded-lg border border-border p-6">No PDF has been attached to this contract yet. Return to the contract to generate or attach one.</p>}
+      {contract.show_id&&<ContractRedlines showId={contract.show_id} contractId={contract.id} readOnly={contract.status==='SIGNED'}/>}
+      <section className="space-y-3 border-t border-border pt-6 text-sm leading-relaxed text-muted-foreground"><h2 className="text-base font-semibold text-foreground">Save and open on your device</h2><p>On Mac or Windows, find the PDF in Downloads, then open it with Chrome where supported. Your browser controls the save location and which application opens the file.</p><p>On iPhone or iPad, if a preview appears, tap Share, then Save to Files. On Android, use Download or the save option in the preview or share menu, then find the PDF in Files or Downloads.</p><p>Downloading does not edit, regenerate, sign, or send this contract.</p></section>
+    </>}
+  </div>;
+}

@@ -1,0 +1,22 @@
+diff --git a/src/components/dashboard/MyShowsContractCard.jsx b/src/components/dashboard/MyShowsContractCard.jsx
+index 5da23c1f7b1ab4536703f6b866e04f2fb38c362c..1c84ff0a2f71845ddc74694efdd1cc515bfac3da 100644
+--- a/src/components/dashboard/MyShowsContractCard.jsx
++++ b/src/components/dashboard/MyShowsContractCard.jsx
+@@ -5,7 +5,7 @@ import DealCard, { EmptyRow, StatusSummary } from './DealCard';
+ import DealStatusBadge from '@/components/shared/DealStatusBadge';
+ import { CONTRACT_STATUS_META } from '@/lib/dealStatus';
+ 
+-const ORDER = ['none', 'READY', 'SENT', 'RETURNED', 'SIGNED'];
++const ORDER = ['none', 'draft', 'READY', 'DISPATCHING', 'SENT', 'RETURNED', 'SIGNED'];
+ const fmt = (d) => d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : 'TBD';
+ 
+ export default function MyShowsContractCard({ shows = [], contractByShow = {}, artistMap = {}, isLoading, title = 'My Shows • Contracts' }) {
+@@ -33,7 +33,7 @@ export default function MyShowsContractCard({ shows = [], contractByShow = {}, a
+         <ul className="max-h-[260px] overflow-y-auto scrollbar-thin">
+           {rows.map(s => (
+             <li key={s.id} className="odd:bg-white even:bg-slate-50">
+-              <Link to={`/showdetail?id=${s.id}`} className="flex items-center gap-3 px-4 py-2.5 hover:bg-yellow-50 transition-colors min-h-[52px]">
++              <Link to={`/showdetail?id=${encodeURIComponent(s.id)}&tab=contract`} className="flex items-center gap-3 px-4 py-2.5 hover:bg-yellow-50 transition-colors min-h-[52px]">
+                 <span className="text-[11px] text-slate-400 tabular-nums w-14 flex-shrink-0">{fmt(s.date)}</span>
+                 <div className="flex-1 min-w-0">
+                   <p className="text-sm font-medium text-slate-900 truncate">{artistMap[s.artist_id]?.name || 'Artist'} · {s.event_name}</p>

@@ -1,0 +1,14 @@
+diff --git a/src/lib/showEdit.js b/src/lib/showEdit.js
+index d2f5ee4e849113f5bc021c1bd95caf6a19346a9c..bb6dc325d116c25ab22b7f4c0c29c66a96faa41b 100644
+--- a/src/lib/showEdit.js
++++ b/src/lib/showEdit.js
+@@ -15,6 +15,9 @@ export const invalidateShowQueries = async (queryClient, showId) => {
+   await Promise.all([
+     queryClient.invalidateQueries({ queryKey: ['show', showId] }),
+     queryClient.invalidateQueries({ queryKey: ['show-contracts', showId] }),
++    queryClient.invalidateQueries({ queryKey: ['contract-revisions', showId] }),
++    queryClient.invalidateQueries({ queryKey: ['contract-redline-context', showId] }),
++    queryClient.invalidateQueries({ queryKey: ['contracts'] }),
+     queryClient.invalidateQueries({ queryKey: ['analog-shows'] }),
+     queryClient.invalidateQueries({ queryKey: ['shows'] }),
+     queryClient.invalidateQueries({ queryKey: ['analog-master-calendar'] }),

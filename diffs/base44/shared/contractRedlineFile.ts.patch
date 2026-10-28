@@ -1,0 +1,17 @@
+diff --git a/base44/shared/contractRedlineFile.ts b/base44/shared/contractRedlineFile.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..6a0c8d8300d8fe4d481b935aee2bdb377b808a79
+--- /dev/null
++++ b/base44/shared/contractRedlineFile.ts
+@@ -0,0 +1,10 @@
++import { AccessError } from './assertShowAccess.ts';
++export async function validateRedlineFile(file) {
++  if (!(file instanceof File) || !file.size || file.size > 10 * 1024 * 1024) throw new AccessError('Choose a PDF or DOCX file up to 10 MB.', 422);
++  const bytes = new Uint8Array(await file.arrayBuffer()), text = new TextDecoder().decode(bytes);
++  const pdf = file.name.toLowerCase().endsWith('.pdf') && text.startsWith('%PDF-');
++  const docx = file.name.toLowerCase().endsWith('.docx') && bytes[0] === 80 && bytes[1] === 75 && text.includes('[Content_Types].xml') && text.includes('word/document.xml') && !text.includes('vbaProject.bin');
++  if (!pdf && !docx) throw new AccessError('The file must be a valid PDF or non-macro DOCX document.', 422);
++  const name = file.name.replace(/[<>:"/\\|?*\x00-\x1F]/g, '-').slice(0, 180);
++  return new File([bytes], name, { type: pdf ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
++}
+\ No newline at end of file

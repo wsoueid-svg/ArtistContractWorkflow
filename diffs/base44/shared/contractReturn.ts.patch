@@ -1,0 +1,32 @@
+diff --git a/base44/shared/contractReturn.ts b/base44/shared/contractReturn.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..e074c814ca23472f79952a045a3511482ac611de
+--- /dev/null
++++ b/base44/shared/contractReturn.ts
+@@ -0,0 +1,25 @@
++import { header, parseAddresses } from './gmailThread.ts';
++export function isContractReturnReply(contract, thread, message, internalEmails) {
++  if(contract?.status!=='SENT'||!contract.dispatched_at||!contract.last_dispatched_message_id)return false;
++  const outbound=(thread.messages||[]).find(m=>m.id===contract.last_dispatched_message_id);
++  if(!outbound)return false;
++  const from=parseAddresses(header(message,'From'))[0];
++  const recipients=[...parseAddresses(header(outbound,'To')),...parseAddresses(header(outbound,'Cc'))];
++  if(!from||internalEmails.has(from)||!recipients.includes(from)||(message.labelIds||[]).some(x=>['DRAFT','SENT','SPAM','TRASH'].includes(x)))return false;
++  if(Number(message.internalDate||0)<=new Date(contract.dispatched_at).getTime())return false;
++  const messageId=header(outbound,'Message-ID').trim();
++  const references=`${header(message,'In-Reply-To')} ${header(message,'References')}`.split(/\s+/);
++  return !!messageId && references.includes(messageId);
++}
++export async function recordContractReturn(base44, show, contract, thread, message, internalEmails, mailboxOwnerId) {
++  if(show.contract_id!==contract?.id||!isContractReturnReply(contract,thread,message,internalEmails))return false;
++  const svc=base44.asServiceRole.entities;
++  const messages=await svc.ConfMessage.filter({gmail_message_id:message.id,mailbox_owner_user_id:mailboxOwnerId},'-created_date',1);
++  if(!messages[0])return false;
++  const attachments=await svc.ConfAttachment.filter({conf_message_id:messages[0].id,mailbox_owner_user_id:mailboxOwnerId,mime_type:{$in:['application/pdf','application/vnd.openxmlformats-officedocument.wordprocessingml.document']}},'-created_date',20);
++  if(!attachments.some(a=>a.file_uri && /contract|agreement|redline|contrato|acuerdo/i.test(a.display_name||'')))return false;
++  const fresh=await svc.Show.get(show.id);
++  if(fresh.contract_id!==contract.id)return false;
++  const result=await svc.Contract.updateMany({id:contract.id,status:'SENT',updated_date:contract.updated_date,$and:[{$or:[{generation_lock:{$exists:false}},{generation_lock:null},{generation_lock:''}]},{$or:[{dispatch_lock:{$exists:false}},{dispatch_lock:null},{dispatch_lock:''}]}]},{$set:{status:'RETURNED',last_modified_at:new Date().toISOString()}});
++  return result.updated===1;
++}
+\ No newline at end of file

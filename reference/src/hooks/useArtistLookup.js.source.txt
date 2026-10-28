@@ -1,0 +1,35 @@
+import { useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { base44 } from '@/api/base44Client';
+
+/**
+ * Returns a merged list of active + deleted artists for name lookups.
+ * Each deleted artist gets { id: original_id, name, _deleted: true }.
+ * Active artists always take precedence over deleted ones.
+ */
+export default function useArtistLookup() {
+  const { data: artists = [] } = useQuery({
+    queryKey: ['artists'],
+    queryFn: () => base44.entities.Artist.list('name', 200),
+  });
+
+  const { data: deletedItems = [] } = useQuery({
+    queryKey: ['deleted-items-artists'],
+    queryFn: () => base44.entities.DeletedItem.filter({ entity_type: 'Artist' }),
+  });
+
+  const allArtists = useMemo(() => {
+    const activeIds = new Set(artists.map(a => a.id));
+    const deletedArtists = deletedItems
+      .filter(di => !activeIds.has(di.original_id))
+      .map(di => ({
+        id: di.original_id,
+        name: di.data?.name || di.display_name || 'Deleted Artist',
+        stage_name: di.data?.stage_name,
+        _deleted: true,
+      }));
+    return [...artists, ...deletedArtists];
+  }, [artists, deletedItems]);
+
+  return { artists, allArtists };
+}

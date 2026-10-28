@@ -1,0 +1,6 @@
+export const getContractualSetWindow = (show: Record<string, any>): string => {
+  const hasNewField = typeof show?.contractual_set_window === 'string';
+  return hasNewField
+    ? (show.contractual_set_window || 'TBA')
+    : (show?.logistics?.stage_time || 'TBA');
+};

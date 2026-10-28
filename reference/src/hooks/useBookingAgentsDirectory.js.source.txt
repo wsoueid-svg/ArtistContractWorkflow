@@ -1,0 +1,15 @@
+import { useQuery } from '@tanstack/react-query';
+import { base44 } from '@/api/base44Client';
+import { useOrg } from '@/lib/OrgContext';
+
+export default function useBookingAgentsDirectory({ includeFormer = false, enabled = true } = {}) {
+  const { activeOrg } = useOrg();
+  return useQuery({
+    queryKey: ['booking-agents-directory', activeOrg, includeFormer],
+    enabled: enabled && Boolean(activeOrg),
+    staleTime: 60 * 1000,
+    queryFn: () => base44.functions.invoke('getBookingAgentsDirectory', {
+      include_former: includeFormer,
+    }).then((response) => response.data.agents || []),
+  });
+}

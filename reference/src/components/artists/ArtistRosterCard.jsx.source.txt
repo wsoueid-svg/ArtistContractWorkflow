@@ -1,0 +1,23 @@
+import React from 'react';
+import { Calendar, Music2, Pencil, Trash2 } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+
+const STATUS = { active: 'bg-green-100 text-green-700', inactive: 'bg-slate-100 text-slate-600', on_tour: 'bg-yellow-100 text-yellow-800', in_studio: 'bg-blue-100 text-blue-700' };
+
+export default function ArtistRosterCard({ artist, upcomingShows, canViewRevenue, revenue, onOpen, onEdit, onDelete }) {
+  const preferenceCount = Object.values(artist.preferences || {}).filter(Boolean).length;
+  return (
+    <article className="group rounded-2xl border border-slate-200 bg-white p-4 transition hover:border-yellow-400 hover:shadow-md">
+      <button type="button" onClick={onOpen} className="flex min-h-[88px] w-full items-center gap-4 text-left">
+        <div className="h-20 w-20 shrink-0 overflow-hidden rounded-xl bg-slate-900">
+          {artist.photo_url ? <img src={artist.photo_url} alt="" className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center"><Music2 className="h-8 w-8 text-yellow-400" /></div>}
+        </div>
+        <div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-2"><div className="min-w-0"><h2 className="truncate text-base font-bold text-slate-950 group-hover:underline">{artist.stage_name || artist.name}</h2>{artist.stage_name && <p className="truncate text-xs text-slate-500">{artist.name}</p>}</div><Badge className={`${STATUS[artist.status || 'active']} shrink-0 border-0 capitalize`}>{(artist.status || 'active').replace('_', ' ')}</Badge></div>{!!artist.genres?.length && <p className="mt-2 truncate text-xs text-slate-500">{artist.genres.join(' · ')}</p>}</div>
+      </button>
+      <div className="mt-4 grid grid-cols-2 gap-2 border-t border-slate-200 pt-3 text-xs"><div><p className="text-slate-400">Upcoming</p><p className="mt-0.5 flex items-center gap-1 font-semibold text-slate-800"><Calendar className="h-3.5 w-3.5" />{upcomingShows} shows</p></div><div><p className="text-slate-400">Show readiness</p><p className="mt-0.5 font-semibold text-slate-800">{preferenceCount}/4 preferences</p></div></div>
+      <div className="mt-3 border-t border-slate-200 pt-3 text-xs"><p className="text-slate-500">Revenue (EUR)</p><p className="mt-1 font-semibold tabular-nums text-slate-900">{canViewRevenue ? new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'EUR' }).format((revenue || 0) / 100) : '---'}</p></div>
+      <div className="mt-3 flex gap-2"><Button variant="outline" onClick={onOpen} className="min-h-[44px] flex-1">Open profile</Button><Button variant="outline" size="icon" onClick={onEdit} aria-label={`Edit ${artist.name}`} className="h-11 w-11"><Pencil /></Button><Button variant="outline" size="icon" onClick={onDelete} aria-label={`Remove ${artist.name}`} className="h-11 w-11 text-slate-500 hover:text-red-600"><Trash2 /></Button></div>
+    </article>
+  );
+}

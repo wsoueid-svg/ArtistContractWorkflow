@@ -1,0 +1,23 @@
+// Account-vs-Person CRM model helpers.
+export const CONTACT_ROLES = [
+  'Promoter', 'Signer', 'Artist Handler', 'Technical Production', 'Payer', 'Driver',
+  'Booker', 'Stage Manager', 'Production Manager', 'Driver Coordinator', 'Emergency Contact',
+  'Video', 'Light FOH', 'Hospitality', 'Audio FOH', 'Administration', 'Finance Director', 'Designer',
+];
+
+// Contact types that count as an "Account" (business entity) on a show.
+// 'festival' becomes selectable once it is added to the Contact type list on main.
+export const BUSINESS_TYPES = ['promoter', 'venue', 'club', 'brand', 'label', 'festival'];
+
+// Stable key for a person inside an Account: lowercase email, else name. Mirrored server-side.
+export const personKey = (p) => (p?.email || '').trim().toLowerCase() || (p?.name || '').trim();
+
+// Roles live in Contact.person_roles keyed by personKey.
+export const rolesOf = (account, p) => account?.person_roles?.[personKey(p)] || [];
+
+// Default person: first tagged Signer, otherwise the first person.
+export const defaultPersonKey = (account) => {
+  const persons = account?.contact_persons || [];
+  const pick = persons.find(p => rolesOf(account, p).includes('Signer')) || persons[0];
+  return pick ? personKey(pick) : null;
+};

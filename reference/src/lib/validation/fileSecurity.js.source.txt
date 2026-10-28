@@ -1,0 +1,138 @@
+/**
+ * fileSecurity.js — Enterprise-grade file upload validation.
+ *
+ * Enforces a strict whitelist of allowed MIME types, maximum file sizes,
+ * and blocks dangerous file extensions. This is the CLIENT-SIDE gate;
+ * backend functions perform additional validation as defense-in-depth.
+ *
+ * How unsafe file uploads are prevented:
+ *  1. MIME Whitelist — Only explicitly allowed file types pass.
+ *  2. Extension Cross-Check — The file extension must match an allowed list.
+ *  3. Size Cap — Files exceeding MAX_FILE_SIZE are rejected before upload.
+ *  4. Dangerous Extension Blocklist — Even if MIME is spoofed, extensions like
+ *     .exe, .sh, .js, .svg (can carry scripts) are hard-blocked.
+ *  5. Backend Re-Validation — Backend functions re-check the file URL and type
+ *     after upload, because client-side checks can be bypassed.
+ *
+ * Allowed file types:
+ *  - Images: JPEG, PNG, WebP, GIF
+ *  - Documents: PDF
+ *  - Audio: MP3, WAV
+ *  - Video: MP4
+ *  - Text: Plain text
+ *
+ * Blocked file types (never allowed, regardless of MIME):
+ *  - Executables: .exe, .bat, .cmd, .sh, .com, .msi, .dll, .so, .bin
+ *  - Scripts: .js, .mjs, .html, .htm, .svg, .php, .py, .rb, .pl, .jar, .war
+ *  - Archives (when not explicitly expected): .zip, .rar, .7z, .tar, .gz
+ *  - System: .apk, .ipa, .deb, .rpm, .dmg, .pkg
+ */
+
+// ─── Whitelist of Allowed MIME Types ──────────────────────────────────────────
+
+export const ALLOWED_MIME_TYPES = {
+  // Images
+  'image/jpeg': { ext: ['.jpg', '.jpeg'], label: 'JPEG Image' },
+  'image/png': { ext: ['.png'], label: 'PNG Image' },
+  'image/webp': { ext: ['.webp'], label: 'WebP Image' },
+  'image/gif': { ext: ['.gif'], label: 'GIF Image' },
+  // Documents
+  'application/pdf': { ext: ['.pdf'], label: 'PDF Document' },
+  // Audio
+  'audio/mpeg': { ext: ['.mp3'], label: 'MP3 Audio' },
+  'audio/wav': { ext: ['.wav'], label: 'WAV Audio' },
+  'audio/x-wav': { ext: ['.wav'], label: 'WAV Audio' },
+  // Video
+  'video/mp4': { ext: ['.mp4'], label: 'MP4 Video' },
+  // Text
+  'text/plain': { ext: ['.txt'], label: 'Text File' },
+  'text/csv': { ext: ['.csv'], label: 'CSV File' },
+};
+
+// ─── Hard Blocklist — Extensions that are NEVER allowed ──────────────────────
+
+export const DANGEROUS_EXTENSIONS = [
+  '.exe', '.bat', '.cmd', '.sh', '.com', '.msi', '.dll', '.so', '.bin',
+  '.js', '.mjs', '.html', '.htm', '.svg', '.php', '.py', '.rb', '.pl',
+  '.jar', '.war', '.apk', '.ipa', '.deb', '.rpm', '.dmg', '.pkg',
+  '.htaccess', '.config', '.env',
+];
+
+// ─── Size Limits ──────────────────────────────────────────────────────────────
+
+export const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
+export const MAX_FILE_SIZE_LABEL = '5 MB';
+
+// ─── Validation Function ──────────────────────────────────────────────────────
+
+/**
+ * validateFile — Validates a File object against the security policy.
+ *
+ * @param {File} file — The browser File object from an <input type="file">
+ * @returns {{ valid: boolean, error?: string, safeName?: string }}
+ */
+export const validateFile = (file) => {
+  if (!file) {
+    return { valid: false, error: 'No file provided.' };
+  }
+
+  // 1. Size check
+  if (file.size > MAX_FILE_SIZE) {
+    return {
+      valid: false,
+      error: `File exceeds maximum size of ${MAX_FILE_SIZE_LABEL}.`,
+    };
+  }
+
+  // 2. Empty file check
+  if (file.size === 0) {
+    return { valid: false, error: 'File is empty.' };
+  }
+
+  // 3. Extract and validate extension
+  const fileName = file.name || '';
+  const lastDot = fileName.lastIndexOf('.');
+  const extension = lastDot >= 0 ? fileName.slice(lastDot).toLowerCase() : '';
+
+  if (!extension) {
+    return { valid: false, error: 'File must have an extension.' };
+  }
+
+  // 4. Block dangerous extensions (hard block — even if MIME is spoofed)
+  if (DANGEROUS_EXTENSIONS.includes(extension)) {
+    return {
+      valid: false,
+      error: `File type "${extension}" is not allowed for security reasons.`,
+    };
+  }
+
+  // 5. MIME type whitelist check
+  const mimeConfig = ALLOWED_MIME_TYPES[file.type];
+  if (!mimeConfig) {
+    return {
+      valid: false,
+      error: `File type "${file.type || 'unknown'}" is not allowed. Allowed: images (JPEG, PNG, WebP, GIF), PDF, MP3, WAV, MP4, TXT, CSV.`,
+    };
+  }
+
+  // 6. Cross-check: extension must be valid for the declared MIME type
+  if (!mimeConfig.ext.includes(extension)) {
+    return {
+      valid: false,
+      error: `File extension "${extension}" does not match the file type "${file.type}".`,
+    };
+  }
+
+  // 7. Generate a safe display name (strip path traversal characters)
+  const safeName = fileName.replace(/[\\/:*?"<>|]/g, '_').slice(0, 255);
+
+  return { valid: true, safeName };
+};
+
+/**
+ * getAllowedAcceptString — Returns a comma-separated accept string for <input type="file">
+ * @returns {string}
+ */
+export const getAllowedAcceptString = () => {
+  return Object.keys(ALLOWED_MIME_TYPES).join(',');
+};

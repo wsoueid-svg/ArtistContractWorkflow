@@ -1,0 +1,131 @@
+import { OFFICIAL_TERMS_ES } from './officialTerms.ts';
+
+/**
+ * Spanish legal clause bodies for the Analog artist engagement contract.
+ *
+ * Consumed by the nysm-es and aesl-es templates. These are the Spanish-language
+ * counterparts of clausesEn.ts, kept clause-for-clause in the SAME ORDER so the
+ * two language editions of a contract are structurally identical and can be
+ * compared side by side by legal review.
+ */
+
+export const PREAMBLE_ES =
+  'Por el presente se acuerda que la Compañía contrata al Artista y el Artista acepta el Compromiso de comparecer y actuar en su espectáculo habitual ("la Actuación") en el/los Evento/s, el/los Recinto/s, en la/s Fecha/s, durante la Duración, y por el/los Cachet/s del Artista y (si procede) la Comisión de Contratación (todo ello según se define en el Anexo siguiente), quedando sujeto a las Condiciones que se detallan a continuación y al Rider adjunto a este Contrato de Compromiso. El Contrato de Compromiso comprende el Anexo, los Términos y Condiciones y el Rider aquí adjuntos, y sustituye a la Confirmación de Reserva emitida previamente por Analog.';
+
+export const WHT_CLAUSE_ES =
+  'Si el promotor necesita aplicar la retención (IRPF/WHT) al cachet del artista, deberá acordarse antes de la firma del contrato, estableciendo el porcentaje a aplicar sobre dicho importe. No podrá modificarse después de la firma del contrato.';
+
+export const WHT_PROOF_ES =
+  'En este caso, el artista remitirá al promotor la factura correspondiente a sus honorarios por el importe acordado, menos la retención. El promotor se compromete a entregar al Artista el justificante de pago de dichas retenciones en un plazo no superior a dos meses. Cualquier retención, impuesto o gravamen derivado de la actuación del artista será abonado por el promotor.';
+
+export const BILLING_NOTE_ES =
+  'Todo el material gráfico deberá respetar idéntica posición en la facturación artística, según lo aprobado por el management desde el inicio. El Artista/Management se reserva el derecho de cancelar la actuación si no se cumplen los requisitos de billing.';
+
+export const PAYMENT_TAIL_ES = [
+  'El incumplimiento por parte de la Compañía de este calendario de pagos constituirá un incumplimiento sustancial del presente Contrato de Compromiso, facultando al Artista para resolverlo de forma inmediata y sin previo aviso.',
+  'La factura correspondiente al cachet se remitirá de forma adicional a este contrato de compromiso.',
+];
+
+export const VAT_NOTE_ES =
+  'Se añadirá el IVA a todos los cachets acordados del artista cuando resulte exigible y de conformidad con la legislación del país donde se celebre la actuación.';
+
+export const TRANSFER_NOTE_ES =
+  '**Al realizar la transferencia, recuerde marcar la opción "OUR" en las opciones de tipo de transferencia**';
+
+export const EXPENSES_INTRO_ES =
+  '(h) Gastos / Cuestiones adicionales: Adicionalmente, la Compañía abonará y/o proporcionará (según corresponda) lo siguiente a su propia costa y sin coste alguno para el Artista:';
+
+export const EXPENSE_ITEMS_ES = [
+  '(i) Requerimientos Técnicos y Hospitality (según el Rider adjunto)',
+  '(j) Alojamiento en hotel (según el Rider adjunto)',
+  '(k) Transporte terrestre (según el Rider adjunto)',
+  '(l) Lista de invitados (según el Rider adjunto)',
+  '(m) Seguro y seguridad adecuados (según los Términos y Condiciones siguientes)',
+  '(n) Permisos de trabajo, visados, certificados de patrocinio y pruebas PCR (según los Términos y Condiciones siguientes, si fuese necesario)',
+];
+
+export const TERMS_ES = OFFICIAL_TERMS_ES;
+
+export const RIDER_ES: Array<[string, string]> = [
+  ['1. RIDER:', 'El presente Rider forma parte y se considera incorporado al Contrato de Compromiso al que se adjunta, y deberá firmarse y devolverse junto con el Contrato de Compromiso. En caso de conflicto entre este Rider y el Contrato de Compromiso, prevalecerá el Contrato de Compromiso.'],
+  ['2. CAMERINO:', 'Un camerino bien iluminado y ventilado, con espejo de cuerpo entero, asientos cómodos, toallas y aseo para uso exclusivo del Artista. La sala deberá estar limpia, segura y con cerradura, permaneciendo las llaves en posesión del Artista o de su representante.'],
+  ['3. HOSPITALITY:', `La Compañía deberá proporcionar al Artista suficientes bebidas alcohólicas y no alcohólicas antes, durante y después de la actuación del Artista.
+La Compañía está obligada a habilitar un consumo de 75 EUR en la habitación del artista y 75 EUR en la habitación del tour manager.
+
+La Compañía se compromete a suministrar lo siguiente sin coste para el Artista:
+1 x botella de champán Dom Perignon
+2 x botella de tequila Clase Azul Reposado
+1 x botella de vodka Belvedere o Grey Goose (2L)
+15 x cerveza premium en botella
+4 x Kombucha variada
+Shots de jengibre (2L)
+6 x botellas de agua con gas
+6 x cervezas sin alcohol
+4 x agua de coco ecológica
+Tónica / zumo de arándanos / soda / Red Bull
+Selección estándar de refrescos y mezcladores
+
+Cualquier hospitality adicional estará disponible para el Artista a petición.`],
+  ['4. REQUISITOS DE HOTEL:', `* El alojamiento deberá ser 1 x Suite y 1 x habitación doble, de categoría 5 estrellas o superior únicamente (sin excepciones), situado cerca del recinto y con desayuno incluido.
+* Todas las reservas de hotel requieren aprobación previa por escrito del Tour Manager, sin excepción.
+* Deberá habilitarse un consumo de 75 EUR en la habitación del artista y 75 EUR en la del Tour Manager.
+* El hotel deberá disponer de internet inalámbrico fiable en la habitación.
+* Si no puede garantizarse el late checkout cuando sea necesario, deberá cubrirse una noche adicional a cargo del promotor.
+* Marcas aceptadas: Banyan Tree, Marriott (5 estrellas), Four Seasons, Park Hyatt, Hilton (5 estrellas), Intercontinental (5 estrellas), Starwood (5 estrellas), Rosewood, W Hotel, Mandarin Oriental, Waldorf Astoria, Six Senses.`],
+  ['5. LISTA DE INVITADOS:', 'El Artista tendrá derecho a quince [15] invitados con acceso gratuito al recinto, entregando la lista de invitados a la Compañía a más tardar a la hora de apertura de puertas. El personal de la industria musical tendrá entrada gratuita sin ser incluido en la lista de invitados del Artista.'],
+  ['7. REQUISITOS TÉCNICOS:', `Lo siguiente deberá suministrarse sin coste para el Artista:
+- 3 x Pioneer CDJ3000
+- Pioneer DJM V10
+- 2 x regleta de alimentación internacional
+- 3 x toallas de mano blancas y limpias (deben estar dentro de la cabina de DJ)
+- 1 x ventilador industrial (debe estar dentro de la cabina de DJ)
+
+El Artista aportará:
+- 1 x controlador Native Instruments X1
+- 1 x controlador Native Instruments F1
+- 1 x ordenador portátil
+
+- La Compañía deberá asegurar que tanto los CDJ como el mixer DJM estén actualizados con el último firmware.
+- La Compañía se compromete a disponer de un técnico de sonido cualificado en todo momento durante la actuación y a tener el escenario preparado al menos 30 minutos antes de la hora de la actuación.
+- PROHIBIDO FUMAR en la cabina de DJ en ningún momento durante la actuación.
+- Los visuales facilitados por el management DEBERÁN utilizarse en todo momento durante la actuación del Artista.
+
+SONIDO: el sistema de sonido deberá ser adecuado al tamaño y aforo del recinto, con el 50% de la potencia asignada a frecuencias de graves y subgraves. Los sistemas aceptados incluyen D&B y L'Acoustics; cualquier otro sistema deberá utilizarse únicamente con aprobación escrita del management.`],
+  ['8. TRANSPORTE TERRESTRE:', 'El transporte terrestre deberá ser un Mercedes 500 o de categoría similar, con conductor contratado o empleado directamente por la Compañía, desde y entre el aeropuerto, el hotel y el recinto. La Compañía asumirá los costes de exceso de equipaje derivados del transporte de discos u otro equipo del Artista. La Compañía facilitará una plaza de aparcamiento reservada junto al recinto.'],
+];
+
+export const LABELS_ES = {
+  docKind: 'CONFIRMACIÓN DE ARTISTA',
+  headline: 'Contrato de Compromiso del Artista',
+  dated: 'Fecha',
+  between: 'Entre',
+  and: 'Y',
+  schedule: 'Programa',
+  scheduleIntro: '1. El Artista acuerda realizar la Actuación como sigue:',
+  eventName: '(a) NOMBRE/TÍTULO DEL EVENTO:',
+  venueCountry: '(b) LUGAR, CIUDAD Y PAÍS:',
+  dates: '(c) FECHA/S:',
+  timing: '(d) HORARIO/DURACIÓN:',
+  billing: '(e) REQUISITOS DE BILLING:',
+  whtHeading: '(f) Retención a cuenta (IRPF / WHT)',
+  considerationHeading: '(g) CONTRAPRESTACIÓN: La Compañía abonará lo siguiente:',
+  terms: 'Términos y Condiciones',
+  riderHeading: 'Entre la Compañía, de una parte, y el Artista, de la otra',
+  notesHeading: 'Términos adicionales acordados',
+  signatureIntro:
+    'El/los firmante/s reconoce/n haber leído el Anexo y los Términos y Condiciones anteriores, así como el rider adjunto, y acepta/n que se cumplirán íntegramente.',
+  colDescription: 'Concepto',
+  colDue: 'Vencimiento',
+  colSubtotal: 'Base',
+  colVat: 'IVA',
+  colWht: 'Retención',
+  colTotal: 'Total',
+  totalSubtotal: 'Base imponible',
+  totalVat: 'IVA',
+  totalWht: 'Retención practicada',
+  totalGrand: 'Total a pagar',
+  bookingFeeRow: 'Comisión de contratación (no reembolsable ni retornable)',
+  depositRow: 'Pago anticipado / Depósito (no reembolsable ni retornable)',
+  balanceRow: 'Pago del saldo (no reembolsable ni retornable)',
+  fullFeeRow: 'Cachet del Artista (no reembolsable ni retornable)',
+};

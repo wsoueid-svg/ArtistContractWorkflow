@@ -1,0 +1,85 @@
+{
+  "name": "ActivityLog",
+  "type": "object",
+  "properties": {
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "action_type": {
+      "type": "string",
+      "description": "e.g., Invoice Created, Payment Recorded, Holded Sync, Email Sent, Contact Created"
+    },
+    "actor_id": {
+      "type": "string",
+      "description": "User ID or 'System'"
+    },
+    "actor_label": {
+      "type": "string",
+      "description": "Display name: user full name or 'Automation'"
+    },
+    "affected_entity_type": {
+      "type": "string",
+      "description": "e.g., Invoice, Contact, Payment"
+    },
+    "affected_entity_id": {
+      "type": "string"
+    },
+    "affected_entity_label": {
+      "type": "string",
+      "description": "Human-readable label e.g., Invoice #ES-2026-001"
+    },
+    "result": {
+      "type": "string",
+      "enum": [
+        "Success",
+        "Failure",
+        "Pending Review",
+        "Skipped"
+      ]
+    },
+    "error_message": {
+      "type": "string"
+    },
+    "metadata": {
+      "type": "object"
+    }
+  },
+  "required": [
+    "timestamp",
+    "action_type",
+    "actor_id",
+    "affected_entity_type",
+    "affected_entity_id",
+    "result"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "created_by_id": "{{user.id}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

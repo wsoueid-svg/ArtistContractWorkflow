@@ -1,0 +1,71 @@
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
+import { getMailboxEmail } from '../../shared/gmailThread.ts';
+import { getUserGmailToken } from '../../shared/gmailUser.ts';
+
+/**
+ * gmailConnection — per-user Gmail connection controller.
+ *
+ * action 'status'        → { connected, email, sync_status, last_gmail_scan_at, first_connect }
+ *                          Doubles as the connection check (token present = connected).
+ * action 'afterConnect'  → called by the frontend once the OAuth popup closes. Stamps the
+ *                          mailbox email and, on a FIRST connect (no prior scan), runs the
+ *                          7-day lookback via scanGmailConfThreads (mutex-locked there).
+ * action 'disconnect'    → called after base44.connectors.disconnectAppUser(); resets the
+ *                          user's sync state so the next connect is treated as a first connect.
+ */
+export default async function (req: Request): Promise<Response> {
+  try {
+    const base44 = createClientFromRequest(req);
+    const user = await base44.auth.me();
+    if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    const svc = base44.asServiceRole.entities;
+    const { action = 'status' } = await req.json().catch(() => ({}));
+
+    if (action === 'disconnect') {
+      await svc.User.update(user.id, {
+        gmail_sync_status: 'IDLE',
+        sync_started_at: null,
+        last_gmail_scan_at: null,
+        gmail_connected_email: null,
+      });
+      return Response.json({ connected: false });
+    }
+
+    const accessToken = await getUserGmailToken(base44);
+    if (!accessToken) {
+      return Response.json({
+        connected: false,
+        sync_status: user.gmail_sync_status || 'IDLE',
+        last_gmail_scan_at: user.last_gmail_scan_at || null,
+      });
+    }
+
+    const email = (await getMailboxEmail(accessToken)) || user.gmail_connected_email || '';
+    const firstConnect = !user.last_gmail_scan_at;
+
+    if (action === 'afterConnect') {
+      const patch = { gmail_connected_email: email || undefined };
+      if (user.gmail_sync_status === 'ERROR_AUTH') patch.gmail_sync_status = 'IDLE';
+      await svc.User.update(user.id, patch);
+      let scan = null;
+      if (firstConnect) {
+        const res = await base44.functions.invoke('scanGmailConfThreads', { lookback_days: 7 });
+        scan = res?.data ?? res ?? null;
+      }
+      return Response.json({ connected: true, email, first_connect: firstConnect, scan });
+    }
+
+    if (email && email !== user.gmail_connected_email) {
+      await svc.User.update(user.id, { gmail_connected_email: email });
+    }
+    return Response.json({
+      connected: true,
+      email,
+      sync_status: user.gmail_sync_status || 'IDLE',
+      last_gmail_scan_at: user.last_gmail_scan_at || null,
+      first_connect: firstConnect,
+    });
+  } catch (error) {
+    return Response.json({ error: error.message }, { status: 500 });
+  }
+}

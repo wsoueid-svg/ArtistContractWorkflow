@@ -1,0 +1,36 @@
+diff --git a/base44/shared/contractSchedule.ts b/base44/shared/contractSchedule.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..b16886413fb9d87b52e37bb7c36a408700fe1bfc
+--- /dev/null
++++ b/base44/shared/contractSchedule.ts
+@@ -0,0 +1,29 @@
++import { formatCents } from './calcDeal.ts';
++import { toCents } from './dealCardTerms.ts';
++import { buildPaymentClauses, rowLabel } from './contractTemplates/index.ts';
++
++// Extracted without changing the generator's economics or wording.
++export function buildScheduleContext({ f, breakdown, templateKey }) {
++  const currency = f.currency || 'EUR';
++  const lang = templateKey.endsWith('-es') ? 'es' : 'en';
++  const artistName = f.artist_name || 'Artist';
++  const agencyName = f.agency_name || 'Analog';
++  const money = (cents) => formatCents(cents, currency);
++  const dateOnly = (value) => value ? String(value).split('T')[0] : '';
++  let rows = [], totals;
++  let depositPct = Number(f.advance_pct ?? 50), balancePct = Number(f.balance_pct ?? 50);
++  if (breakdown) {
++    depositPct = breakdown.depositPct;
++    balancePct = Math.max(0, 100 - breakdown.depositPct);
++    rows = breakdown.parts.map(part => ({ label: rowLabel(lang, part.type, { pct: part.type === 'DEPOSIT' ? depositPct : part.type === 'BALANCE' ? balancePct : undefined, party: part.type === 'BOOKING_FEE' ? agencyName : artistName }), due: dateOnly(part.dueDate), subtotal: money(part.feeCents), vat: money(part.vatAmountCents), wht: money(part.whtCents), total: money(part.cashCents) }));
++    totals = { subtotal: money(breakdown.subtotalCents), vat: money(breakdown.vatAmountCents), wht: money(breakdown.whtAmountCents), grand: money(breakdown.totalPayableCents) };
++  } else {
++    const bookingFeeCents = toCents(f.booking_fee), depositCents = toCents(f.advance_amount), balanceCents = toCents(f.balance_amount), zero = money(0);
++    if (bookingFeeCents > 0) rows.push({ label: rowLabel(lang, 'BOOKING_FEE', { party: agencyName }), due: dateOnly(f.booking_fee_due), subtotal: money(bookingFeeCents), vat: zero, wht: zero, total: money(bookingFeeCents) });
++    rows.push({ label: rowLabel(lang, 'DEPOSIT', { pct: depositPct, party: artistName }), due: dateOnly(f.advance_due), subtotal: money(depositCents), vat: zero, wht: zero, total: money(depositCents) });
++    rows.push({ label: rowLabel(lang, 'BALANCE', { pct: balancePct, party: artistName }), due: dateOnly(f.balance_due), subtotal: money(balanceCents), vat: zero, wht: zero, total: money(balanceCents) });
++    totals = { subtotal: money(bookingFeeCents + depositCents + balanceCents), vat: zero, wht: zero, grand: money(bookingFeeCents + depositCents + balanceCents) };
++  }
++  const ctx = { contractDate: f.contract_date || new Date().toISOString().split('T')[0], companyName: f.company_name || '[COMPANY NAME]', companyAddress: f.company_address || '[COMPANY ADDRESS]', companyVat: f.company_vat || '[VAT]', artistName, agencyName, agencyAddress: f.agency_address || '[AGENCY ADDRESS]', agencyTaxId: f.agency_rut || '[TAX ID]', eventName: f.event_name || '[EVENT NAME]', venue: f.venue || '[VENUE]', country: f.country || '[COUNTRY]', dateOfShow: f.date_of_show || '[DATE]', timing: f.timing || 'TBA', billingRequirements: f.billing_requirements || 'A-Z', billingPosition: f.billing_position || 'A-Z', whtRate: f.wht_rate ?? 0, rows, totals, paymentClauses: buildPaymentClauses(lang, { depositPct, balancePct, depositMonth: f.deposit_month, artistName, templateKey }), contractNotes: f.contract_notes || '', companySignatory: f.company_signatory || '[SIGNATORY NAME]', agencySignatory: f.agency_signatory || 'Luis Honrado' };
++  return { ctx, lang };
++}
+\ No newline at end of file

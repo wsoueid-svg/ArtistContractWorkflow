@@ -1,0 +1,92 @@
+diff --git a/base44/entities/ContractAuditLog.jsonc b/base44/entities/ContractAuditLog.jsonc
+index d67d9a2a4f858ed47d0476613b134b0cd4bc70d5..a528a723f0386cc60daac3f2ac41bf29e5fa0256 100644
+--- a/base44/entities/ContractAuditLog.jsonc
++++ b/base44/entities/ContractAuditLog.jsonc
+@@ -8,23 +8,23 @@
+     },
+     "user_id": {
+       "type": "string",
+-      "description": "User ID who performed the e-signature"
++      "description": "User ID who recorded the confirmation"
+     },
+     "user_email": {
+       "type": "string",
+-      "description": "Email of the signing user"
++      "description": "Email of the confirming user"
+     },
+     "user_name": {
+       "type": "string",
+-      "description": "Full name of the signing user"
++      "description": "Full name of the confirming user"
+     },
+     "ip_address": {
+       "type": "string",
+-      "description": "IP address captured at time of signature"
++      "description": "IP address captured at confirmation time"
+     },
+     "contract_hash": {
+       "type": "string",
+-      "description": "SHA-256 hash of the contract PDF content at signing time"
++      "description": "SHA-256 hash of the contract PDF content at confirmation time"
+     },
+     "action": {
+       "type": "string",
+@@ -40,7 +40,7 @@
+     "signed_at": {
+       "type": "string",
+       "format": "date-time",
+-      "description": "Timestamp of the e-signature"
++      "description": "When the signature was confirmed"
+     },
+     "notes": {
+       "type": "string",
+@@ -51,9 +51,10 @@
+       "enum": [
+         "e_sign",
+         "manual_signed",
+-        "revert_signed"
++        "revert_signed",
++        "staff_confirmation"
+       ],
+-      "description": "How the action was recorded: native e-sign, manual signature override, or a signature revert."
++      "description": "Historical e_sign entries are retained; new internal confirmations are staff_confirmation."
+     }
+   },
+   "required": [
+@@ -62,5 +63,34 @@
+     "contract_hash",
+     "action",
+     "signed_at"
+-  ]
++  ],
++  "rls": {
++    "read": {
++      "$or": [
++        {
++          "user_condition": {
++            "role": "admin"
++          }
++        },
++        {
++          "data.user_id": "{{user.id}}"
++        }
++      ]
++    },
++    "create": {
++      "user_condition": {
++        "collaborator_role": "editor"
++      }
++    },
++    "update": {
++      "user_condition": {
++        "collaborator_role": "editor"
++      }
++    },
++    "delete": {
++      "user_condition": {
++        "collaborator_role": "editor"
++      }
++    }
++  }
+ }
+\ No newline at end of file

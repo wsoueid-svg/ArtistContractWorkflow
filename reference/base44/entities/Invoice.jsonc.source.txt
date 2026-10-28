@@ -1,0 +1,426 @@
+{
+  "name": "Invoice",
+  "type": "object",
+  "rls": {
+    "read": {
+      "$and": [
+        {
+          "user_condition": {
+            "data.is_active": true
+          }
+        },
+        {
+          "$or": [
+            {
+              "user_condition": {
+                "role": "admin"
+              }
+            },
+            {
+              "user_condition": {
+                "data.is_cfo": true
+              }
+            },
+            {
+              "user_condition": {
+                "data.finance_role": "Finance Manager"
+              }
+            },
+            {
+              "user_condition": {
+                "data.finance_role": "Finance Viewer"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "create": {
+      "$and": [
+        {
+          "user_condition": {
+            "data.is_active": true
+          }
+        },
+        {
+          "$or": [
+            {
+              "user_condition": {
+                "role": "admin"
+              }
+            },
+            {
+              "user_condition": {
+                "data.is_cfo": true
+              }
+            },
+            {
+              "user_condition": {
+                "data.finance_role": "Finance Manager"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "update": {
+      "$and": [
+        {
+          "user_condition": {
+            "data.is_active": true
+          }
+        },
+        {
+          "$or": [
+            {
+              "user_condition": {
+                "role": "admin"
+              }
+            },
+            {
+              "user_condition": {
+                "data.is_cfo": true
+              }
+            },
+            {
+              "user_condition": {
+                "data.finance_role": "Finance Manager"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "delete": {
+      "$and": [
+        {
+          "user_condition": {
+            "data.is_active": true
+          }
+        },
+        {
+          "$or": [
+            {
+              "user_condition": {
+                "role": "admin"
+              }
+            },
+            {
+              "user_condition": {
+                "data.is_cfo": true
+              }
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "properties": {
+    "invoice_number": {
+      "type": "string",
+      "indexed": true
+    },
+    "invoice_series": {
+      "type": "string"
+    },
+    "invoice_type": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "DEPOSIT",
+        "BALANCE",
+        "FULL_FEE",
+        null
+      ],
+      "default": "FULL_FEE",
+      "indexed": true
+    },
+    "parent_show_id": {
+      "type": "string",
+      "indexed": true
+    },
+    "org_id": {
+      "type": "string",
+      "enum": [
+        "elevate",
+        "analog"
+      ],
+      "default": "elevate",
+      "indexed": true
+    },
+    "idempotency_key": {
+      "type": "string",
+      "indexed": true,
+      "unique": true
+    },
+    "legal_entity_id": {
+      "type": "string",
+      "indexed": true
+    },
+    "client_id": {
+      "type": "string",
+      "indexed": true
+    },
+    "client_name": {
+      "type": "string"
+    },
+    "client_billing_address": {
+      "type": "object",
+      "properties": {
+        "street": {
+          "type": "string"
+        },
+        "city": {
+          "type": "string"
+        },
+        "postal_code": {
+          "type": "string"
+        },
+        "country": {
+          "type": "string"
+        },
+        "vat_tax_id": {
+          "type": "string"
+        }
+      }
+    },
+    "snapshot_venue_name": {
+      "type": "string"
+    },
+    "snapshot_venue_address": {
+      "type": "string"
+    },
+    "snapshot_event_name": {
+      "type": "string"
+    },
+    "snapshot_show_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "snapshot_artist_name": {
+      "type": "string"
+    },
+    "snapshot_taken_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "line_items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "number"
+          },
+          "unit_price": {
+            "type": "number"
+          },
+          "tax_rate": {
+            "type": "number"
+          },
+          "line_total": {
+            "type": "number"
+          }
+        }
+      }
+    },
+    "tax_configuration": {
+      "type": "object"
+    },
+    "subtotal": {
+      "type": "number"
+    },
+    "tax_amount": {
+      "type": "number"
+    },
+    "vat_amount": {
+      "type": "number",
+      "description": "Immutable VAT/IGIC amount snapshot in integer cents"
+    },
+    "vat_treatment": {
+      "type": "string",
+      "enum": [
+        "standard",
+        "reverse_charge",
+        "zero_rate"
+      ]
+    },
+    "wht_amount": {
+      "type": "number",
+      "description": "Immutable withholding deduction snapshot in integer cents"
+    },
+    "wht_rate": {
+      "type": "number"
+    },
+    "total": {
+      "type": "number",
+      "description": "Cash payable in integer cents: subtotal + VAT - WHT"
+    },
+    "currency": {
+      "type": "string",
+      "default": "EUR"
+    },
+    "exchange_rate_locked": {
+      "type": "string",
+      "description": "EUR per one native-currency unit"
+    },
+    "amount_base_eur": {
+      "type": "number",
+      "description": "Base EUR equivalent in integer cents"
+    },
+    "issue_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "due_date": {
+      "type": "string",
+      "format": "date-time",
+      "indexed": true
+    },
+    "payment_terms": {
+      "type": "string",
+      "enum": [
+        "Net 7",
+        "Net 15",
+        "Net 30",
+        "Net 60",
+        "Custom"
+      ],
+      "default": "Net 30"
+    },
+    "payment_terms_custom_days": {
+      "type": "number"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "Draft",
+        "Pending Holded Approval",
+        "Sent",
+        "Viewed",
+        "Partially Paid",
+        "Paid",
+        "Overdue",
+        "Disputed",
+        "Cancelled",
+        "Needs Review"
+      ],
+      "default": "Draft",
+      "indexed": true
+    },
+    "payment_method": {
+      "type": "string",
+      "enum": [
+        "Bank Transfer",
+        "Card",
+        "Cash",
+        "Other"
+      ]
+    },
+    "bank_reference": {
+      "type": "string"
+    },
+    "notes": {
+      "type": "string"
+    },
+    "attachments_urls": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "source": {
+      "type": "string",
+      "enum": [
+        "Manual",
+        "Automated"
+      ],
+      "default": "Manual"
+    },
+    "holded_sync_status": {
+      "type": "string",
+      "enum": [
+        "Not synced",
+        "Syncing",
+        "Synced",
+        "Error"
+      ],
+      "default": "Not synced"
+    },
+    "holded_invoice_id": {
+      "type": "string"
+    },
+    "holded_sync_error": {
+      "type": "string"
+    },
+    "dispatched_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "created_by_id": {
+      "type": "string"
+    },
+    "raw_email_snippet": {
+      "type": "string"
+    },
+    "extraction_confidence": {
+      "type": "string",
+      "enum": [
+        "high",
+        "medium",
+        "low"
+      ]
+    },
+    "show_id": {
+      "type": "string",
+      "indexed": true
+    },
+    "artist_id": {
+      "type": "string",
+      "indexed": true
+    },
+    "is_deleted": {
+      "type": "boolean",
+      "default": false
+    },
+    "deleted_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "deleted_by_id": {
+      "type": "string"
+    },
+    "invoice_purpose": {
+      "type": "string",
+      "enum": [
+        "BOOKING_FEE"
+      ],
+      "indexed": true,
+      "description": "Analog revenue purpose. BOOKING_FEE means the agency's 100% booking-fee receivable only."
+    },
+    "contract_id": {
+      "type": "string",
+      "indexed": true,
+      "description": "Immutable Contract source used to derive this invoice."
+    },
+    "contract_template_id": {
+      "type": "string",
+      "indexed": true,
+      "description": "Contract Template that routed this invoice to its Legal Entity."
+    }
+  },
+  "required": [
+    "invoice_number",
+    "legal_entity_id",
+    "issue_date",
+    "due_date",
+    "total",
+    "currency",
+    "status"
+  ]
+}

@@ -1,0 +1,82 @@
+diff --git a/src/components/contract-lab/INCREMENT1_REPORT.md b/src/components/contract-lab/INCREMENT1_REPORT.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..563187cb8890f2c8bdfb875cc363515df21c2f4d
+--- /dev/null
++++ b/src/components/contract-lab/INCREMENT1_REPORT.md
+@@ -0,0 +1,75 @@
++# Contract Editor • Increment 1 staging handoff
++
++App: 6ace931c17036220281d8839. Not published. No secrets, connectors, workflow activations, dispatch changes, or signature changes were added.
++
++## Baseline
++Before implementation, contract-lab was absent, generateSmartContract used shared/pdfshift.ts, and ContractFillForm had four existing steps. No existing idempotent template seeder was located; this deviation was reported before using staging-only upserts.
++
++## Implementation
++The four-step form opens a fifth same-dialog document view, with a full-screen mobile layout and Back to form. Canonical blocks are extracted from the existing template renderer using non-visible markers; legal prose comes from the existing clause packs/officialTerms, not a second legal-text copy. Payment context was extracted into shared/contractSchedule.ts without changing calcDeal or dealCardTerms.
++
++Editable clauses and appendices support rich text, insertion, removal, movement within protected sections, restoring master wording, undo and redo. Representation, event source, signatures and economics are protected in the UI and validated again on the server. Draft writes only target ContractDraft. The server supplies the approval identity, time, revision and lock token.
++
++Existing draft updates use database updateMany with an id + expected revision + lock-token predicate and $set. A competing save was exercised: the winner stayed at revision 3 and the stale browser save returned 409. This is a conditional update, not a read-then-write claim. Initial creates are separate draft records; no unique create-if-absent guarantee is claimed (the platform rejected unique schema keywords).
++
++Recovery copies are browser-local and keyed by authenticated user, Show and draft identity. The UI distinguishes browser-only changes from approved server saves. Continue editing draft shows revision, save time and approver; its list refreshes on remount rather than inheriting the app's two-minute cache.
++
++Edited documents never go to the existing PDF generator. The button is disabled with the required next-increment message, and saved edited drafts are also rejected by the generator. No Increment 2 edited-generation/revision workflow or Increment 3 dispatch/history feature was implemented.
++
++## Verification observations
++- PASS: existing form advanced through Event, Payments and Signatories into the populated, expanded document dialog; desktop screenshot captured.
++- PASS: approved draft creation through saveContractDraft, and actual UI save after inserting a clause; persisted revision 2 and approval identity read back from the database.
++- PASS: Continue editing draft opens the document. Saved revision 3 was subsequently displayed on reopen.
++- PASS: Add clause, Add appendix, undo and redo were exercised. Edited-generation button refused the gesture because it was disabled.
++- PASS: competing server writer plus stale UI save produced 409 and preserved the winning revision.
++- PASS: comparison surface displayed and the Recover action retained the appendix.
++- NOT AUTOMATICALLY VERIFIED: the separate newer-local recovery OFFER assertion did not match in the final script; Compare/Recover interactions alone do not prove the initial offer. Manually close the dialog fully, reopen after an unsaved change and test Recover / Compare / Discard.
++- PASS: malformed browser entry was ignored and the saved document still rendered.
++- PASS: forged economics content submitted to saveContractDraft returned 422.
++- PASS: mobile screenshot showed a 375 × 812 full-screen dialog, loaded banner, legible controls and no sideways document overflow.
++- PASS: draft tests left the Show timestamp unchanged and created zero Contract records. Temporary test drafts were removed. The intentionally requested staging fixture remains.
++- BLOCKED FOR AUTOMATIC UI VERIFICATION: the preview refuses rich contenteditable filling. Inline typing, bold/italic/underline/list marks, restore-to-master, remove/reorder and keyboard/paste protection require manual testing; these are implemented but not claimed as automated passes.
++- NOT AUTOMATICALLY VERIFIED: a second authenticated identity / unassigned logistics access path. The owner/admin path was exercised.
++- BLOCKED: PDFShift smoke_test returned that PDFSHIFT_API_KEY is not configured. Running-header repetition, print pagination and PDF payment-table alignment are unverified. No credentials were added.
++
++## Open inputs
++1. Approved Spanish ANALOG ENTERTAINMENT SL / CIDONY representation wording. AESL Spanish currently shows a clearly marked placeholder and normal generation is blocked.
++2. A staging PDFShift key, if PDF rendering verification is desired. Use a staging credential, not a production secret.
++
++## Persistent synthetic setup
++- Show: STAGING • Fictional Autumn Session (6acea5051de944196dbe5b02), EUR 8,000 artist guarantee, EUR 800 separate booking fee, 50/50 deposit and balance.
++- Fictional Echo artist, Fictional Meridian Promotions contact, fictional booking agent and fictional logistics agent. The logistics agent is linked to the existing staging builder account; no fabricated app User was inserted.
++- Three legal-entity records and five template editions were upserted by stable names/template keys.
++
++## Changed files
++New files:
++- base44/entities/ContractDraft.jsonc
++- base44/functions/getContractDraft/entry.ts
++- base44/functions/saveContractDraft/entry.ts
++- base44/shared/contractDocument.ts
++- base44/shared/contractSchedule.ts
++- base44/shared/contractTemplates/representation.ts
++- src/components/contract-lab/ContractDocumentEditor.jsx
++- src/components/contract-lab/ContractBlock.jsx
++- src/components/contract-lab/DocumentToolbar.jsx
++- src/components/contract-lab/DraftCompare.jsx
++- src/components/contract-lab/ContinueDraft.jsx
++- src/components/contract-lab/useContractDraft.js
++- src/components/contract-lab/draftRecovery.js
++- src/components/contract-lab/document.css
++- src/components/contract-lab/INCREMENT1_REPORT.md
++
++Modified files:
++- src/components/contracts/ContractFillForm.jsx
++- src/components/shows/GenerateContractButton.jsx (dialog sizing only; existing dispatch UI unchanged)
++- src/components/analog/show-detail/AnalogContractTab.jsx
++- base44/functions/generateSmartContract/entry.ts (shared schedule context, unedited-draft safeguards and running header)
++- base44/shared/contractTemplates/index.ts
++- base44/shared/contractTemplates/layout.ts
++- base44/shared/contractTemplates/styles.ts (Analog-scoped payment widths; NYSM visual styling retained)
++- base44/shared/pdfshift.ts (optional running header)
++
++Unchanged constrained areas: calcDeal, dealCardTerms, dispatchContract, signContract, dispatch controls and workflows.
++
++## Manual handover
++Open the fictional Show's Contract tab, choose Fill & Generate Contract, select Analog entertainment (EN), complete the form and Review document. Type in a clause; apply bold, italic, underline and both list types; restore wording; insert, move and remove clauses/appendices; exercise undo/redo. Try typing or pasting into the representation and economics blocks (they must remain read-only). Save, close and reopen. Open the same draft in two tabs, save in one, then attempt a save from the other and verify the conflict and retained browser copy. Finally test Recover, Compare and Discard on a fresh reopen. Do not dispatch, sign or publish this staging fixture.
+\ No newline at end of file

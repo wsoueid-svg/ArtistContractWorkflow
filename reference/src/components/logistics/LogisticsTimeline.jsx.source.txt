@@ -1,0 +1,72 @@
+import React, { useState } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { base44 } from '@/api/base44Client';
+import { Button } from '@/components/ui/button';
+import { Plus } from 'lucide-react';
+import { toast } from 'sonner';
+import LogisticsEventForm from './LogisticsEventForm';
+import LogisticsEventCard from './LogisticsEventCard';
+import LogisticsEventSheet from './LogisticsEventSheet';
+import { useShowLogisticsEvents } from '@/lib/logisticsEvents';
+
+export default function LogisticsTimeline({ show }) {
+  const queryClient = useQueryClient();
+  const [formOpen, setFormOpen] = useState(false);
+  const [editingEvent, setEditingEvent] = useState(null);
+  const { events, allShows } = useShowLogisticsEvents(show);
+
+  const deleteMutation = useMutation({
+    mutationFn: id => base44.entities.LogisticsEvent.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['logistics_events', show.id] });
+      toast.success('Travel event deleted');
+    },
+    onError: error => toast.error(error.message),
+  });
+
+  const handleEdit = event => { setEditingEvent(event); setFormOpen(true); };
+  const handleFormClose = () => { setFormOpen(false); setEditingEvent(null); };
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <h4 className="text-sm font-semibold text-gray-800">Travel &amp; Logistics Timeline</h4>
+        <Button
+          size="sm"
+          variant="outline"
+          className="min-h-[44px] gap-1 text-xs md:h-7 md:min-h-0"
+          onClick={() => { setEditingEvent(null); setFormOpen(true); }}
+        >
+          <Plus className="h-3 w-3" />Add Travel Event
+        </Button>
+      </div>
+
+      {events.length === 0 ? (
+        <p className="text-xs italic text-gray-400">No travel events yet. Add flights, transfers, and hotels to build the itinerary.</p>
+      ) : (
+        <div className="relative space-y-2">
+          {events.length > 1 && <div className="absolute bottom-8 left-[22px] top-8 z-0 w-0.5 bg-gray-200" />}
+          {events.map(event => (
+            <div key={event.id} className="relative z-10">
+              <LogisticsEventCard
+                event={event}
+                allShows={allShows}
+                onEdit={handleEdit}
+                onDelete={id => deleteMutation.mutate(id)}
+                isLegacy={event.isLegacy}
+              />
+            </div>
+          ))}
+        </div>
+      )}
+
+      <LogisticsEventSheet
+        open={formOpen}
+        onClose={handleFormClose}
+        title={editingEvent ? 'Edit Travel Event' : 'Add Travel Event'}
+      >
+        {dismiss => <LogisticsEventForm show={show} onClose={dismiss} editingEvent={editingEvent} />}
+      </LogisticsEventSheet>
+    </div>
+  );
+}

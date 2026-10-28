@@ -1,0 +1,100 @@
+{
+  "name": "ContractDispatchAttempt",
+  "type": "object",
+  "rls": {
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  },
+  "properties": {
+    "idempotency_key": {
+      "type": "string",
+      "indexed": true,
+      "unique": true
+    },
+    "show_id": {
+      "type": "string",
+      "indexed": true
+    },
+    "contract_id": {
+      "type": "string",
+      "indexed": true
+    },
+    "contract_hash": {
+      "type": "string"
+    },
+    "sender_user_id": {
+      "type": "string",
+      "indexed": true
+    },
+    "sender_email": {
+      "type": "string"
+    },
+    "to_email": {
+      "type": "string"
+    },
+    "cc_emails": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "subject": {
+      "type": "string"
+    },
+    "gmail_thread_id": {
+      "type": "string",
+      "indexed": true
+    },
+    "gmail_message_id": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "PREPARED",
+        "SENDING",
+        "ACCEPTED",
+        "UNCERTAIN",
+        "FAILED"
+      ],
+      "default": "PREPARED",
+      "indexed": true
+    },
+    "failure_message": {
+      "type": "string"
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "completed_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "show_id",
+    "contract_id",
+    "sender_user_id",
+    "status"
+  ]
+}

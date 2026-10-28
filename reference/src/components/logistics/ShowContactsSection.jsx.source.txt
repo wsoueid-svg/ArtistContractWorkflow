@@ -1,0 +1,171 @@
+import React, { useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Plus, Users } from 'lucide-react';
+import { toast } from 'sonner';
+import { base44 } from '@/api/base44Client';
+import { Button } from '@/components/ui/button';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { useAuth } from '@/lib/AuthContext';
+import { useOrg } from '@/lib/OrgContext';
+import { auditStamp, deepClone } from '@/lib/showEdit';
+import { appendContactPersonToPromoter, promoterIdForShow } from '@/lib/crmContactAppend';
+import ShowContactCard from './ShowContactCard';
+import ShowContactForm from './ShowContactForm';
+
+export default function ShowContactsSection({ show }) {
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const { activeOrg } = useOrg();
+  const [addingContact, setAddingContact] = useState(false);
+  const [editingContact, setEditingContact] = useState(null);
+  const [pendingDelete, setPendingDelete] = useState(null);
+  const [savingToCrmId, setSavingToCrmId] = useState(null);
+  const isMobile = window.matchMedia('(max-width: 768px)').matches;
+
+  const contacts = show.logistics?.show_contacts || [];
+
+  // Bug 1 guardrail: no linked promoter/venue → nothing to file CRM people under.
+  const promoterId = promoterIdForShow(show);
+
+  const { data: promoter } = useQuery({
+    queryKey: ['contact', promoterId],
+    queryFn: () => base44.entities.Contact.get(promoterId),
+    enabled: Boolean(promoterId),
+  });
+
+  const crmOptions = (promoter?.contact_persons || [])
+    .filter(person => person?.name)
+    .map((person, index) => ({
+      value: `${promoterId}:${index}`,
+      label: person.name,
+      sublabel: [person.email, person.phone].filter(Boolean).join(' · ') || promoter?.company || promoter?.name,
+      person,
+      promoterId,
+    }));
+
+  const saveContactsMutation = useMutation({
+    mutationFn: updatedContacts =>
+      base44.entities.Show.update(show.id, {
+        logistics: { ...deepClone(show.logistics || {}), show_contacts: deepClone(updatedContacts) },
+        ...auditStamp(user, activeOrg),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['show', show.id] });
+      setAddingContact(false);
+      setEditingContact(null);
+    },
+    onError: error => toast.error(error.message),
+  });
+
+  // Bug 5 — success feedback fires only after the Show.update actually resolves.
+  const persist = (updatedContacts, message) =>
+    saveContactsMutation.mutate(updatedContacts, { onSuccess: () => toast.success(message) });
+
+  const handleAdd = form => {
+    persist([...contacts, { ...form, id: crypto.randomUUID() }], 'Contact added');
+  };
+
+  const handleEdit = form => {
+    persist(contacts.map(item => (item.id === editingContact.id ? { ...form, id: item.id } : item)), 'Contact updated');
+  };
+
+  const confirmDelete = () => {
+    if (!pendingDelete) return;
+    persist(contacts.filter(item => item.id !== pendingDelete.id), 'Contact removed');
+    setPendingDelete(null);
+  };
+
+  const handleSaveToCrm = async contact => {
+    if (!promoterId) return;
+    setSavingToCrmId(contact.id);
+    try {
+      await appendContactPersonToPromoter(promoterId, contact);
+      await base44.entities.Show.update(show.id, {
+        logistics: {
+          ...deepClone(show.logistics || {}),
+          show_contacts: contacts.map(item => (item.id === contact.id ? { ...item, crm_contact_id: promoterId } : item)),
+        },
+        ...auditStamp(user, activeOrg),
+      });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['show', show.id] }),
+        queryClient.invalidateQueries({ queryKey: ['contact', promoterId] }),
+      ]);
+      toast.success(`${contact.name} saved to ${promoter?.name || 'the promoter'}'s CRM record`);
+    } catch (error) {
+      toast.error(error.message);
+    }
+    setSavingToCrmId(null);
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Users className="h-4 w-4 text-gray-600" />
+          <h4 className="text-sm font-semibold text-gray-800">Points of Contact</h4>
+          {contacts.length > 0 && (
+            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">{contacts.length}</span>
+          )}
+        </div>
+        {!addingContact && !editingContact && (
+          <Button size="sm" variant="outline" className="h-7 gap-1 text-xs" onClick={() => setAddingContact(true)}>
+            <Plus className="h-3 w-3" /> Add Contact
+          </Button>
+        )}
+      </div>
+
+      {contacts.map(contact =>
+        editingContact?.id === contact.id ? (
+          <ShowContactForm
+            key={contact.id}
+            initial={editingContact}
+            crmOptions={crmOptions}
+            onSave={handleEdit}
+            onCancel={() => setEditingContact(null)}
+            isSaving={saveContactsMutation.isPending}
+          />
+        ) : (
+          <ShowContactCard
+            key={contact.id}
+            contact={contact}
+            onEdit={item => setEditingContact(deepClone(item))}
+            onDelete={setPendingDelete}
+            onSaveToCrm={handleSaveToCrm}
+            canSaveToCrm={Boolean(promoterId)}
+            savingToCrm={savingToCrmId === contact.id}
+            isMobile={isMobile}
+          />
+        ),
+      )}
+
+      {contacts.length === 0 && !addingContact && (
+        <p className="text-xs italic text-gray-400">No contacts added yet. Add drivers, hotel managers, and promoter reps here.</p>
+      )}
+
+      {addingContact && (
+        <ShowContactForm
+          crmOptions={crmOptions}
+          onSave={handleAdd}
+          onCancel={() => setAddingContact(false)}
+          isSaving={saveContactsMutation.isPending}
+        />
+      )}
+
+      <AlertDialog open={!!pendingDelete} onOpenChange={open => !open && setPendingDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove this contact?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingDelete && `${pendingDelete.name} will be removed from this show's points of contact. Anyone already saved to the CRM stays there.`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="min-h-[44px]">Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDelete} className="min-h-[44px] bg-red-600 hover:bg-red-700">Remove contact</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}

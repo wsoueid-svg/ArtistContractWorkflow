@@ -1,0 +1,195 @@
+/**
+ * Contract template registry — the 5 branded editions.
+ *
+ *   cidony   — CIDONY SA (Uruguay), English
+ *   nysm     — Now You See Me Production Corp, English
+ *   nysm-es  — Now You See Me Production Corp, Spanish
+ *   aesl-en  — Analog Entertainment SL (Spain), English
+ *   aesl-es  — Analog Entertainment SL (Spain), Spanish
+ *
+ * The billing LegalEntity picks the brand; the promoter Contact's
+ * preferred_language picks the language edition where one exists.
+ */
+import { buildContractHtml, buildFooterHtml } from './layout.ts';
+import type { ContractBrand, ContractContext, ContractPack } from './layout.ts';
+import * as EN from './clausesEn.ts';
+import * as ES from './clausesEs.ts';
+import { buildRunningHeader } from './representation.ts';
+import { renderDraftBody } from './draftBody.ts';
+
+export type TemplateKey = 'cidony' | 'nysm' | 'nysm-es' | 'aesl-en' | 'aesl-es';
+
+export const TEMPLATE_KEYS: TemplateKey[] = ['cidony', 'nysm', 'nysm-es', 'aesl-en', 'aesl-es'];
+
+const BRANDS: Record<string, ContractBrand> = {
+  cidony: {
+    key: 'cidony',
+    wordmark: 'Analog.',
+    signatureParty: 'Analog (CIDONY SA)',
+    footerLines: [
+      'CIDONY SA TRADING AS ANALOG, RUTA 10, KM 185, JOSE IGNACIO',
+      'IGNACIO MALDONADO, URUGUAY – RUT 216151090016',
+    ],
+  },
+  nysm: {
+    key: 'nysm',
+    wordmark: 'Analog.',
+    signatureParty: 'Analog (NOW YOU SEE PRODUCTION CORP.)',
+    footerLines: [],
+  },
+  aesl: {
+    key: 'aesl',
+    wordmark: 'Analog.',
+    signatureParty: 'Analog (ANALOG ENTERTAINMENT S.L.)',
+    footerLines: [],
+  },
+};
+
+const PACK_EN: ContractPack = {
+  lang: 'en',
+  labels: EN.LABELS_EN,
+  preamble: EN.PREAMBLE_EN,
+  whtClause: EN.WHT_CLAUSE_EN,
+  whtProof: EN.WHT_PROOF_EN,
+  billingNote: EN.BILLING_NOTE_EN,
+  paymentTail: EN.PAYMENT_TAIL_EN,
+  vatNote: EN.VAT_NOTE_EN,
+  transferNote: EN.TRANSFER_NOTE_EN,
+  expensesIntro: EN.EXPENSES_INTRO_EN,
+  expenseItems: EN.EXPENSE_ITEMS_EN,
+  terms: EN.TERMS_EN,
+  rider: EN.RIDER_EN,
+  billingPositionSentence: (artist, position) =>
+    `The name of Artist (${artist}) will be placed in the ${position} position on all artwork.`,
+};
+
+const PACK_CIDONY_EN: ContractPack = {
+  ...PACK_EN,
+  preamble: 'It is hereby agreed that the Company engages the Artist and the Artist hereby accepts the Engagement to appear and perform in his/her/their usual entertainment ("the Performance") at the Event/s, the Venue/s, on the Date/s, for the Duration, and at the Artist Fee/s and (if applicable) Booking Fee (all as defined in the Schedule below) and subject to the Conditions below and the Rider attached to this Engagement Contract. The Engagement Contract shall comprise the Schedule, Terms and Conditions and Rider attached here to which supersedes the Confirmation of Booking Form previously issued by Analog.',
+  whtClause: 'If the promoter needs to apply the WHT to the artist fee, it must be agreed before signing the contract. Establishing the percentage to apply on said rate. It cannot be modified after the signing of the contract.',
+  whtProof: 'In this case, the artist will send to the promoter the invoice corresponding to their fees with the agreed rate, less the WHT. The promoter undertakes to deliver to the Artist the proof of payment, of said withholdings within a period not exceeding two months. Any tax withholding tax or lien derived from the performance of the artist will be paid by the promoter.',
+  terms: EN.TERMS_CIDONY_EN,
+};
+
+const PACK_ES: ContractPack = {
+  lang: 'es',
+  labels: ES.LABELS_ES,
+  preamble: ES.PREAMBLE_ES,
+  whtClause: ES.WHT_CLAUSE_ES,
+  whtProof: ES.WHT_PROOF_ES,
+  billingNote: ES.BILLING_NOTE_ES,
+  paymentTail: ES.PAYMENT_TAIL_ES,
+  vatNote: ES.VAT_NOTE_ES,
+  transferNote: ES.TRANSFER_NOTE_ES,
+  expensesIntro: ES.EXPENSES_INTRO_ES,
+  expenseItems: ES.EXPENSE_ITEMS_ES,
+  terms: ES.TERMS_ES,
+  rider: ES.RIDER_ES,
+  billingPositionSentence: (artist, position) =>
+    `El nombre del Artista (${artist}) figurará en la posición ${position} en todo el material gráfico.`,
+};
+
+const REGISTRY: Record<TemplateKey, { brand: ContractBrand; pack: ContractPack }> = {
+  'cidony': { brand: BRANDS.cidony, pack: PACK_CIDONY_EN },
+  'nysm': { brand: BRANDS.nysm, pack: PACK_EN },
+  'nysm-es': { brand: BRANDS.nysm, pack: PACK_ES },
+  'aesl-en': { brand: BRANDS.aesl, pack: PACK_EN },
+  'aesl-es': { brand: BRANDS.aesl, pack: PACK_ES },
+};
+
+/** Brand family for a legal entity, from its explicit key or its legal name. */
+function brandFamily(legalEntity: any): 'cidony' | 'nysm' | 'aesl' {
+  const explicit = String(legalEntity?.contract_template_key || '');
+  if (explicit.startsWith('nysm')) return 'nysm';
+  if (explicit.startsWith('aesl')) return 'aesl';
+  if (explicit === 'cidony') return 'cidony';
+
+  const name = `${legalEntity?.name || ''} ${legalEntity?.short_name || ''}`.toUpperCase();
+  if (name.includes('NOW YOU SEE ME') || name.includes('NYSM')) return 'nysm';
+  if (name.includes('ANALOG ENTERTAINMENT')) return 'aesl';
+  return 'cidony';
+}
+
+/**
+ * Resolve the template key for a generation run.
+ * Spanish is chosen when the promoter Contact prefers Spanish (or the entity
+ * defaults to Spanish) AND the brand has a Spanish edition.
+ */
+export function resolveTemplateKey(legalEntity: any, contact: any, override?: string): TemplateKey {
+  if (override && TEMPLATE_KEYS.includes(override as TemplateKey)) return override as TemplateKey;
+
+  const family = brandFamily(legalEntity);
+  const wantsSpanish =
+    String(contact?.preferred_language || '').toLowerCase() === 'es' ||
+    (!contact?.preferred_language && String(legalEntity?.invoice_language_default || '').toLowerCase() === 'es');
+
+  if (family === 'nysm') return wantsSpanish ? 'nysm-es' : 'nysm';
+  if (family === 'aesl') return wantsSpanish ? 'aesl-es' : 'aesl-en';
+  return 'cidony';
+}
+
+/** Payment-schedule clauses — language-aware, percentage-interpolated. */
+export function buildPaymentClauses(
+  lang: 'en' | 'es',
+  opts: { depositPct: number; balancePct: number; depositMonth?: string; artistName: string; templateKey?: TemplateKey },
+) {
+  const { depositPct, balancePct, artistName } = opts;
+  const month = opts.depositMonth || '';
+  const paymentDays = opts.templateKey === 'cidony' ? 10 : 3;
+
+  if (lang === 'es') {
+    return [
+      `- El ${depositPct}% del caché del Artista se pagará al artista. Este pago se realizará${month ? ` en ${month}` : ''} y a más tardar en ${paymentDays} días en concepto de DEPÓSITO.`,
+      `- El ${balancePct}% restante del cachet del artista se abonará antes de la fecha acordada entre la agencia y el promotor.`,
+      `- Si no se acuerda una fecha para el ${balancePct}% del saldo del cachet, éste se abonará un (1) mes antes de la fecha del evento.`,
+      '- El pago de la comisión de contratación y del DEPÓSITO deberá realizarse antes del anuncio del artista. El promotor dispondrá de un máximo de tres (3) días desde la emisión del contrato y de la factura para formalizar dichos pagos. Condición sine qua non para el uso del nombre del artista en cualquier tipo de publicidad del evento.',
+      '- El incumplimiento por parte de la Compañía de este calendario de pagos constituirá un incumplimiento sustancial del presente Compromiso y facultará a la Agencia y al Artista para resolverlo de forma inmediata y sin previo aviso.',
+      '- Se añadirá el IVA a todos los cachets acordados del artista en los shows del Reino Unido.',
+      '- La compañía se compromete a contactar con ian@analog-a.com / alex@analog-a.com en caso de que sea necesario negociar las condiciones de pago.',
+      `- El cachet del Artista será pagadero a ${artistName}: la mitad de forma inmediata en la fecha de firma del presente ("el Depósito") y el saldo a más tardar catorce (14) días antes de la Fecha de la Actuación. Todos los pagos se realizarán en la divisa acordada en el contrato (f).`,
+    ];
+  }
+
+  return [
+    `- The ${depositPct}% of the Artist fee will be paid to the artist. This payment will be made${month ? ` in ${month}` : ''} and ${paymentDays} days the latest in the concept of DEPOSIT.`,
+    `- The ${balancePct}% Balance of the Artist fee shall be paid before the agreed date between agency and promoter.`,
+    `- If not a date will be agreed for the ${balancePct}% balance of the artist fee to one (1) month before the event date.`,
+    "- The Booking fee payment and DEPOSIT should be made before artist announcement. The promoter will have a maximum of three (3) days from contract and invoice issue to formalize said payments. Sine qua non condition, for the use of the artist's name in any type of publicity of the event.",
+    '- The breach from the Company of this payment schedule will constitute a substantial breach of this Commitment, and authorizes the Agency and the Artist to terminate it immediately without prior notice.',
+    '- A VAT will be added in addition to all agreed artist rates for UK shows.',
+    '- The company agrees to contact ian@analog-a.com / alex@analog-a.com in case there needs to be a negotiation of payment terms.',
+    `- The Artist Fee shall be payable ${artistName} and shall be payable as to one half promptly on the date of signature hereof ("the Deposit") and the balance by no later than fourteen (14) days prior to the Date of the Performance. All Payments are to be made in the currency agreed as per the contract (f).`,
+  ];
+}
+
+/** Row labels for the payment table, per language. */
+export function rowLabel(lang: 'en' | 'es', type: string, opts: { pct?: number; party: string }) {
+  const labels = lang === 'es' ? ES.LABELS_ES : EN.LABELS_EN;
+  const pct = opts.pct != null ? ` ${opts.pct}%` : '';
+  if (type === 'BOOKING_FEE') return `${labels.bookingFeeRow} — ${opts.party}`;
+  if (type === 'DEPOSIT') return `${labels.depositRow.replace('(', `${pct.trim()} (`)} — ${opts.party}`;
+  if (type === 'BALANCE') return `${labels.balanceRow.replace('(', `${pct.trim()} (`)} — ${opts.party}`;
+  return `${labels.fullFeeRow} — ${opts.party}`;
+}
+
+export function getTemplate(key: TemplateKey) {
+  return REGISTRY[key];
+}
+
+/** Render a template key to { html, footerHtml } ready for PDFShift. */
+export function renderContractDocument(key: TemplateKey, ctx: ContractContext, blocks?: any[]) {
+  const entry = REGISTRY[key];
+  if (!entry) {
+    const err: any = new Error(`Unknown contract template: ${key}`);
+    err.status = 422;
+    throw err;
+  }
+  const masterHtml = buildContractHtml({ brand: entry.brand, pack: entry.pack, ctx });
+  return {
+    html: blocks ? masterHtml.replace(/(<body[^>]*>)[\s\S]*?(<\/body>)/, (_, open, close) => open + renderDraftBody(blocks, entry.pack) + close) : masterHtml,
+    footerHtml: buildFooterHtml(entry.brand),
+    headerHtml: buildRunningHeader(entry.brand),
+    lang: entry.pack.lang,
+    brandKey: entry.brand.key,
+  };
+}

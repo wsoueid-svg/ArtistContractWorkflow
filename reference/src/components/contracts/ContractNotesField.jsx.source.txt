@@ -1,0 +1,25 @@
+import React from 'react';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+
+/**
+ * Additional Agreed Terms — free-text clauses printed into the contract PDF
+ * under "Additional Agreed Terms". Mirrors Show.contract_notes.
+ */
+export default function ContractNotesField({ value, onChange }) {
+  return (
+    <div className="space-y-1.5">
+      <Label className="text-xs font-semibold text-gray-700">Additional Agreed Terms</Label>
+      <Textarea
+        value={value ?? ''}
+        onChange={(e) => onChange(e.target.value)}
+        rows={5}
+        placeholder="Any extra clauses agreed with the promoter — printed into the contract under 'Additional Agreed Terms'."
+        className="min-h-[110px] text-sm"
+      />
+      <p className="text-[11px] text-gray-400">
+        Saved to the show, so it stays available next time you generate this contract.
+      </p>
+    </div>
+  );
+}

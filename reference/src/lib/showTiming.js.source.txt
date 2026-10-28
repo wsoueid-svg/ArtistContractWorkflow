@@ -1,0 +1,18 @@
+export const hasContractualSetWindow = (show) =>
+  typeof show?.contractual_set_window === 'string';
+
+export const getContractualSetWindow = (show) =>
+  hasContractualSetWindow(show)
+    ? (show.contractual_set_window || 'TBA')
+    : (show?.logistics?.stage_time || 'TBA');
+
+export const formatTimelineStageTime = (timelineEvents) => {
+  if (!Array.isArray(timelineEvents)) return undefined;
+  const stage = timelineEvents.find((event) => event?.type === 'artist_on_stage')?.time;
+  const end = timelineEvents.find((event) => event?.type === 'set_end')?.time;
+  if (!stage) return undefined;
+  return end ? `${stage}–${end}` : stage;
+};
+
+export const getDashboardSetWindow = (show) =>
+  show?.contractual_set_window ?? formatTimelineStageTime(show?.timeline_events) ?? 'TBA';

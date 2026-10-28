@@ -1,0 +1,42 @@
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.53';
+import { draftAccess, loadContractSource, buildContractDocument } from '../../shared/contractDocument.ts';
+import { currentContract, assertContractMutable } from '../../shared/contractLifecycle.ts';
+import { refreshDraft } from '../../shared/contractDraftRender.ts';
+import { nextContractVersion, revisionContext } from '../../shared/contractRevisionContext.ts';
+export default async function(req) {
+  try {
+    const base44=createClientFromRequest(req), user=await base44.auth.me();
+    if (!user) return Response.json({error:'Unauthorized'},{status:401});
+    const body=await req.json();
+    const show=await draftAccess(base44,user,body.show_id);
+    const current=await currentContract(base44,show);
+    if(body.build||body.revise||body.clone_from_contract_id)assertContractMutable(current,body.force_amendment===true);
+    if(body.clone_from_contract_id) {
+      if(current?.id!==body.clone_from_contract_id||!current.draft_id)return Response.json({error:'The issued contract has no frozen canonical draft, or is no longer current. It cannot be cloned in this editor.'},{status:409});
+      body.draft_id=current.draft_id;body.revise=true;
+    }
+    if(body.build) {
+      const source=await loadContractSource(base44,show,body.template_id,body.fields);
+      return Response.json({draft:await buildContractDocument(source)});
+    }
+    let draft;
+    if(body.draft_id) {
+      draft=await base44.asServiceRole.entities.ContractDraft.get(body.draft_id);
+      if(draft.show_id!==show.id) return Response.json({error:'Draft does not belong to this Show'},{status:403});
+    } else {
+      const page=await base44.asServiceRole.entities.ContractDraft.filter({show_id:show.id},{sort:'-updated_date',limit:1});
+      draft=page.items[0]||null;
+    }
+    if(!draft) return Response.json({draft:null});
+    if(draft.status==='generating'&&body.revise)return Response.json({error:'Generation is in progress. Wait before reopening.'},{status:409});
+    const approver=draft.approved_by ? await base44.asServiceRole.entities.User.get(draft.approved_by) : null;
+    if(body.revise||!['generated','generating'].includes(draft.status)) {
+      const fresh=await refreshDraft(base44,show,draft);
+      const clone=draft.status==='generated'&&body.revise;
+      if(clone&&current?.draft_id!==draft.id)return Response.json({error:'Reopen the latest issued draft to create a revision.'},{status:409});
+      return Response.json({draft:{...draft,...((fresh.changed||clone)?{blocks:fresh.blocks,source_snapshot:fresh.source,master_content_version:fresh.master.master_content_version,status:'editing',browser_dirty:true,source_refreshed:fresh.changed}:{}),...(clone?{id:null,parent_draft_id:draft.id,revision_no:0,content_hash:'',lock_token:crypto.randomUUID(),approved_at:null,approved_by:null}:{}),force_amendment:body.force_amendment===true,target_contract_version:nextContractVersion(current),...(await revisionContext(base44,show,{...draft,parent_draft_id:clone?draft.id:draft.parent_draft_id})),master_blocks:fresh.master.blocks,master_changed:false,approved_by_name:approver?.full_name||draft.approved_by,required_inputs:[]}});
+    }
+    const master=await buildContractDocument(draft.source_snapshot);
+    return Response.json({draft:{...draft,master_blocks:master.blocks,approved_by_name:approver?.full_name||draft.approved_by,required_inputs:[]}});
+  } catch(error) { return Response.json({error:error.message},{status:error.status||500}); }
+}

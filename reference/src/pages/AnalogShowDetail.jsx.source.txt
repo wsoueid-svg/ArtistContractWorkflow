@@ -1,0 +1,46 @@
+import React, { useEffect, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { toast } from 'sonner';
+import { base44 } from '@/api/base44Client';
+import { Tabs, TabsContent } from '@/components/ui/tabs';
+import { useIsMobile } from '@/hooks/useMobileViewport';
+import { useAuth } from '@/lib/AuthContext';
+import { useOrg } from '@/lib/OrgContext';
+import useMyAgent from '@/hooks/useMyAgent';
+import { auditStamp, invalidateShowQueries } from '@/lib/showEdit';
+import AnalogShowHeader from '@/components/analog/show-detail/AnalogShowHeader';
+import AnalogShowMobileHeader from '@/components/analog/show-detail/AnalogShowMobileHeader';
+import AnalogShowTabsNav from '@/components/analog/show-detail/AnalogShowTabsNav';
+import AnalogOverviewTab from '@/components/analog/show-detail/AnalogOverviewTab';
+import AnalogContractTab from '@/components/analog/show-detail/AnalogContractTab';
+import AnalogDealCardTab from '@/components/analog/show-detail/AnalogDealCardTab';
+import AnalogOperationsTab from '@/components/analog/show-detail/AnalogOperationsTab';
+
+const TABS = ['overview', 'contract', 'deal', 'operations'];
+
+export default function AnalogShowDetail() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const showId = searchParams.get('id'); const navigate = useNavigate(); const queryClient = useQueryClient(); const { user } = useAuth(); const { activeOrg } = useOrg(); const [confirming, setConfirming] = useState(false); const isMobile = useIsMobile();
+  // Active tab lives in the URL so a deep link — or a back press out of an
+  // overlay — returns to the section the agent was working in.
+  const tab = TABS.includes(searchParams.get('tab')) ? searchParams.get('tab') : 'overview';
+  const setTab = value => setSearchParams(current => { const next = new URLSearchParams(current); next.set('tab', value); return next; }, { replace: true });
+  const { data: show, isLoading } = useQuery({ queryKey: ['show', showId], queryFn: () => base44.entities.Show.get(showId), enabled: !!showId });
+  const { data: artist } = useQuery({ queryKey: ['artist', show?.artist_id], queryFn: () => base44.entities.Artist.get(show.artist_id), enabled: !!show?.artist_id });
+  const { data: myAgent } = useMyAgent(Boolean(user && user.role !== 'admin'));
+  const { data: financeData } = useQuery({ queryKey: ['analog-show-finance-context', showId, myAgent?.id], queryFn: () => base44.functions.invoke('getShowsForOrg', myAgent?.id ? { agent_id: myAgent.id } : {}).then(result => result.data), enabled: !!showId && !!user });
+  const invoices = (financeData?.invoice_summaries || []).filter(invoice => invoice.show_id === showId);
+  const { data: commissionLines = [] } = useQuery({ queryKey: ['show-commission-lines', showId], queryFn: () => base44.entities.CommissionLineItem.filter({ show_id: showId }), enabled: !!showId });
+  const { data: allAgents = [] } = useQuery({ queryKey: ['booking-agents'], queryFn: () => base44.entities.BookingAgent.filter({ status: 'active' }) });
+  const { data: residencies = [] } = useQuery({ queryKey: ['residencies'], queryFn: () => base44.entities.Residency.list() });
+  const assignedIds = [...(show?.responsible_agent_ids || []), ...(show?.logistics_agent_ids || []), show?.logistics_agent_id].filter(Boolean); const agents = allAgents.filter(agent => assignedIds.includes(agent.id)); const residency = residencies.find(item => item.show_ids?.includes(showId));
+  useEffect(() => { if (!showId) return; const unsubscribe = base44.entities.Show.subscribe(event => { if (event.id === showId) queryClient.invalidateQueries({ queryKey: ['show', showId] }); }); return unsubscribe; }, [showId, queryClient]);
+  const saveShow = async changes => { await base44.entities.Show.update(showId, { ...changes, ...auditStamp(user, activeOrg) }); await invalidateShowQueries(queryClient, showId); toast.success('Show updated'); };
+  const confirmShow = async () => { setConfirming(true); await saveShow({ status: 'confirmed' }); setConfirming(false); };
+  if (isLoading) return <div className="py-16 text-center text-sm text-slate-500">Loading command center…</div>;
+  if (!showId || !show) return <div className="py-16 text-center text-sm text-slate-500">Show not found.</div>;
+  const canConfirm = user?.role === 'admin' || user?.finance_role === 'Finance Manager' || user?.can_confirm_shows === true; const goBack = () => window.history.length > 1 ? navigate(-1) : navigate('/shows');
+  const headerProps = { show, artist, agents, residency, onBack: goBack, onConfirm: confirmShow, confirming, canConfirm };
+  return <div className="space-y-4 md:space-y-6">{isMobile ? <AnalogShowMobileHeader {...headerProps} /> : <AnalogShowHeader {...headerProps} />}<Tabs value={tab} onValueChange={setTab}><AnalogShowTabsNav value={tab} onChange={setTab} /><TabsContent value="overview" className="mt-4"><AnalogOverviewTab show={show} invoices={invoices} onSave={saveShow} /></TabsContent><TabsContent value="contract" className="mt-4"><AnalogContractTab show={show} artist={artist} /></TabsContent><TabsContent value="deal" className="mt-4"><AnalogDealCardTab show={show} artist={artist} invoices={invoices} commissionLines={commissionLines} onSave={saveShow} /></TabsContent><TabsContent value="operations" className="mt-4"><AnalogOperationsTab show={show} artist={artist} onSave={saveShow} /></TabsContent></Tabs></div>;
+}

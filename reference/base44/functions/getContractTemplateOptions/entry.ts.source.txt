@@ -1,0 +1,52 @@
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
+
+const OFFICIAL_TEMPLATE_LABELS = {
+  'aesl-en': 'Analog entertainment (EN)',
+  'aesl-es': 'Analog entertainment (ES)',
+  nysm: 'Now You See Me (EN)',
+  'nysm-es': 'Now You See Me (ES)',
+  cidony: 'Cidony',
+};
+
+export default async function(req) {
+  try {
+    const base44 = createClientFromRequest(req);
+    const user = await base44.auth.me();
+    if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    if (user.is_active === false) return Response.json({ error: 'Account is inactive' }, { status: 403 });
+    if (['artist', 'artist_team'].includes(user.user_type) && user.role !== 'admin') {
+      return Response.json({ error: 'Staff access is required' }, { status: 403 });
+    }
+    const templates = await base44.asServiceRole.entities.ContractTemplate.filter({ is_active: true }, 'name', 100);
+    const entityIds = Array.from(new Set(templates.map((item) => item.legal_entity_id).filter(Boolean)));
+    const entities = entityIds.length ? await base44.asServiceRole.entities.LegalEntity.filter({ id: { $in: entityIds }, is_active: true }, 'name', 100) : [];
+    const entityMap = Object.fromEntries(entities.map((entity) => [entity.id, entity]));
+    const options = templates.map((template) => {
+      const entity = entityMap[template.legal_entity_id];
+      if (!entity) return null;
+      return {
+        id: template.id,
+        name: OFFICIAL_TEMPLATE_LABELS[template.template_key] || template.name,
+        legal_entity_id: template.legal_entity_id,
+        template_key: template.template_key || null,
+        language: template.language || null,
+        agency_signatory_name: template.agency_signatory_name || null,
+        default_terms: template.default_terms || {},
+        entity: {
+          id: entity.id,
+          name: entity.name,
+          short_name: entity.short_name,
+          country: entity.country,
+          country_code: entity.country_code,
+          default_currency: entity.default_currency,
+          allowed_currencies: entity.allowed_currencies || [],
+          tax_id: entity.tax_id,
+          registered_address: entity.registered_address || {}
+        }
+      };
+    }).filter(Boolean);
+    return Response.json({ templates: options });
+  } catch (error) {
+    return Response.json({ error: error.message }, { status: 500 });
+  }
+}

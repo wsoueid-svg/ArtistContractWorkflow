@@ -1,0 +1,451 @@
+import React, { useState, useEffect } from 'react';
+import { base44 } from '@/api/base44Client';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
+import { Separator } from '@/components/ui/separator';
+import {
+  FileText, Download, Loader2, CheckCircle2, ChevronRight, ChevronLeft,
+  Building2, User, Calendar, DollarSign, Sparkles
+} from 'lucide-react';
+import ContractTemplateSelect from '@/components/contracts/ContractTemplateSelect';
+import ContactAutocompleteField from '@/components/contracts/ContactAutocompleteField';
+import MonthYearPicker from '@/components/contracts/MonthYearPicker';
+import ContractCurrencyLock from '@/components/contracts/ContractCurrencyLock';
+import ContractNotesField from '@/components/contracts/ContractNotesField';
+import { getContractualSetWindow } from '@/lib/showTiming';
+
+const STEPS = [
+  { id: 'promoter', label: 'Promoter / Company', icon: Building2 },
+  { id: 'event', label: 'Event Details', icon: Calendar },
+  { id: 'financials', label: 'Fees & Payments', icon: DollarSign },
+  { id: 'signatories', label: 'Signatories', icon: User },
+];
+
+const Field = ({ label, name, value, onChange, type = 'text', placeholder, hint, readOnly = false }) => (
+  <div className="space-y-1.5">
+    <Label className="text-xs font-semibold text-gray-700">{label}</Label>
+    <Input
+      type={type}
+      name={name}
+      value={value ?? ''}
+      onChange={readOnly ? undefined : e => onChange(name, e.target.value)}
+      placeholder={placeholder}
+      readOnly={readOnly}
+      aria-readonly={readOnly}
+      className={`min-h-[44px] text-sm ${readOnly ? 'cursor-not-allowed bg-slate-50 text-slate-600' : ''}`}
+    />
+    {hint && <p className="text-[11px] text-gray-400">{hint}</p>}
+  </div>
+);
+
+const Row = ({ children }) => (
+  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">{children}</div>
+);
+
+export default function ContractFillForm({ show, onGenerated, onClose, forceAmendment = false }) {
+  const [step, setStep] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [done, setDone] = useState(null);
+  const [error, setError] = useState(null);
+  const [contractTemplateId, setContractTemplateId] = useState('');
+  const [legalEntityId, setLegalEntityId] = useState(show?.legal_entity_id || '');
+  const [legalEntity, setLegalEntity] = useState(null);
+  const entityLocked = show?.status === 'completed' || !!show?.legal_entity_locked_at;
+
+  const fee = Number(show?.guarantee_fee || 0);
+  const bookingFeeBase = Number(show?.gross_fee ?? show?.guarantee_fee ?? 0);
+  const bookingFeeAmt = Number(show?.booking_fee_amount_fixed || 0) > 0
+    ? Number(show.booking_fee_amount_fixed)
+    : Math.round(bookingFeeBase * Number(show?.booking_fee_rate || 0) / 100);
+  const separateBookingFee = (show?.booking_fee_type || 'exclusive') === 'exclusive';
+  const bookingFeeLine = separateBookingFee ? bookingFeeAmt : 0;
+  const artistFee = fee;
+  const advanceAmt = Math.round(artistFee * 0.5);
+  const balanceAmt = artistFee - advanceAmt;
+
+  const [fields, setFields] = useState({
+    contract_date: new Date().toISOString().split('T')[0],
+    // Promoter
+    company_name: '',
+    company_address: '',
+    company_vat: '',
+    // Artist / Agency
+    artist_name: show?.artist_name || '',
+    agency_name: 'Analog Agency',
+    agency_address: 'CIDONY SA. Ruta 10 s/n, km. 185. Arenas de José Ignacio. P 923 M 55, Jose Ignacio Maldonado',
+    agency_rut: 'RUT 216151090016',
+    // Event
+    event_name: show?.event_name || '',
+    venue: show?.venue || '',
+    country: show?.country || '',
+    date_of_show: show?.date || '',
+    timing: '',
+    billing_requirements: 'A-Z',
+    billing_position: 'A-Z',
+    wht_rate: show?.withholding_tax_rate ?? 0,
+    // Fees
+    currency: show?.currency || 'EUR',
+    booking_fee: bookingFeeAmt,
+    booking_fee_due: new Date().toISOString().split('T')[0],
+    advance_pct: 50,
+    advance_amount: advanceAmt,
+    advance_due: new Date().toISOString().split('T')[0],
+    balance_pct: 50,
+    balance_amount: balanceAmt,
+    balance_due: '',
+    deposit_month: '',
+    // Signatories
+    company_signatory: '',
+    agency_signatory: 'Luis Honrado',
+    contract_notes: show?.contract_notes || '',
+  });
+
+  // Autofill artist name from the show's linked Artist record
+  useEffect(() => {
+    if (!show?.artist_id) return;
+    base44.entities.Artist.get(show.artist_id).then(a => {
+      if (a?.name) setFields(f => (f.artist_name ? f : { ...f, artist_name: a.stage_name || a.name }));
+    }).catch(() => {});
+  }, [show?.artist_id]);
+
+  // Prefill promoter block from the show's linked contact (if any)
+  useEffect(() => {
+    const cid = show?.contract_contact_id || show?.client_contact_id || show?.contact_id;
+    if (!cid) return;
+    base44.entities.Contact.get(cid).then(c => {
+      if (!c || c.is_deleted) return;
+      setFields(f => ({
+        ...f,
+        company_name: f.company_name || c.default_deal_terms?.legal_company_name || c.company || c.name || '',
+        company_address: f.company_address || [c.address, c.city, c.country].filter(Boolean).join(', '),
+        company_vat: f.company_vat || c.vat_tax_id || '',
+        company_signatory: f.company_signatory || c.contact_persons?.[0]?.name || '',
+      }));
+    }).catch(() => {});
+  }, [show?.id]);
+
+  const applyContact = (c) => {
+    setFields(f => ({
+      ...f,
+      company_name: c.default_deal_terms?.legal_company_name || c.company || c.name || '',
+      company_address: [c.address, c.city, c.country].filter(Boolean).join(', ') || f.company_address,
+      company_vat: c.vat_tax_id || f.company_vat,
+      company_signatory: c.contact_persons?.[0]?.name || f.company_signatory,
+    }));
+  };
+
+  const set = (name, value) => setFields(f => {
+    const next = { ...f, [name]: value };
+    // Auto-recalculate advance/balance amounts whenever a driving field changes
+    const drivingFields = ['booking_fee', 'advance_pct', 'balance_pct'];
+    if (drivingFields.includes(name)) {
+      const artistNet = parseFloat(show?.guarantee_fee) || 0;
+      const advPct = parseFloat(name === 'advance_pct' ? value : next.advance_pct) || 0;
+      const balPct = parseFloat(name === 'balance_pct' ? value : next.balance_pct) || 0;
+      next.advance_amount = artistNet > 0 ? Math.round(artistNet * advPct / 100) : next.advance_amount;
+      next.balance_amount = artistNet > 0 ? Math.round(artistNet * balPct / 100) : next.balance_amount;
+    }
+    return next;
+  });
+
+  const handleGenerate = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const executionFields = {
+        company_name: fields.company_name,
+        company_address: fields.company_address,
+        company_vat: fields.company_vat,
+        company_signatory: fields.company_signatory,
+        agency_signatory: fields.agency_signatory,
+        contract_date: fields.contract_date,
+        advance_pct: fields.advance_pct,
+        balance_pct: fields.balance_pct,
+        advance_amount: fields.advance_amount,
+        balance_amount: fields.balance_amount,
+        deposit_month: fields.deposit_month,
+        booking_fee_due: fields.booking_fee_due,
+        advance_due: fields.advance_due,
+        balance_due: fields.balance_due,
+        billing_requirements: fields.billing_requirements,
+        billing_position: fields.billing_position,
+        currency: fields.currency,
+        contract_notes: fields.contract_notes,
+      };
+      const res = await base44.functions.invoke('generateSmartContract', {
+        show_id: show?.id,
+        contract_template_id: contractTemplateId,
+        fields: executionFields,
+        force_amendment: forceAmendment,
+      });
+      setDone(res.data.file_url);
+      onGenerated?.(res.data.file_url, res.data.contract_id);
+    } catch (e) {
+      setError(e.response?.data?.error || e.message || 'Failed to generate contract');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (done) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-5 py-10 px-6 text-center">
+        <div className="w-14 h-14 rounded-full bg-green-50 flex items-center justify-center">
+          <CheckCircle2 className="w-7 h-7 text-green-500" />
+        </div>
+        <div>
+          <p className="text-base font-semibold text-gray-900">Contract Generated</p>
+          <p className="text-sm text-gray-500 mt-1">PDF is ready to download and send to the promoter.</p>
+        </div>
+        <div className="flex gap-3">
+          <a href={done} target="_blank" rel="noopener noreferrer">
+            <Button className="gap-2 bg-black text-white hover:bg-gray-800">
+              <Download className="w-4 h-4" /> Download PDF
+            </Button>
+          </a>
+          <Button variant="outline" onClick={onClose}>Close</Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex min-w-0 flex-col gap-0 max-h-[85vh]">
+      {/* Step tabs */}
+      <div className="flex items-center gap-0 border-b border-gray-100 px-5 pt-4 pb-0 overflow-x-auto">
+        {STEPS.map((s, i) => {
+          const Icon = s.icon;
+          const active = i === step;
+          const done = i < step;
+          return (
+            <button
+              key={s.id}
+              onClick={() => i < step && setStep(i)}
+              className={`flex items-center gap-1.5 px-3 py-2.5 text-xs font-semibold border-b-2 whitespace-nowrap transition-all ${
+                active ? 'border-black text-black' : done ? 'border-transparent text-gray-400 hover:text-gray-600 cursor-pointer' : 'border-transparent text-gray-300 cursor-default'
+              }`}
+            >
+              <Icon className="w-3.5 h-3.5" />
+              {s.label}
+              {done && <CheckCircle2 className="w-3 h-3 text-green-500 ml-1" />}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Step content */}
+      <div className="flex-1 overflow-y-auto px-5 py-5 space-y-4">
+        {step === 0 && (
+          <>
+            <div className="flex items-center gap-2 mb-2">
+              <Badge variant="outline" className="text-[10px]">Promoter / Company Info</Badge>
+              <span className="text-xs text-gray-400">Usually found in the booking offer email</span>
+            </div>
+            <Row>
+              <ContactAutocompleteField
+                label="Company Name *"
+                value={fields.company_name}
+                onTextChange={(v) => set('company_name', v)}
+                onSelectContact={applyContact}
+                placeholder="Type to search CRM contacts or enter manually"
+              />
+              <Field label="VAT / Tax ID *" name="company_vat" value={fields.company_vat} onChange={set} placeholder="e.g. IT10468850960" />
+            </Row>
+            <Field label="Company Address *" name="company_address" value={fields.company_address} onChange={set} placeholder="Full address including city, postcode, country" />
+            <Separator />
+            <ContractTemplateSelect
+              value={contractTemplateId}
+              disabled={entityLocked}
+              onSelect={async (template) => {
+                if (!template) return;
+                const entity = template.entity;
+                const currency = String(show?.currency || entity.default_currency || 'EUR').toUpperCase();
+                setContractTemplateId(template.id);
+                setLegalEntityId(template.legal_entity_id);
+                setLegalEntity(entity);
+                const terms = template.default_terms || {};
+                const depositPct = Number(terms.deposit_percentage ?? 50);
+                const balanceTarget = show?.date ? new Date(`${show.date}T00:00:00Z`) : new Date();
+                balanceTarget.setUTCDate(balanceTarget.getUTCDate() - Number(terms.balance_due_offset_days ?? 14));
+                const today = new Date().toISOString().slice(0, 10);
+                const balanceDue = new Date(Math.max(new Date(`${today}T00:00:00Z`).getTime(), balanceTarget.getTime())).toISOString().slice(0, 10);
+                setFields(f => ({ ...f, currency, agency_name: entity.name || f.agency_name,
+                  agency_address: [entity.registered_address?.street, entity.registered_address?.city, entity.registered_address?.postal_code, entity.registered_address?.country || entity.country].filter(Boolean).join(', ') || f.agency_address,
+                  agency_rut: entity.tax_id || f.agency_rut, agency_signatory: template.agency_signatory_name || f.agency_signatory,
+                  advance_pct: depositPct, balance_pct: 100 - depositPct,
+                  advance_amount: Math.round(fee * depositPct / 100), balance_amount: fee - Math.round(fee * depositPct / 100),
+                  booking_fee_due: today, advance_due: today, balance_due: balanceDue }));
+              }}
+            />
+            {legalEntity && (
+              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                Accounting entity: <span className="font-semibold text-slate-900">{legalEntity.short_name || legalEntity.name}</span>
+              </div>
+            )}
+            <p className="text-xs font-medium text-slate-600">Agency details are locked to the selected Contract Template.</p>
+            <Row>
+              <Field label="Agency Name" name="agency_name" value={fields.agency_name} readOnly />
+              <Field label="Agency RUT" name="agency_rut" value={fields.agency_rut} readOnly />
+            </Row>
+            <Field label="Agency Address" name="agency_address" value={fields.agency_address} readOnly />
+          </>
+        )}
+
+        {step === 1 && (
+          <>
+            <div className="flex items-center gap-2 mb-2">
+              <Badge variant="outline" className="text-[10px]">Event Schedule</Badge>
+            </div>
+            <div className="break-words rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs leading-relaxed text-slate-500">From Show — edit these values on the Deal Card or Logistics & Advancing tab.</div>
+            <Row>
+              <Field label="Artist Name" name="artist_name" value={fields.artist_name} readOnly />
+              <Field label="Event Name / Title" name="event_name" value={show?.event_name} readOnly />
+            </Row>
+            <Row>
+              <Field label="Venue" name="venue" value={show?.venue} readOnly />
+              <Field label="Country" name="country" value={show?.country} readOnly />
+            </Row>
+            <Row>
+              <Field label="Date of Show" name="date_of_show" value={show?.date} type="date" readOnly />
+              <Field label="Contractual Set Window" name="timing" value={getContractualSetWindow(show)} readOnly />
+            </Row>
+            <Row>
+              <Field label="Guarantee" name="guarantee_fee" value={show?.guarantee_fee} type="number" readOnly />
+              <Field label="Booking Fee" name="booking_fee" value={bookingFeeAmt} type="number" readOnly />
+            </Row>
+            <Row>
+              <Field label="Billing Requirements" name="billing_requirements" value={fields.billing_requirements} onChange={set} placeholder="e.g. A-Z, Headline, Co-headline" />
+              <Field label="Billing Position on Artwork" name="billing_position" value={fields.billing_position} onChange={set} placeholder="e.g. A-Z" />
+            </Row>
+            <Row>
+              <Field label="WHT Rate (%)" name="wht_rate" value={show?.withholding_tax_rate ?? 0} type="number" readOnly />
+              <ContractCurrencyLock entity={legalEntity} value={fields.currency} onChange={(value) => set('currency', value)} />
+            </Row>
+          </>
+        )}
+
+        {step === 2 && (
+          <>
+            <div className="flex items-center gap-2 mb-2">
+              <Badge variant="outline" className="text-[10px]">Payment Schedule</Badge>
+              <span className="text-xs text-gray-400">All amounts net of taxes</span>
+            </div>
+            <div className="break-words rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs leading-relaxed text-slate-500">Guarantee and booking fee come from the Show. Edit them on the Deal Card before generating this contract.</div>
+            <Row>
+              <Field label={`Booking Fee (${show?.currency || 'EUR'})`} name="booking_fee" value={bookingFeeAmt} type="number" readOnly hint="From Show — non-returnable agency fee" />
+              <Field label="Booking Fee Due Date" name="booking_fee_due" value={fields.booking_fee_due} type="date" readOnly hint="From Contract Template" />
+            </Row>
+            <Separator />
+            {(() => {
+              const artistNet = parseFloat(show?.guarantee_fee) || 0;
+              return artistNet > 0 ? (
+                <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                  Artist fee schedule: <span className="font-semibold text-slate-900">{fields.currency} {artistNet.toLocaleString()}</span>{separateBookingFee ? ' · booking fee billed separately' : ' · booking fee included'}
+                </div>
+              ) : null;
+            })()}
+            <Row>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold text-gray-700">Advance % of Artist Fee</Label>
+                <Input type="number" value={fields.advance_pct || ''} readOnly aria-readonly="true" className="min-h-[44px] cursor-not-allowed bg-slate-50 text-sm" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold text-gray-700">Advance Amount ({fields.currency}) <span className="text-blue-500 font-normal">— auto-calculated</span></Label>
+                <div className="flex items-center gap-2">
+                  <Input type="number" value={fields.advance_amount || ''} readOnly aria-readonly="true" className="min-h-[44px] cursor-not-allowed bg-slate-50 text-sm font-semibold text-blue-700" />
+                  {fields.advance_pct > 0 && fields.advance_amount > 0 && (
+                    <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-lg whitespace-nowrap font-semibold">
+                      = {fields.currency} {Number(fields.advance_amount).toLocaleString()}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </Row>
+            <Row>
+              <Field label="Advance Due Date" name="advance_due" value={fields.advance_due} type="date" readOnly hint="From Contract Template" />
+              <MonthYearPicker label="Deposit Month (for contract text)" value={fields.deposit_month} onChange={(v) => set('deposit_month', v)} hint="Written into the payment clause" />
+            </Row>
+            <Separator />
+            <Row>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold text-gray-700">Balance % of Artist Fee</Label>
+                <Input type="number" value={fields.balance_pct || ''} readOnly aria-readonly="true" className="min-h-[44px] cursor-not-allowed bg-slate-50 text-sm" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold text-gray-700">Balance Amount ({fields.currency}) <span className="text-blue-500 font-normal">— auto-calculated</span></Label>
+                <div className="flex items-center gap-2">
+                  <Input type="number" value={fields.balance_amount || ''} readOnly aria-readonly="true" className="min-h-[44px] cursor-not-allowed bg-slate-50 text-sm font-semibold text-blue-700" />
+                  {fields.balance_pct > 0 && fields.balance_amount > 0 && (
+                    <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-lg whitespace-nowrap font-semibold">
+                      = {fields.currency} {Number(fields.balance_amount).toLocaleString()}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </Row>
+            <Field label="Balance Due Date" name="balance_due" value={fields.balance_due} type="date" readOnly hint="From Contract Template" />
+
+            {/* Summary box */}
+            <div className="bg-gray-50 rounded-xl p-4 border border-gray-100 mt-2">
+              <p className="text-xs font-semibold text-gray-500 mb-2">Payment Summary</p>
+              <div className="space-y-1 text-sm">
+                <div className="flex justify-between"><span className="text-gray-600">Booking Fee{separateBookingFee ? '' : ' (included)'}</span><span className="font-medium">{fields.currency} {parseFloat(fields.booking_fee||0).toLocaleString()}</span></div>
+                <div className="flex justify-between"><span className="text-gray-600">Advance ({fields.advance_pct}%)</span><span className="font-medium">{fields.currency} {parseFloat(fields.advance_amount||0).toLocaleString()}</span></div>
+                <div className="flex justify-between"><span className="text-gray-600">Balance ({fields.balance_pct}%)</span><span className="font-medium">{fields.currency} {parseFloat(fields.balance_amount||0).toLocaleString()}</span></div>
+                <Separator />
+                <div className="flex justify-between font-semibold"><span>Total</span><span>{fields.currency} {(bookingFeeLine+parseFloat(fields.advance_amount||0)+parseFloat(fields.balance_amount||0)).toLocaleString()}</span></div>
+              </div>
+            </div>
+          </>
+        )}
+
+        {step === 3 && (
+          <>
+            <div className="flex items-center gap-2 mb-2">
+              <Badge variant="outline" className="text-[10px]">Signing Parties</Badge>
+            </div>
+            <Row>
+              <Field label="Company / Promoter Signatory Name" name="company_signatory" value={fields.company_signatory} onChange={set} placeholder="Full name of the person signing" />
+              <Field label="Agency Signatory Name" name="agency_signatory" value={fields.agency_signatory} readOnly />
+            </Row>
+            <Field label="Contract Date" name="contract_date" value={fields.contract_date} onChange={set} type="date" />
+            <Separator />
+            <ContractNotesField value={fields.contract_notes} onChange={(v) => set('contract_notes', v)} />
+
+            {/* Final review */}
+            <div className="bg-black/5 rounded-xl p-4 border border-black/10 space-y-2 mt-2">
+              <p className="text-xs font-semibold flex items-center gap-1.5"><Sparkles className="w-3.5 h-3.5" /> Ready to generate</p>
+              <div className="text-xs text-gray-600 space-y-0.5">
+                <p>📋 <strong>{fields.artist_name || '–'}</strong> at <strong>{fields.event_name || '–'}</strong></p>
+                <p>📍 {fields.venue || '–'}, {fields.country || '–'} — {fields.date_of_show || '–'}</p>
+                <p>💶 Total: {fields.currency} {(bookingFeeLine+parseFloat(fields.advance_amount||0)+parseFloat(fields.balance_amount||0)).toLocaleString()}</p>
+                <p>🏢 Company: {fields.company_name || '–'}</p>
+              </div>
+            </div>
+
+            {error && <p className="text-xs text-red-500 bg-red-50 p-3 rounded-lg">{error}</p>}
+          </>
+        )}
+      </div>
+
+      {/* Navigation */}
+      <div className="flex items-center justify-between px-5 py-4 border-t border-gray-100 bg-white">
+        <Button variant="outline" size="sm" onClick={() => step > 0 ? setStep(s => s - 1) : onClose?.()} className="gap-1.5">
+          <ChevronLeft className="w-3.5 h-3.5" />
+          {step === 0 ? 'Cancel' : 'Back'}
+        </Button>
+        {step < STEPS.length - 1 ? (
+          <Button size="sm" onClick={() => setStep(s => s + 1)} className="gap-1.5 bg-black text-white hover:bg-gray-800">
+            Next <ChevronRight className="w-3.5 h-3.5" />
+          </Button>
+        ) : (
+          <Button size="sm" onClick={handleGenerate} disabled={loading || !contractTemplateId || !legalEntityId} className="gap-1.5 bg-black text-white hover:bg-gray-800">
+            {loading ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Generating...</> : <><FileText className="w-3.5 h-3.5" /> Generate PDF</>}
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}

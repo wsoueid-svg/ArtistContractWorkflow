@@ -1,0 +1,38 @@
+diff --git a/base44/shared/contractDraftRender.ts b/base44/shared/contractDraftRender.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..2288132da8414caf48f46be4dcc40e1752eae455
+--- /dev/null
++++ b/base44/shared/contractDraftRender.ts
+@@ -0,0 +1,31 @@
++import { buildScheduleContext } from './contractSchedule.ts';
++import { renderContractDocument } from './contractTemplates/index.ts';
++import { buildContractDocument, loadContractSource, contentHash, validateDraftBlocks } from './contractDocument.ts';
++import { AccessError } from './assertShowAccess.ts';
++import { sourceSignature, validateGenerationInputs } from './contractValidation.ts';
++export const protectedBlocks=blocks=>blocks.filter(b=>['protected','economics'].includes(b.kind));
++export async function refreshDraft(base44,show,draft) {
++  const source=await loadContractSource(base44,show,draft.template_id,draft.source_snapshot.fields);
++  const master=await buildContractDocument(source);
++  const changed=sourceSignature(source)!==sourceSignature(draft.source_snapshot)||master.master_content_version!==draft.master_content_version||JSON.stringify(protectedBlocks(master.blocks).map(b=>b.rich_text))!==JSON.stringify(protectedBlocks(draft.blocks).map(b=>b.rich_text));
++  // Retain every edited/removable clause in its original protected section; refresh protected blocks only.
++  const blocks=[];const oldProtected=protectedBlocks(draft.blocks);
++  for(const locked of protectedBlocks(master.blocks)) {
++    const old=oldProtected.find(b=>b.id===locked.id);
++    const section=old?draft.blocks.filter(b=>!['protected','economics'].includes(b.kind)&&b.slot===old.slot):[];
++    blocks.push(...section.map(b=>({...b,slot:locked.slot})),locked);
++  }
++  const endSlot=protectedBlocks(master.blocks).length;
++  blocks.push(...draft.blocks.filter(b=>!['protected','economics'].includes(b.kind)&&b.slot===oldProtected.length).map(b=>({...b,slot:endSlot})));
++  return {source,master,changed,blocks:blocks.map((b,order)=>({...b,order}))};
++}
++export async function prepareDraftRender(base44,show,draft,expectedHash) {
++  if(draft.status!=='approved')throw new AccessError('Draft is not approved. Save first, or create a new revision of the generated draft.',409);
++  if(!expectedHash||expectedHash!==draft.content_hash||await contentHash(draft.blocks)!==draft.content_hash)throw new AccessError('Stale content hash. Another tab changed the draft; reopen and review before generating.',409);
++  const refreshed=await refreshDraft(base44,show,draft);
++  if(refreshed.changed)throw new AccessError('source changed, review required',409);
++  validateGenerationInputs(refreshed.source.fields,refreshed.source.breakdown,show,refreshed.source.template);
++  const blocks=validateDraftBlocks(draft.blocks,refreshed.master.blocks);
++  const {ctx}=buildScheduleContext({f:refreshed.source.fields,breakdown:refreshed.source.breakdown,templateKey:draft.template_key});
++  return {source:refreshed.source,rendered:renderContractDocument(draft.template_key,ctx,blocks)};
++}
+\ No newline at end of file

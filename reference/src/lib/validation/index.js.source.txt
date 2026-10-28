@@ -1,0 +1,40 @@
+/**
+ * validation/index.js — Centralized validation & sanitization exports.
+ *
+ * Import from this single entry point:
+ *   import { validateData, showSchema, sanitizeText, validateFile } from '@/lib/validation';
+ */
+
+// Schemas
+export {
+  showSchema,
+  contactSchema,
+  artistSchema,
+  invoiceSchema,
+  publicFormSubmissionSchema,
+  invoiceWebhookPayloadSchema,
+  orgGateSchema,
+  validateData,
+} from './schemas';
+
+// Sanitizers
+export {
+  sanitizeText,
+  sanitizeRichText,
+  sanitizeEmail,
+  sanitizeUrl,
+  sanitizePhone,
+  sanitizeNumber,
+  sanitizeUuid,
+  sanitizeEnum,
+} from './sanitize';
+
+// File Security
+export {
+  ALLOWED_MIME_TYPES,
+  DANGEROUS_EXTENSIONS,
+  MAX_FILE_SIZE,
+  MAX_FILE_SIZE_LABEL,
+  validateFile,
+  getAllowedAcceptString,
+} from './fileSecurity';

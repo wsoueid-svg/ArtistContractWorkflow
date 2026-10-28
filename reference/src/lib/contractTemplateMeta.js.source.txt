@@ -1,0 +1,15 @@
+export const CONTRACT_TEMPLATE_META = {
+  'aesl-en': { brand: 'Analog Entertainment', language: 'English', code: 'EN' },
+  'aesl-es': { brand: 'Analog Entertainment', language: 'Spanish', code: 'ES' },
+  nysm: { brand: 'Now You See Me', language: 'English', code: 'EN' },
+  'nysm-es': { brand: 'Now You See Me', language: 'Spanish', code: 'ES' },
+  cidony: { brand: 'Cidony', language: 'English', code: 'EN' },
+};
+
+export function getContractTemplateMeta(template) {
+  return CONTRACT_TEMPLATE_META[template.template_key] || {
+    brand: template.name || 'Contract template',
+    language: template.language === 'es' ? 'Spanish' : template.language === 'en' ? 'English' : 'Version not assigned',
+    code: template.language?.toUpperCase() || '—',
+  };
+}

@@ -1,0 +1,133 @@
+import React, { useState } from 'react';
+import { base44 } from '@/api/base44Client';
+import { useQuery } from '@tanstack/react-query';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Loader2, Upload } from 'lucide-react';
+import { toast } from 'sonner';
+import { auditStamp } from '@/lib/showEdit';
+import { useAuth } from '@/lib/AuthContext';
+import { useOrg } from '@/lib/OrgContext';
+
+export default function UploadInvoiceModal({ show, open, onClose, onSaved }) {
+  const { user } = useAuth();
+  const { activeOrg } = useOrg();
+  const [file, setFile] = useState(null);
+  const [total, setTotal] = useState(show?.guarantee_fee || '');
+  const [currency, setCurrency] = useState(show?.currency || 'EUR');
+  const [status, setStatus] = useState('Draft');
+  const [dueDate, setDueDate] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  // Fetch legal entities for invoice number generation
+  const { data: legalEntities = [] } = useQuery({
+    queryKey: ['financial-settings'],
+    queryFn: () => base44.entities.FinancialSettings.filter({ is_active: true }),
+  });
+
+  const handleSave = async () => {
+    setSaving(true);
+    let fileUrl = null;
+    if (file) {
+      const { file_url } = await base44.integrations.Core.UploadFile({ file });
+      fileUrl = file_url;
+    }
+
+    const legalEntity = legalEntities[0];
+    let invoiceNumber = `INV-${Date.now()}`;
+    let legalEntityId = legalEntity?.id || 'manual';
+
+    if (legalEntity) {
+      const num = legalEntity.next_invoice_number || 1;
+      invoiceNumber = `${legalEntity.invoice_number_prefix || ''}${String(num).padStart(3, '0')}`;
+      await base44.entities.FinancialSettings.update(legalEntity.id, {
+        next_invoice_number: num + 1,
+      });
+    }
+
+    const invoice = await base44.entities.Invoice.create({
+      invoice_number: invoiceNumber,
+      legal_entity_id: legalEntityId,
+      client_id: show.contact_id,
+      show_id: show.id,
+      artist_id: show.artist_id,
+      issue_date: new Date().toISOString().split('T')[0],
+      due_date: dueDate || new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0],
+      total: parseFloat(total) || 0,
+      subtotal: parseFloat(total) || 0,
+      tax_amount: 0,
+      currency,
+      status,
+      source: 'Manual',
+      ...(fileUrl ? { attachments_urls: [fileUrl] } : {}),
+    });
+
+    await base44.entities.Show.update(show.id, { invoice_id: invoice.id, ...auditStamp(user, activeOrg) });
+    toast.success('Invoice saved and linked to show.');
+    setSaving(false);
+    onSaved();
+    onClose();
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Add Invoice</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 pt-2">
+          <div>
+            <Label>Upload Invoice File <span className="text-gray-400 text-xs">(optional)</span></Label>
+            <Input type="file" accept=".pdf,.doc,.docx" className="mt-1"
+              onChange={e => setFile(e.target.files[0])} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Total Amount</Label>
+              <Input type="number" value={total} onChange={e => setTotal(e.target.value)} className="mt-1" placeholder="0" />
+            </div>
+            <div>
+              <Label>Currency</Label>
+              <Select value={currency} onValueChange={setCurrency}>
+                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="EUR">EUR</SelectItem>
+                  <SelectItem value="USD">USD</SelectItem>
+                  <SelectItem value="GBP">GBP</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Due Date</Label>
+              <Input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} className="mt-1" />
+            </div>
+            <div>
+              <Label>Status</Label>
+              <Select value={status} onValueChange={setStatus}>
+                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Draft">Draft</SelectItem>
+                  <SelectItem value="Sent">Sent</SelectItem>
+                  <SelectItem value="Partially Paid">Partially Paid</SelectItem>
+                  <SelectItem value="Paid">Paid</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={onClose}>Cancel</Button>
+            <Button onClick={handleSave} disabled={saving} className="gap-1.5">
+              {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+              Save Invoice
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}

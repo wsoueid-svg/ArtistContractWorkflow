@@ -1,0 +1,37 @@
+import { useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { base44 } from '@/api/base44Client';
+
+export const CONTACT_DIRECTORY_KEY = ['contact-directory'];
+
+const useContactDirectory = (enabled = true) => useQuery({
+  queryKey: CONTACT_DIRECTORY_KEY,
+  queryFn: () => base44.entities.Contact.list('name', 5000),
+  staleTime: 5 * 60 * 1000,
+  enabled,
+});
+
+// Loads the CRM directory once (cached) and filters locally — case-insensitive
+// across name, company and email, so every keystroke matches the whole CRM.
+// `types` optionally restricts results to specific contact types.
+export default function useContactSearch(query, { limit = 8, enabled = true, types = null } = {}) {
+  const { data: contacts = [], isLoading } = useContactDirectory(enabled);
+
+  const results = useMemo(() => {
+    const q = (query || '').trim().toLowerCase();
+    const live = contacts.filter(c => !c.is_deleted && (!types || types.includes(c.type)));
+    if (!q) return live.slice(0, limit);
+    return live
+      .filter(c => [c.name, c.company, c.email].some(v => (v || '').toLowerCase().includes(q)))
+      .sort((a, b) => Number(!(a.name || '').toLowerCase().startsWith(q)) - Number(!(b.name || '').toLowerCase().startsWith(q)))
+      .slice(0, limit);
+  }, [contacts, query, limit, types]);
+
+  return { results, isLoading };
+}
+
+// Single contact from the cached directory.
+export function useContactRecord(id) {
+  const { data: contacts = [] } = useContactDirectory(!!id);
+  return useMemo(() => (id ? contacts.find(c => c.id === id) || null : null), [contacts, id]);
+}

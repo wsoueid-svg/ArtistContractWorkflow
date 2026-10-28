@@ -1,0 +1,12 @@
+diff --git a/src/components/contract-lab/ClauseChanges.jsx b/src/components/contract-lab/ClauseChanges.jsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..ab836a86cd32218e65914973dbcb43bc348635e1
+--- /dev/null
++++ b/src/components/contract-lab/ClauseChanges.jsx
+@@ -0,0 +1,5 @@
++import { wordChanges, textOf } from '@/components/contract-lab/documentText';
++export default function ClauseChanges({before,after}) {
++  const parts=wordChanges(before,after),formatOnly=textOf(before)===textOf(after);
++  return <div className="clause-diff" aria-label="Changes against master">{formatOnly?<><div dangerouslySetInnerHTML={{__html:after}}/><p className="text-xs text-muted-foreground">Formatting changed; wording is unchanged.</p></>:parts.map((part,i)=>part.type==='inserted'?<ins key={i}>{part.text}</ins>:part.type==='removed'?<del key={i}>{part.text}</del>:<span key={i}>{part.text}</span>)}</div>;
++}
+\ No newline at end of file

@@ -1,0 +1,145 @@
+{
+  "name": "Task",
+  "type": "object",
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.assigned_to": "{{user.id}}"
+        },
+        {
+          "data.created_by_org_id": "{{user.data.active_org}}"
+        }
+      ]
+    },
+    "create": {
+      "user_condition": {
+        "data.is_active": true
+      }
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.assigned_to": "{{user.id}}"
+        }
+      ]
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  },
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "Task title"
+    },
+    "description": {
+      "type": "string"
+    },
+    "assigned_to": {
+      "type": "string",
+      "description": "User ID of assignee"
+    },
+    "artist_id": {
+      "type": "string",
+      "description": "Related artist (optional)"
+    },
+    "show_id": {
+      "type": "string",
+      "description": "Related show (optional)"
+    },
+    "release_id": {
+      "type": "string",
+      "description": "Related release (optional)"
+    },
+    "related_entity_type": {
+      "type": "string",
+      "description": "Type of additionally related entity (e.g. PressRelease, RoyaltyStatement, SocialMediaPost)"
+    },
+    "related_entity_id": {
+      "type": "string",
+      "description": "ID of additionally related entity"
+    },
+    "due_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "due_time": {
+      "type": "string",
+      "description": "Specific time of day for the task deadline (HH:MM)"
+    },
+    "priority": {
+      "type": "string",
+      "enum": [
+        "low",
+        "medium",
+        "high",
+        "urgent"
+      ],
+      "default": "medium"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "todo",
+        "in_progress",
+        "done",
+        "blocked"
+      ],
+      "default": "todo"
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "booking",
+        "marketing",
+        "logistics",
+        "finance",
+        "admin",
+        "creative",
+        "press",
+        "royalties",
+        "other"
+      ],
+      "default": "other"
+    },
+    "reminder_sent": {
+      "type": "boolean",
+      "default": false
+    },
+    "reference_links": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "External reference links for this task"
+    },
+    "attachments_urls": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Uploaded file URLs attached to this task"
+    },
+    "created_by_org_id": {
+      "type": "string",
+      "indexed": true,
+      "description": "Organization that owns this task."
+    }
+  },
+  "required": [
+    "title"
+  ]
+}

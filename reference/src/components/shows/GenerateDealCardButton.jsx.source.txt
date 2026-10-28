@@ -1,0 +1,38 @@
+import React, { useState } from 'react';
+import { base44 } from '@/api/base44Client';
+import { Button } from '@/components/ui/button';
+import { ClipboardList, Download, Loader2 } from 'lucide-react';
+
+export default function GenerateDealCardButton({ show }) {
+  const [loading, setLoading] = useState(false);
+  const [url, setUrl] = useState(show?.deal_card_url || null);
+  const [error, setError] = useState(null);
+
+  const generate = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await base44.functions.invoke('generateDealCard', { show_id: show?.id });
+      setUrl(res.data.file_url);
+    } catch (e) {
+      setError(e.message || 'Failed to generate deal card');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-2">
+      <Button size="sm" variant="outline" onClick={generate} disabled={loading || !show?.id} className="text-xs gap-1.5">
+        {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : <ClipboardList className="w-3 h-3" />}
+        {url ? 'Regenerate Deal Card' : 'Generate Deal Card'}
+      </Button>
+      {url && (
+        <a href={url} target="_blank" rel="noopener noreferrer" className="text-xs font-medium text-blue-600 hover:underline flex items-center gap-1">
+          <Download className="w-3 h-3" /> Deal Card PDF
+        </a>
+      )}
+      {error && <span className="text-xs text-red-500">{error}</span>}
+    </div>
+  );
+}

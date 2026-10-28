@@ -1,0 +1,173 @@
+{
+  "name": "ArtistDocument",
+  "type": "object",
+  "rls": {
+    "read": {
+      "$and": [
+        {
+          "user_condition": {
+            "data.is_active": true
+          }
+        },
+        {
+          "$or": [
+            {
+              "user_condition": {
+                "role": "admin"
+              }
+            },
+            {
+              "user_condition": {
+                "role": "user"
+              }
+            },
+            {
+              "data.artist_id": "{{user.data.linked_artist_id}}"
+            }
+          ]
+        }
+      ]
+    },
+    "create": {
+      "$and": [
+        {
+          "user_condition": {
+            "data.is_active": true
+          }
+        },
+        {
+          "$or": [
+            {
+              "user_condition": {
+                "role": "admin"
+              }
+            },
+            {
+              "user_condition": {
+                "role": "user"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "update": {
+      "$and": [
+        {
+          "user_condition": {
+            "data.is_active": true
+          }
+        },
+        {
+          "$or": [
+            {
+              "user_condition": {
+                "role": "admin"
+              }
+            },
+            {
+              "user_condition": {
+                "role": "user"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "delete": {
+      "$and": [
+        {
+          "user_condition": {
+            "data.is_active": true
+          }
+        },
+        {
+          "$or": [
+            {
+              "user_condition": {
+                "role": "admin"
+              }
+            },
+            {
+              "user_condition": {
+                "data.analog_role": "agent"
+              }
+            },
+            {
+              "user_condition": {
+                "data.analog_role": "logistics"
+              }
+            },
+            {
+              "user_condition": {
+                "data.analog_role": "admin"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "properties": {
+    "artist_id": {
+      "type": "string",
+      "indexed": true,
+      "description": "Artist this global document belongs to. Vault documents are artist-level, not show-level."
+    },
+    "document_type": {
+      "type": "string",
+      "enum": [
+        "passport",
+        "visa",
+        "rider",
+        "press_kit",
+        "id_card",
+        "insurance",
+        "other"
+      ],
+      "default": "other",
+      "description": "Category of vault document. Multiple records of the same type are expected."
+    },
+    "file_name": {
+      "type": "string",
+      "description": "Display name for the document."
+    },
+    "file_url": {
+      "type": "string",
+      "description": "Uploaded file URL or external link."
+    },
+    "notes": {
+      "type": "string",
+      "description": "Optional agent notes."
+    },
+    "expires_on": {
+      "type": "string",
+      "format": "date",
+      "description": "Optional expiry date for passports and visas."
+    },
+    "is_visible_to_artist": {
+      "type": "boolean",
+      "default": true,
+      "description": "When true, the document is listed and downloadable in the artist portal profile vault."
+    },
+    "uploaded_by_id": {
+      "type": "string",
+      "description": "User ID of the staff member who added this document."
+    },
+    "created_by_org_id": {
+      "type": "string",
+      "indexed": true,
+      "description": "Owning org (elevate/analog)."
+    },
+    "shared_with_org": {
+      "type": "string",
+      "indexed": true,
+      "description": "Cross-org ACL projection."
+    }
+  },
+  "required": [
+    "artist_id",
+    "file_name",
+    "file_url"
+  ]
+}

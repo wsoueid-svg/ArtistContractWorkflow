@@ -1,0 +1,45 @@
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
+import { waitUntil } from 'base44:runtime';
+import { canDispatchContracts, assertShowAccess } from '../../shared/assertShowAccess.ts';
+import { contractFileUrl } from '../../shared/contractFiles.ts';
+import { currentContract } from '../../shared/contractLifecycle.ts';
+
+/**
+ * Contract signature actions, each written to the immutable ContractAuditLog.
+ *  - action 'signed' (default): staff confirmation of an externally obtained signature; not external e-sign.
+ *  - action 'manual_signed': manual signature override on a SENT/RETURNED contract.
+ *  - action 'revert_signed': undo a signature, returning the contract to RETURNED.
+ * All three actions are allowed for the show's assigned logistics agents,
+ * the show creator, and Admin/CFO/Finance (same gate as contract dispatch).
+ */
+export default async function(req) {
+  try {
+    const base44=createClientFromRequest(req),user=await base44.auth.me();
+    if(!user||user.is_active===false)return Response.json({error:'Active account required'},{status:401});
+    const {contract_id,action,notes}=await req.json().catch(()=>({})),signAction=action||'signed';
+    if(!contract_id)return Response.json({error:'contract_id required'},{status:400});
+    if(!['signed','manual_signed','revert_signed'].includes(signAction))return Response.json({error:'Unsupported action'},{status:400});
+    const svc=base44.asServiceRole.entities,contract=await svc.Contract.get(contract_id).catch(e=>e.status===404?null:Promise.reject(e));
+    if(!contract)return Response.json({error:'Contract not found'},{status:404});
+    const show=contract.show_id?(await assertShowAccess(base44,contract.show_id,user)).show:null;
+    if(!await canDispatchContracts(base44,user,show))return Response.json({error:'Only the show creator, its assigned logistics agents, or Admin/Finance can change this signature.'},{status:403});
+    if(contract.generation_lock||contract.dispatch_lock||contract.status==='DISPATCHING'||(show&&(await currentContract(base44,show))?.id!==contract.id))return Response.json({error:'This contract is locked or historical. Use the current revision.'},{status:409});
+    if(signAction!=='revert_signed'&&!['SENT','RETURNED'].includes(contract.status))return Response.json({error:`Only a sent or returned contract can be marked as signed (current: ${contract.status}).`},{status:409});
+    if(signAction==='revert_signed'&&contract.status!=='SIGNED')return Response.json({error:'Only a signed contract can be reverted.'},{status:409});
+    if(signAction!=='revert_signed'&&!contract.contract_file_url)return Response.json({error:'No contract PDF to sign. Generate one first.'},{status:400});
+    let contractHash=contract.contract_hash||'n/a';
+    if(signAction!=='revert_signed'){
+      const response=await fetch(await contractFileUrl(base44,contract.contract_file_url),{signal:AbortSignal.timeout(15000)});
+      if(!response.ok)return Response.json({error:'Contract PDF unavailable'},{status:502});
+      const hashBuffer=await crypto.subtle.digest('SHA-256',await response.arrayBuffer());
+      contractHash=Array.from(new Uint8Array(hashBuffer)).map(b=>b.toString(16).padStart(2,'0')).join('');
+    }
+    if(signAction!=='revert_signed' && (contract.pdf_hash||contract.contract_hash) && contractHash!==(contract.pdf_hash||contract.contract_hash))return Response.json({error:'The stored PDF no longer matches its recorded hash. Signature confirmation is blocked.'},{status:409});
+    const now=new Date().toISOString(),updateData=signAction==='revert_signed'?{status:'RETURNED',e_signed_at:null,e_signed_by_user_id:null,e_signed_by_name:null,signed_date:null,last_modified_by_user_id:user.id,last_modified_at:now}:{status:'SIGNED',contract_hash:contractHash,e_signed_at:now,e_signed_by_user_id:user.id,e_signed_by_name:user.full_name,signed_date:now.split('T')[0],last_modified_by_user_id:user.id,last_modified_at:now};
+    const changed=await svc.Contract.updateMany({id:contract.id,status:contract.status,updated_date:contract.updated_date,$and:[{$or:[{generation_lock:{$exists:false}},{generation_lock:''},{generation_lock:null}]},{$or:[{dispatch_lock:{$exists:false}},{dispatch_lock:''},{dispatch_lock:null}]}]},{$set:updateData});
+    if(changed.updated!==1)return Response.json({error:'Contract changed during signature review. Reopen the current revision.'},{status:409});
+    await svc.ContractAuditLog.create({contract_id:contract.id,user_id:user.id,user_email:user.email,user_name:user.full_name,ip_address:req.headers.get('cf-connecting-ip')||req.headers.get('x-real-ip')||req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()||'unknown',contract_hash:contractHash,action:signAction==='revert_signed'?'revoked':'signed',signature_method:signAction==='revert_signed'?'revert_signed':'staff_confirmation',signed_at:now,notes:notes||''});
+    if(contract.show_id)waitUntil(base44.asServiceRole.functions.invoke('syncAnalogAdvancingTasks',{show_id:contract.show_id}).catch(error=>console.error('Analog advancing sync failed after signature change:',error)));
+    return Response.json({success:true,contract_id:contract.id,action:signAction,status:updateData.status,at:now,by:user.full_name,contract_hash:contractHash});
+  }catch(error){return Response.json({error:error.message},{status:error.status||500});}
+}

@@ -1,0 +1,47 @@
+diff --git a/base44/functions/dispatchContract/entry.ts b/base44/functions/dispatchContract/entry.ts
+index fdf424578671c25ab5e0f6018275cec6889e78ea..c9acdd7bd3c2b51fce7ec9d33f5ddaba82b2b212 100644
+--- a/base44/functions/dispatchContract/entry.ts
++++ b/base44/functions/dispatchContract/entry.ts
+@@ -3,6 +3,8 @@ import { waitUntil } from 'base44:runtime';
+ import MailComposer from 'npm:nodemailer@6.9.16/lib/mail-composer/index.js';
+ import { assertShowAccess, canDispatchContracts } from '../../shared/assertShowAccess.ts';
+ import { gmailGet, getMailboxEmail, header } from '../../shared/gmailThread.ts';
++import { contractFileUrl } from '../../shared/contractFiles.ts';
++import { currentContract } from '../../shared/contractLifecycle.ts';
+ 
+ const MAX_PDF_BYTES = 10 * 1024 * 1024;
+ const CONNECTOR_ID = '6a9851f6298f03badb17ca43';
+@@ -152,6 +154,7 @@ export default async function(req) {
+       return Response.json({ error: 'Contract not found for this show' }, { status: 404 });
+     }
+     contractId = contract.id;
++    if (show.contract_id !== contractId || (await currentContract(base44,show))?.id !== contractId || contract.generation_lock) return Response.json({error:'Only the current contract can be dispatched, and not during revision generation.'},{status:409});
+     if (!contract.contract_file_url) return Response.json({ error: 'The current Contract version has no generated PDF' }, { status: 422 });
+ 
+     const priorAttempts = await svc.ContractDispatchAttempt.filter({ idempotency_key: idempotencyKey }, '-created_date', 1);
+@@ -166,7 +169,7 @@ export default async function(req) {
+ 
+     try {
+       const lockResult = await svc.Contract.updateMany(
+-        { id: contractId, status: 'READY' },
++        { id: contractId, status: 'READY', updated_date: contract.updated_date, $or: [{generation_lock:{$exists:false}},{generation_lock:''},{generation_lock:null}] },
+         { $set: { status: 'DISPATCHING', dispatch_lock: idempotencyKey, dispatch_heartbeat_at: new Date().toISOString() } }
+       );
+       if (lockResult?.updated !== 1) throw new Error('not acquired');
+@@ -175,7 +178,7 @@ export default async function(req) {
+       return Response.json({ error: 'Contract dispatch is already in progress or is not ready' }, { status: 409 });
+     }
+ 
+-    const authorizedPdfUrl = contract.contract_file_url;
++    const authorizedPdfUrl = await contractFileUrl(base44, contract.contract_file_url);
+     const head = await timedFetch(authorizedPdfUrl, { method: 'HEAD' }, 8000).catch((error) => {
+       if (error?.status === 408) throw error;
+       return null;
+@@ -258,6 +261,7 @@ export default async function(req) {
+       {
+         $set: {
+           status: 'SENT',
++          needs_resend: false,
+           dispatched_at: new Date().toISOString(),
+           last_dispatched_message_id: sentMessageId || null,
+           last_modified_by_user_id: user.id,

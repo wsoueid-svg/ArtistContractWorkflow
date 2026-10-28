@@ -1,0 +1,24 @@
+import React from 'react';
+import { CheckSquare2, Loader2 } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import { base44 } from '@/api/base44Client';
+import PageHeader from '@/components/shared/PageHeader';
+
+export default function AnalogTasks() {
+  const { data: user } = useQuery({ queryKey: ['me'], queryFn: () => base44.auth.me() });
+  const { data: tasks = [], isLoading, isError, refetch } = useQuery({
+    queryKey: ['my-open-tasks', user?.id],
+    queryFn: () => base44.entities.Task.filter({ assigned_to: user.id, status: { $in: ['todo', 'in_progress'] } }, 'due_date', 300),
+    enabled: Boolean(user?.id),
+  });
+  return <div className="space-y-4">
+    <PageHeader title="My Tasks" subtitle="Open Analog work assigned to you" />
+    <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+      {isLoading ? <div className="flex items-center justify-center gap-2 py-16 text-sm text-slate-600"><Loader2 className="h-4 w-4 animate-spin" />Loading tasks…</div>
+        : isError ? <div className="py-16 text-center"><p className="text-sm text-red-700">Could not load your tasks.</p><button type="button" onClick={() => refetch()} className="mt-3 min-h-11 rounded-lg border border-slate-200 px-4 text-sm font-medium text-slate-800">Retry</button></div>
+          : tasks.length === 0 ? <div className="py-16 text-center"><CheckSquare2 className="mx-auto h-6 w-6 text-slate-500" /><p className="mt-2 text-sm text-slate-600">No open tasks assigned to you.</p></div>
+          : <ul className="divide-y divide-slate-200">{tasks.map((task) => <li key={task.id} className="odd:bg-white even:bg-slate-50"><Link to={task.show_id ? `/analogshowdetail?id=${task.show_id}` : '/analog-tasks'} className="flex min-h-14 items-center justify-between gap-4 px-4 py-3 hover:bg-yellow-50"><div className="min-w-0"><p className="truncate text-sm font-medium text-slate-900">{task.title}</p><p className="mt-1 text-xs text-slate-600">{task.category || 'Other'}</p></div><span className="flex-shrink-0 text-xs tabular-nums text-slate-600">{task.due_date || 'No due date'}</span></Link></li>)}</ul>}
+    </section>
+  </div>;
+}

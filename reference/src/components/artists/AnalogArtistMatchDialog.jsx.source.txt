@@ -1,0 +1,85 @@
+import React from 'react';
+import { Button } from '@/components/ui/button';
+import { Music2, Calendar, MapPin, Link2 } from 'lucide-react';
+
+export default function AnalogArtistMatchDialog({ matchData, onClaim, onDecline, onCancel, isClaiming }) {
+  if (!matchData) return null;
+  const { matches, show_count, tour_count, formData } = matchData;
+  const match = matches[0];
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl max-w-lg w-full overflow-hidden shadow-2xl">
+        {/* Header */}
+        <div className="px-6 pt-6 pb-4 border-b border-gray-100">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-yellow-100 flex items-center justify-center flex-shrink-0">
+              <Link2 className="w-5 h-5 text-yellow-600" />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-black">Artist Found in Analog</h2>
+              <p className="text-sm text-gray-500">Link this artist to make their history visible in Elevate</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Body */}
+        <div className="px-6 py-5 space-y-4">
+          <p className="text-sm text-gray-600">
+            An artist named <span className="font-semibold text-black">"{match.name}"</span> already exists in the Analog org
+            with existing shows and tours. Would you like to claim this artist for Elevate?
+          </p>
+
+          {/* Match card */}
+          <div className="flex items-center gap-3 p-3 rounded-xl border-2 border-gray-200 bg-gray-50">
+            <div className="w-10 h-10 rounded-full bg-black flex items-center justify-center flex-shrink-0">
+              <Music2 className="w-5 h-5 text-yellow-400" />
+            </div>
+            <div className="min-w-0">
+              <p className="font-semibold text-black truncate">{match.stage_name || match.name}</p>
+              <p className="text-xs text-gray-500">Currently in Analog org</p>
+            </div>
+          </div>
+
+          {/* Stats */}
+          <div className="flex gap-3">
+            <div className="flex-1 flex items-center gap-2 p-3 rounded-xl bg-gray-50 border border-gray-200">
+              <Calendar className="w-4 h-4 text-gray-400 flex-shrink-0" />
+              <div>
+                <p className="text-lg font-bold text-black leading-none">{show_count}</p>
+                <p className="text-xs text-gray-500">Shows</p>
+              </div>
+            </div>
+            <div className="flex-1 flex items-center gap-2 p-3 rounded-xl bg-gray-50 border border-gray-200">
+              <MapPin className="w-4 h-4 text-gray-400 flex-shrink-0" />
+              <div>
+                <p className="text-lg font-bold text-black leading-none">{tour_count}</p>
+                <p className="text-xs text-gray-500">Tours</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="p-3 rounded-xl bg-blue-50 border border-blue-200">
+            <p className="text-xs text-blue-700">
+              Claiming will move this artist to Elevate. All {show_count} shows and {tour_count} tours will automatically
+              become visible in Elevate. The artist's profile will be enriched with the details you just entered.
+            </p>
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className="px-6 py-4 border-t border-gray-100 flex gap-3 justify-end">
+          <Button variant="outline" onClick={onCancel} disabled={isClaiming}>
+            Cancel
+          </Button>
+          <Button variant="ghost" onClick={onDecline} disabled={isClaiming} className="text-gray-600">
+            Create new instead
+          </Button>
+          <Button onClick={onClaim} disabled={isClaiming} className="bg-black text-yellow-400 hover:bg-gray-900">
+            {isClaiming ? 'Claiming…' : 'Claim Artist'}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}

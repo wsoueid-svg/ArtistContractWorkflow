@@ -1,0 +1,218 @@
+/**
+ * Shared print stylesheet for every Analog contract template.
+ *
+ * Consumed by base44/shared/contractTemplates/layout.ts and rendered to PDF by
+ * PDFShift (Chrome headless). All 5 templates (cidony, nysm, nysm-es, aesl-en,
+ * aesl-es) share this sheet so branding differences stay data-driven and the
+ * legal documents remain typographically identical.
+ *
+ * NOTE: PDFShift paginates with real Chrome, so @page + break-inside are honoured.
+ */
+export const CONTRACT_CSS = `
+  @page {
+    size: A4;
+    margin: 18mm 16mm 20mm 16mm;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    font-family: Helvetica, Arial, sans-serif;
+    font-size: 9pt;
+    line-height: 1.45;
+    color: #111111;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* ── Masthead ───────────────────────────────────────────── */
+  .masthead {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    border-bottom: 0.6pt solid #b4b4b4;
+    padding-bottom: 5pt;
+    margin-bottom: 14pt;
+  }
+  .masthead .wordmark {
+    font-size: 20pt;
+    font-weight: bold;
+    letter-spacing: -0.4pt;
+    color: #000000;
+  }
+  .masthead .doc-kind {
+    font-size: 11pt;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 0.6pt;
+    color: #3c3c3c;
+    text-align: right;
+  }
+
+  .doc-title {
+    text-align: right;
+    margin-bottom: 16pt;
+  }
+  .doc-title .headline {
+    font-size: 12.5pt;
+    font-weight: bold;
+  }
+  .doc-title .dated-label {
+    font-size: 8.5pt;
+    font-weight: bold;
+    margin-top: 5pt;
+  }
+  .doc-title .dated-value {
+    font-size: 9pt;
+  }
+
+  /* ── Sections ───────────────────────────────────────────── */
+  h2.section {
+    font-size: 10pt;
+    font-weight: bold;
+    margin: 14pt 0 5pt 0;
+    padding-bottom: 2pt;
+    border-bottom: 0.4pt solid #111111;
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+  p { margin: 0 0 6pt 0; text-align: justify; }
+  p.tight { margin-bottom: 3pt; }
+  .strong { font-weight: bold; }
+  .rule { border-top: 0.4pt solid #c8c8c8; margin: 10pt 0; }
+  .spacer { height: 8pt; }
+
+  /* ── Schedule key/value rows ────────────────────────────── */
+  .schedule-list {
+    margin: 4pt 0 8pt 10pt;
+  }
+  .schedule-row {
+    margin-bottom: 3pt;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .schedule-row .k {
+    font-weight: bold;
+    text-transform: uppercase;
+    font-size: 8.5pt;
+  }
+  .schedule-row .v { margin-left: 4pt; }
+
+  /* ── Payment table ──────────────────────────────────────── */
+  table.payments {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 8pt 0 10pt 0;
+    font-size: 7.8pt;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  table.payments thead th {
+    background: #f0f0f0;
+    border-bottom: 0.5pt solid #999999;
+    text-align: left;
+    font-weight: bold;
+    padding: 4pt 3pt;
+    white-space: nowrap;
+  }
+  table.payments tbody td {
+    border-bottom: 0.3pt solid #dcdcdc;
+    padding: 4pt 3pt;
+    vertical-align: top;
+  }
+  table.payments td.num, table.payments th.num {
+    text-align: right;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+  table.payments tfoot td {
+    padding: 3pt;
+    font-weight: bold;
+    border-top: 0.5pt solid #999999;
+  }
+
+  .totals {
+    width: 58%;
+    margin-left: auto;
+    border-collapse: collapse;
+    font-size: 8.5pt;
+    margin-bottom: 10pt;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .totals td { padding: 2.5pt 3pt; }
+  .totals td.label { font-weight: bold; }
+  .totals td.value {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  .totals tr.grand td {
+    border-top: 0.6pt solid #111111;
+    font-weight: bold;
+    font-size: 9.5pt;
+  }
+
+  /* ── Numbered clause lists ──────────────────────────────── */
+  ol.clauses {
+    margin: 4pt 0 0 0;
+    padding-left: 16pt;
+  }
+  ol.clauses > li {
+    margin-bottom: 6pt;
+    text-align: justify;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .rider-item {
+    margin-bottom: 9pt;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .rider-item .rider-label {
+    font-weight: bold;
+    text-transform: uppercase;
+    font-size: 8.8pt;
+    display: block;
+    margin-bottom: 2pt;
+  }
+  .rider-item .rider-body { white-space: pre-line; text-align: left; }
+
+  .notes-box {
+    border: 0.5pt solid #b4b4b4;
+    background: #fafafa;
+    padding: 7pt 8pt;
+    margin: 6pt 0 10pt 0;
+    white-space: pre-line;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* ── Signatures ─────────────────────────────────────────── */
+  .signatures {
+    margin-top: 22pt;
+    width: 100%;
+    border-collapse: collapse;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .signatures td {
+    width: 50%;
+    vertical-align: bottom;
+    padding-right: 18pt;
+  }
+  .signatures .party {
+    font-weight: bold;
+    font-size: 9pt;
+    margin-bottom: 34pt;
+  }
+  .signatures .sigline {
+    border-top: 0.6pt solid #111111;
+    padding-top: 3pt;
+    font-size: 8pt;
+  }
+
+  .page-break { break-before: page; page-break-before: always; }
+`;

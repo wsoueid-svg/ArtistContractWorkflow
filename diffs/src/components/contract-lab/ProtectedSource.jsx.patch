@@ -1,0 +1,14 @@
+diff --git a/src/components/contract-lab/ProtectedSource.jsx b/src/components/contract-lab/ProtectedSource.jsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..99f316c34887018b6a49fb96bd757d8d4fedcec5
+--- /dev/null
++++ b/src/components/contract-lab/ProtectedSource.jsx
+@@ -0,0 +1,7 @@
++import { LockKeyhole } from 'lucide-react';
++import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
++const explanations={heading:'Template title and banner. Change the selected template in the form.',parties:'Legal representation comes from the selected legal entity. Promoter details come from the form and linked CRM account.',event:'Event and performance details come from the Show. Update the Show deal or logistics, then review refreshed terms.',economics:'Amounts, taxes and payment schedule come from the Show deal and selected contract template. They cannot be changed in this document.',signatures:'Signatory names come from the form and the legal entity template. Return to Signatories to change the promoter signatory.','terms-heading':'The terms heading comes from the approved master template.'};
++export default function ProtectedSource({block}) {
++  const explanation=explanations[block.id]||'This content comes from the approved master template and cannot be edited here.';
++  return <TooltipProvider delayDuration={150}><Tooltip><TooltipTrigger asChild><button type="button" className="protected-source" aria-label={`Protected: ${explanation}`}><LockKeyhole className="h-3.5 w-3.5"/><span>Protected</span></button></TooltipTrigger><TooltipContent className="max-w-xs"><p>{explanation}</p></TooltipContent></Tooltip></TooltipProvider>;
++}
+\ No newline at end of file

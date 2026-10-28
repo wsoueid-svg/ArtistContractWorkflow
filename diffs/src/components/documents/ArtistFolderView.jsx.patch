@@ -1,0 +1,68 @@
+diff --git a/src/components/documents/ArtistFolderView.jsx b/src/components/documents/ArtistFolderView.jsx
+index f9921be36e900a7e2e95b4b6eea86ce6f5211734..9aacc7b46d3d265c2138f31c0cac11bea1461e8b 100644
+--- a/src/components/documents/ArtistFolderView.jsx
++++ b/src/components/documents/ArtistFolderView.jsx
+@@ -14,6 +14,7 @@ import {
+   AlertTriangle, Trash2, Plus, Loader2, Edit2, Check, X, Archive
+ } from 'lucide-react';
+ import ContractForm from '../contracts/ContractForm';
++import { saveContractRecord, deleteContractRecord } from '@/components/contracts/contractRecordApi';
+ import StageBadge from '../shared/StageBadge';
+ 
+ const TYPE_COLORS = {
+@@ -91,7 +92,7 @@ export default function ArtistFolderView({ artist, onBack }) {
+   });
+ 
+   const createContractMutation = useMutation({
+-    mutationFn: (data) => base44.entities.Contract.create(data),
++    mutationFn: (data) => saveContractRecord(data),
+     onSuccess: () => {
+       queryClient.invalidateQueries({ queryKey: ['contracts-artist', artist.id] });
+       queryClient.invalidateQueries({ queryKey: ['contracts'] });
+@@ -101,7 +102,7 @@ export default function ArtistFolderView({ artist, onBack }) {
+   });
+ 
+   const updateContractMutation = useMutation({
+-    mutationFn: ({ id, data }) => base44.entities.Contract.update(id, data),
++    mutationFn: ({ id, data }) => saveContractRecord(data, id),
+     onSuccess: () => {
+       queryClient.invalidateQueries({ queryKey: ['contracts-artist', artist.id] });
+       queryClient.invalidateQueries({ queryKey: ['contracts'] });
+@@ -111,7 +112,7 @@ export default function ArtistFolderView({ artist, onBack }) {
+   });
+ 
+   const deleteContractMutation = useMutation({
+-    mutationFn: (id) => base44.entities.Contract.delete(id),
++    mutationFn: (id) => deleteContractRecord(id),
+     onSuccess: () => {
+       queryClient.invalidateQueries({ queryKey: ['contracts-artist', artist.id] });
+       queryClient.invalidateQueries({ queryKey: ['contracts'] });
+@@ -146,8 +147,8 @@ export default function ArtistFolderView({ artist, onBack }) {
+ 
+   const handleContractSubmit = (data) => {
+     const payload = { ...data, artist_id: artist.id };
+-    if (editingContract) updateContractMutation.mutate({ id: editingContract.id, data: payload });
+-    else createContractMutation.mutate(payload);
++    if (editingContract) return updateContractMutation.mutateAsync({ id: editingContract.id, data: payload });
++    return createContractMutation.mutateAsync(payload);
+   };
+ 
+   const filtered = filterCategory === 'all'
+@@ -428,7 +429,7 @@ export default function ArtistFolderView({ artist, onBack }) {
+                       </p>
+                     </div>
+                     {contract.contract_file_url && (
+-                      <a href={contract.contract_file_url} target="_blank" rel="noopener noreferrer"
++                      <a href={`/contract-preview?contract=${encodeURIComponent(contract.id)}`} target="_blank" rel="noopener noreferrer"
+                         onClick={e => e.stopPropagation()}>
+                         <Button size="sm" variant="ghost" className="h-7 px-2 text-gray-500 hover:text-black">
+                           <ExternalLink className="w-3.5 h-3.5" />
+@@ -452,7 +453,7 @@ export default function ArtistFolderView({ artist, onBack }) {
+               artists={[artist]}
+               contacts={contacts}
+               onSubmit={handleContractSubmit}
+-              onDelete={(id) => { deleteContractMutation.mutate(id); setShowContractForm(false); setEditingContract(null); }}
++              onDelete={async id => { await deleteContractMutation.mutateAsync(id); setShowContractForm(false); setEditingContract(null); }}
+               onCancel={() => { setShowContractForm(false); setEditingContract(null); }}
+             />
+           </div>

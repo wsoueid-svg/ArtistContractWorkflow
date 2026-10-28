@@ -1,0 +1,68 @@
+// Supported currencies and formatting helpers
+export const SUPPORTED_CURRENCIES = [
+  { code: 'EUR', symbol: '€', label: 'Euro (€)' },
+  { code: 'USD', symbol: '$', label: 'US Dollar ($)' },
+  { code: 'GBP', symbol: '£', label: 'British Pound (£)' },
+];
+
+export const CURRENCY_SYMBOLS = { EUR: '€', USD: '$', GBP: '£' };
+
+export function getCurrencySymbol(code) {
+  return CURRENCY_SYMBOLS[code] || code || '€';
+}
+
+export function formatCurrency(amountCents, currencyCode) {
+  const symbol = getCurrencySymbol(currencyCode);
+  const cents = Number(amountCents || 0);
+  return `${symbol}${(cents / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+/** Format EUR amount — always with € prefix and 2 decimals */
+export function formatEur(amountCents) {
+  return formatCurrency(amountCents, 'EUR');
+}
+
+/**
+ * Gets the EUR-normalized amount for a record.
+ * Falls back to the native amount if amount_base_eur is not yet computed.
+ */
+export function getEurAmount(record, nativeField = 'amount', eurField = 'amount_base_eur') {
+  if (record[eurField] != null) return record[eurField];
+  // Fallback: if currency is EUR, native amount is already EUR
+  if ((record.currency || 'EUR') === 'EUR') return record[nativeField] || 0;
+  // Otherwise return 0 — rate not yet locked
+  return 0;
+}
+
+/**
+ * Sums EUR-normalized amounts from an array of records.
+ */
+export function sumEur(records, nativeField = 'amount', eurField = 'amount_base_eur') {
+  return records.reduce((sum, r) => sum + getEurAmount(r, nativeField, eurField), 0);
+}
+
+/**
+ * Groups an array of records by currency and sums amounts.
+ * Returns an array of { currency, total } sorted by total descending.
+ */
+export function sumByCurrency(records, amountField = 'amount', currencyField = 'currency') {
+  const map = {};
+  records.forEach(r => {
+    const cur = r[currencyField] || 'EUR';
+    map[cur] = (map[cur] || 0) + (r[amountField] || 0);
+  });
+  return Object.entries(map)
+    .map(([currency, total]) => ({ currency, total }))
+    .sort((a, b) => b.total - a.total);
+}
+
+/**
+ * Formats a multi-currency total for display.
+ * e.g. "€12,000.00 · $5,000.00 · £3,000.00"
+ */
+export function formatMultiCurrency(currencyTotals) {
+  return currencyTotals
+    .filter(ct => ct.total !== 0)
+    .map(ct => formatCurrency(ct.total, ct.currency))
+    .join(' · ');
+}

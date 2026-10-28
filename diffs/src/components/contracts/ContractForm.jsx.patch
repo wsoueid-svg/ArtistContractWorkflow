@@ -1,0 +1,92 @@
+diff --git a/src/components/contracts/ContractForm.jsx b/src/components/contracts/ContractForm.jsx
+index 0bc8de350de3a8f6fb30fadc48c41eb11a2eb780..f1fd0b91a6c4ef840f250ce315d3958dc9e90579 100644
+--- a/src/components/contracts/ContractForm.jsx
++++ b/src/components/contracts/ContractForm.jsx
+@@ -11,7 +11,8 @@ import {
+   SelectValue,
+ } from '@/components/ui/select';
+ import { X, FolderOpen, ExternalLink } from 'lucide-react';
+-import FileUploader from '../shared/FileUploader';
++import ContractPrivateUpload from '@/components/contracts/ContractPrivateUpload';
++import LegacyContractNotice from '@/components/contracts/LegacyContractNotice';
+ import CurrencySelect from '../shared/CurrencySelect';
+ 
+ export default function ContractForm({ contract, artists, contacts, onSubmit, onCancel, onDelete }) {
+@@ -38,15 +39,18 @@ export default function ContractForm({ contract, artists, contacts, onSubmit, on
+     }
+   );
+ 
+-  const handleSubmit = (e) => {
+-    e.preventDefault();
++  const [saveError,setSaveError]=useState(''),[submitting,setSubmitting]=useState(false);
++  const protectedRecord=contract&&(contract.show_id||contract.draft_id||contract.status!=='draft'||contract.immutable_at||contract.contract_hash||contract.dispatch_lock||contract.generation_lock);
++  if(protectedRecord)return <LegacyContractNotice contract={contract} onCancel={onCancel}/>;
++  const handleSubmit = async (e) => {
++    e.preventDefault();setSaveError('');setSubmitting(true);
+     const submitData = {
+       ...formData,
+       value: formData.value ? parseFloat(formData.value) : undefined,
+       commission_rate: formData.commission_rate ? parseFloat(formData.commission_rate) : undefined,
+       commission_amount: formData.commission_amount ? parseFloat(formData.commission_amount) : undefined,
+     };
+-    onSubmit(submitData);
++    try{await onSubmit(submitData);}catch(error){setSaveError(error?.response?.data?.error||error.message||'Could not save contract.');}finally{setSubmitting(false);}
+   };
+ 
+   return (
+@@ -144,12 +148,6 @@ export default function ContractForm({ contract, artists, contacts, onSubmit, on
+               </SelectTrigger>
+               <SelectContent>
+                 <SelectItem value="draft">Draft</SelectItem>
+-                <SelectItem value="requested">Requested</SelectItem>
+-                <SelectItem value="ready_to_send">Ready to Send</SelectItem>
+-                <SelectItem value="sent">Sent</SelectItem>
+-                <SelectItem value="signed">Signed</SelectItem>
+-                <SelectItem value="paid">Paid</SelectItem>
+-                <SelectItem value="cancelled">Cancelled</SelectItem>
+               </SelectContent>
+             </Select>
+           </div>
+@@ -226,7 +224,7 @@ export default function ContractForm({ contract, artists, contacts, onSubmit, on
+ 
+         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+           <div>
+-            <FileUploader
++            <ContractPrivateUpload
+               label="Contract File"
+               value={formData.contract_file_url || ''}
+               onChange={(url) => setFormData({ ...formData, contract_file_url: url })}
+@@ -235,7 +233,7 @@ export default function ContractForm({ contract, artists, contacts, onSubmit, on
+           </div>
+ 
+           <div>
+-            <FileUploader
++            <ContractPrivateUpload
+               label="Signed Contract"
+               value={formData.signed_contract_url || ''}
+               onChange={(url) => setFormData({ ...formData, signed_contract_url: url })}
+@@ -290,6 +288,7 @@ export default function ContractForm({ contract, artists, contacts, onSubmit, on
+           />
+         </div>
+ 
++        {saveError&&<p role="alert" className="text-sm text-destructive">{saveError}</p>}
+         <div className="flex justify-between items-center pt-4 border-t">
+           <div>
+             {contract && onDelete && (
+@@ -298,7 +297,7 @@ export default function ContractForm({ contract, artists, contacts, onSubmit, on
+                 variant="ghost"
+                 onClick={() => {
+                   if (confirm('Delete this contract? This cannot be undone.')) {
+-                    onDelete(contract.id);
++                    Promise.resolve(onDelete(contract.id)).catch(error=>setSaveError(error?.response?.data?.error||error.message));
+                   }
+                 }}
+                 className="text-red-500 hover:text-red-700 hover:bg-red-50"
+@@ -313,6 +312,7 @@ export default function ContractForm({ contract, artists, contacts, onSubmit, on
+             </Button>
+             <Button
+               type="submit"
++              disabled={submitting}
+               className="bg-yellow-400 text-black hover:bg-yellow-500 font-semibold"
+             >
+               {contract ? 'Update' : 'Create'}

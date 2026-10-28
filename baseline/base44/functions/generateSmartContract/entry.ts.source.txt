@@ -1,0 +1,471 @@
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
+import { assertShowAccess } from '../../shared/assertShowAccess.ts';
+import { getContractualSetWindow } from '../../shared/showTiming.ts';
+import { computeDealBreakdown, formatCents } from '../../shared/calcDeal.ts';
+import { fromCents, toCents } from '../../shared/dealCardTerms.ts';
+import { htmlToPdf } from '../../shared/pdfshift.ts';
+import {
+  renderContractDocument,
+  resolveTemplateKey,
+  buildPaymentClauses,
+  rowLabel,
+  TEMPLATE_KEYS,
+} from '../../shared/contractTemplates/index.ts';
+
+async function sha256Hex(bytes) {
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(digest)).map((value) => value.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * Analog — Artist Engagement Contract generator (PDFShift edition).
+ *
+ * Renders one of 5 branded HTML templates (cidony, nysm, nysm-es, aesl-en,
+ * aesl-es) and converts it to PDF with PDFShift. All deal economics come from
+ * the shared calcDeal engine so the contract and the invoices can never diverge.
+ *
+ * POST body:
+ *  {
+ *    show_id?: string,
+ *    contract_template_id: string,      // required unless smoke_test
+ *    template_key?: TemplateKey,        // optional explicit override
+ *    contract_notes?: string,           // persisted to Show.contract_notes
+ *    fields?: { ...ContractFillForm overrides... },
+ *    smoke_test?: boolean               // admin only: render all 5 with sample data
+ *  }
+ */
+export default async function(req) {
+  try {
+    const base44 = createClientFromRequest(req);
+    const user = await base44.auth.me();
+    if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+
+    const body = await req.json();
+
+    if (body?.smoke_test) {
+      if (user.role !== 'admin') return Response.json({ error: 'Forbidden' }, { status: 403 });
+      return await runSmokeTest(base44, body);
+    }
+
+    const { show_id, fields: rawFields, contract_template_id, contract_notes, force_amendment } = body;
+    if (!contract_template_id) return Response.json({ error: 'Contract template is required' }, { status: 400 });
+
+    // ── Immutability guard ───────────────────────────────────────────────────
+    // A contract that has left the building (SENT / RETURNED / SIGNED) must not be
+    // silently re-rendered against current LegalEntity data. Re-generation is only
+    // allowed as an explicit amendment.
+    let supersededContract = null;
+    let currentEditableContract = null;
+    if (show_id) {
+      const frozenStatuses = ['SENT', 'RETURNED', 'SIGNED'];
+      const [versionShow, priorContracts] = await Promise.all([
+        base44.asServiceRole.entities.Show.get(show_id).catch(() => null),
+        base44.asServiceRole.entities.Contract.filter({ show_id }, '-version_number', 100).catch(() => []),
+      ]);
+      const currentContract = priorContracts.find((contract) => contract.id === versionShow?.contract_id) || priorContracts[0] || null;
+      if (currentContract && frozenStatuses.includes(currentContract.status)) {
+        supersededContract = currentContract;
+        if (!force_amendment) {
+          return Response.json({
+            error: `This contract has already been ${String(currentContract.status).toLowerCase()} and is immutable. Create an amendment to issue a new version.`,
+            contract_status: currentContract.status,
+            contract_id: currentContract.id,
+          }, { status: 409 });
+        }
+      } else if (currentContract && ['draft', 'READY'].includes(currentContract.status)) {
+        currentEditableContract = currentContract;
+        if (currentContract.is_amendment && currentContract.supersedes_contract_id) {
+          supersededContract = priorContracts.find((contract) => contract.id === currentContract.supersedes_contract_id) || null;
+        }
+      }
+    }
+
+    const contractTemplate = await base44.asServiceRole.entities.ContractTemplate.get(contract_template_id).catch(() => null);
+    if (!contractTemplate?.legal_entity_id) {
+      return Response.json({ error: 'The selected contract template has no billing Legal Entity.' }, { status: 422 });
+    }
+    if (!contractTemplate.template_key) return Response.json({ error: 'The selected Contract Template has no document variant. Finance must assign its language/template key before use.' }, { status: 422 });
+    const legal_entity_id = contractTemplate.legal_entity_id;
+    const legalEntity = await base44.asServiceRole.entities.LegalEntity.get(legal_entity_id).catch(() => null);
+    if (!legalEntity) return Response.json({ error: 'The Legal Entity linked to this Contract Template was not found.' }, { status: 422 });
+
+    let accessibleShow = null;
+    let artist = null;
+    let contact = null;
+    let breakdown = null;
+    let autoFields = {};
+
+    if (show_id) {
+      const access = await assertShowAccess(base44, show_id, user);
+      const show = access.show;
+      accessibleShow = show;
+
+      if (show) {
+        const contactFk = show.contract_contact_id || show.client_contact_id || show.contact_id;
+        if (!contactFk) {
+          return Response.json({
+            error: 'Cannot generate contract: this show has no linked promoter Contact. Link a valid Contact to the show before generating legal documents.',
+          }, { status: 400 });
+        }
+        const [artistArr, contactArr] = await Promise.all([
+          show.artist_id ? base44.asServiceRole.entities.Artist.filter({ id: show.artist_id }) : Promise.resolve([]),
+          base44.asServiceRole.entities.Contact.filter({ id: contactFk }),
+        ]);
+        artist = artistArr[0] || null;
+        contact = contactArr[0] || null;
+        if (!contact) {
+          return Response.json({
+            error: 'Cannot generate contract: the linked promoter Contact no longer exists (orphaned reference). Re-link a valid Contact to this show before generating legal documents.',
+          }, { status: 400 });
+        }
+
+        const showCurrency = String(show.currency || legalEntity.default_currency || 'EUR').toUpperCase();
+        const selectedCurrency = String(rawFields?.currency || showCurrency).toUpperCase();
+        if (selectedCurrency !== showCurrency) {
+          return Response.json({ error: `Contract currency ${selectedCurrency} does not match the Show currency ${showCurrency}. Correct the Show Deal currency before generating.` }, { status: 422 });
+        }
+        const templateTerms = contractTemplate.default_terms || {};
+        breakdown = computeDealBreakdown({
+          show,
+          legalEntity,
+          contact,
+          depositPct: templateTerms.deposit_percentage ?? show.deposit_percentage,
+          balanceDueOffsetDays: templateTerms.balance_due_offset_days ?? show.balance_due_offset_days,
+        });
+
+        autoFields = {
+          contract_date: new Date().toISOString().split('T')[0],
+          company_name: contact.default_deal_terms?.legal_company_name || contact.company || contact.name || '',
+          company_address: [contact.default_deal_terms?.billing_address?.street || contact.billing_address?.street || contact.address, contact.default_deal_terms?.billing_address?.city || contact.billing_address?.city || contact.city, contact.default_deal_terms?.billing_address?.postal_code || contact.billing_address?.postal_code, contact.default_deal_terms?.billing_address?.country || contact.billing_address?.country || contact.country].filter(Boolean).join(', '),
+          company_vat: contact.vat_tax_id || '',
+          artist_name: artist?.name || '',
+          event_name: show.event_name || '',
+          venue: show.venue || '',
+          country: show.country || '',
+          date_of_show: show.date || '',
+          timing: getContractualSetWindow(show),
+          billing_requirements: show.offer_details?.exclusivity || 'A-Z',
+          billing_position: 'A-Z',
+          wht_rate: breakdown.whtRate,
+          currency: breakdown.currency,
+          company_signatory: contact.name || '',
+          agency_signatory: contractTemplate.agency_signatory_name || 'Luis Honrado',
+          contract_notes: show.contract_notes || '',
+        };
+      }
+    }
+
+    const entityFields = {
+      agency_name: legalEntity.name,
+      agency_address: [
+        legalEntity.registered_address?.street,
+        legalEntity.registered_address?.city,
+        legalEntity.registered_address?.postal_code,
+        legalEntity.registered_address?.country || legalEntity.country,
+      ].filter(Boolean).join(', '),
+      agency_rut: legalEntity.tax_id || '',
+      agency_signatory: contractTemplate.agency_signatory_name || 'Luis Honrado',
+    };
+
+    const submittedFields = Object.fromEntries(Object.entries(rawFields || {}).filter(([, value]) => value !== '' && value !== null && value !== undefined));
+    const f = { ...autoFields, ...submittedFields, ...entityFields };
+    if (contract_notes != null) f.contract_notes = contract_notes;
+
+    // ── Currency gate ────────────────────────────────────────────────────────
+    const allowedCurrencies = (Array.isArray(legalEntity.allowed_currencies) && legalEntity.allowed_currencies.length
+      ? legalEntity.allowed_currencies
+      : [legalEntity.default_currency || 'EUR']).map(value => String(value).toUpperCase());
+    const requestedCurrency = String(f.currency || accessibleShow?.currency || legalEntity.default_currency || 'EUR').toUpperCase();
+    if (!allowedCurrencies.includes(requestedCurrency)) {
+      return Response.json({ error: `Currency ${requestedCurrency} is not billable by entity ${legalEntity.name}` }, { status: 422 });
+    }
+    f.currency = requestedCurrency;
+
+    // ── Template resolution ──────────────────────────────────────────────────
+    const templateKey = contractTemplate.template_key;
+
+    // ── Payment schedule (calcDeal when a show exists, submitted fields otherwise)
+    const built = buildScheduleContext({ f, breakdown, templateKey });
+
+    const { html, footerHtml, lang } = renderContractDocument(templateKey, built.ctx);
+    const pdfBytes = await htmlToPdf(html, { footerHtml });
+    const contractHash = await sha256Hex(pdfBytes);
+
+    const fileName = `contract_${templateKey}_${String(f.artist_name || 'artist').replace(/\s+/g, '_')}_${String(f.event_name || 'event').replace(/[^a-zA-Z0-9]/g, '_')}.pdf`;
+    const file = new File([new Blob([pdfBytes], { type: 'application/pdf' })], fileName, { type: 'application/pdf' });
+    const { file_url } = await base44.asServiceRole.integrations.Core.UploadFile({ file });
+
+    let contractId = null;
+
+    if (show_id && file_url && accessibleShow) {
+      const existing = accessibleShow;
+      const patch = { contract_url: file_url, currency: f.currency };
+      if (f.contract_notes != null) patch.contract_notes = f.contract_notes;
+
+      if (legal_entity_id && existing.legal_entity_id !== legal_entity_id) {
+        const hardLocked = existing.status === 'completed' || !!existing.legal_entity_locked_at;
+        if (hardLocked) {
+          return Response.json({
+            error: 'This show is completed — its legal entity binding is locked and cannot be changed.',
+          }, { status: 409 });
+        }
+        patch.legal_entity_id = legal_entity_id;
+
+        await base44.asServiceRole.entities.ActivityLog.create({
+          timestamp: new Date().toISOString(),
+          action_type: existing.legal_entity_id ? 'Legal Entity Re-bound' : 'Legal Entity Bound',
+          actor_id: user.id,
+          actor_label: user.full_name || user.email || 'User',
+          affected_entity_type: 'Show',
+          affected_entity_id: show_id,
+          affected_entity_label: `${existing.event_name || 'Show'} — ${existing.date || ''}`,
+          result: 'Success',
+          metadata: {
+            previous_legal_entity_id: existing.legal_entity_id || null,
+            new_legal_entity_id: legal_entity_id,
+            new_legal_entity_name: legalEntity.name || null,
+            template_key: templateKey,
+            triggered_by: 'generateSmartContract',
+          },
+        }).catch(() => {});
+      }
+
+      await base44.asServiceRole.entities.Show.update(show_id, patch);
+
+      const existingContracts = await base44.asServiceRole.entities.Contract.filter({ show_id }).catch(() => []);
+      const templateTerms = contractTemplate.default_terms || {};
+      const contractPatch = {
+        artist_id: existing.artist_id || '',
+        show_id,
+        contact_id: existing.contract_contact_id || existing.client_contact_id || existing.contact_id || undefined,
+        contract_template_id,
+        template_key: templateKey,
+        legal_entity_id,
+        deposit_percentage: Number(breakdown?.depositPct ?? templateTerms.deposit_percentage ?? 50),
+        balance_due_offset_days: Number(breakdown?.balanceDueOffsetDays ?? templateTerms.balance_due_offset_days ?? 14),
+        title: `Contract — ${f.artist_name || 'Artist'} @ ${f.event_name || 'Event'}`,
+        type: contractTemplate.contract_type || 'show_agreement',
+        status: 'READY',
+        contract_file_url: file_url,
+        currency: f.currency || 'EUR',
+        value: breakdown ? fromCents(breakdown.dealValueCents) : undefined,
+        snapshot_artist_name: f.artist_name || '',
+        snapshot_event_name: f.event_name || '',
+        snapshot_show_date: f.date_of_show || undefined,
+        snapshot_venue_name: f.venue || '',
+        snapshot_promoter_name: f.company_name || '',
+        snapshot_promoter_address: f.company_address || '',
+        snapshot_promoter_vat: f.company_vat || '',
+        snapshot_agency_name: f.agency_name || '',
+        snapshot_agency_address: f.agency_address || '',
+        snapshot_agency_rut: f.agency_rut || '',
+        snapshot_currency: f.currency || 'EUR',
+        snapshot_guarantee_fee: breakdown ? breakdown.guaranteeCents : undefined,
+        snapshot_booking_fee: breakdown ? breakdown.bookingFeeCents : undefined,
+        snapshot_tax_rate: breakdown ? breakdown.vatRate : undefined,
+        snapshot_contract_notes: f.contract_notes || '',
+        snapshot_taken_at: new Date().toISOString(),
+        contract_hash: contractHash,
+        supersedes_contract_id: currentEditableContract?.supersedes_contract_id || supersededContract?.id || undefined,
+        version_number: currentEditableContract?.version_number || (supersededContract ? Number(supersededContract.version_number || 1) + 1 : 1),
+        is_amendment: Boolean(currentEditableContract?.is_amendment || supersededContract),
+        last_modified_by_user_id: user.id,
+        last_modified_at: new Date().toISOString(),
+      };
+
+      const editable = currentEditableContract;
+      if (editable) {
+        contractId = editable.id;
+        await base44.asServiceRole.entities.Contract.update(contractId, contractPatch);
+      } else {
+        const created = await base44.asServiceRole.entities.Contract.create(contractPatch);
+        contractId = created?.id || null;
+      }
+
+      if (contractId) {
+        await base44.asServiceRole.entities.Show.update(show_id, {
+          contract_id: contractId,
+          legal_entity_id,
+          deposit_percentage: Number(contractPatch.deposit_percentage),
+          balance_due_offset_days: Number(contractPatch.balance_due_offset_days),
+        });
+      }
+    }
+
+    return Response.json({
+      success: true,
+      file_url,
+      contract_id: contractId,
+      contract_template_id,
+      legal_entity_id,
+      template_key: templateKey,
+      language: lang,
+      warnings: breakdown?.warnings || [],
+      fields_used: f,
+    });
+  } catch (error) {
+    return Response.json({ error: error.message }, { status: error?.status || 500 });
+  }
+}
+
+/**
+ * Build the layout context: payment rows + totals + clauses.
+ * Uses the calcDeal breakdown when available, else the submitted form numbers.
+ */
+function buildScheduleContext(opts) {
+  const { f, breakdown, templateKey } = opts;
+  const currency = f.currency || 'EUR';
+  const lang = templateKey.endsWith('-es') ? 'es' : 'en';
+  const artistName = f.artist_name || 'Artist';
+  const agencyName = f.agency_name || 'Analog';
+  const money = (cents) => formatCents(cents, currency);
+  const dateOnly = (value) => (value ? String(value).split('T')[0] : '');
+
+  let rows = [];
+  let totals;
+  let depositPct = Number(f.advance_pct ?? 50);
+  let balancePct = Number(f.balance_pct ?? 50);
+
+  if (breakdown) {
+    depositPct = breakdown.depositPct;
+    balancePct = Math.max(0, 100 - breakdown.depositPct);
+
+    rows = breakdown.parts.map((part) => ({
+      label: rowLabel(lang, part.type, {
+        pct: part.type === 'DEPOSIT' ? depositPct : part.type === 'BALANCE' ? balancePct : undefined,
+        party: part.type === 'BOOKING_FEE' ? agencyName : artistName,
+      }),
+      due: dateOnly(part.dueDate),
+      subtotal: money(part.feeCents),
+      vat: money(part.vatAmountCents),
+      wht: money(part.whtCents),
+      total: money(part.cashCents),
+    }));
+
+    totals = {
+      subtotal: money(breakdown.subtotalCents),
+      vat: money(breakdown.vatAmountCents),
+      wht: money(breakdown.whtAmountCents),
+      grand: money(breakdown.totalPayableCents),
+    };
+  } else {
+    const bookingFeeCents = toCents(f.booking_fee);
+    const depositCents = toCents(f.advance_amount);
+    const balanceCents = toCents(f.balance_amount);
+    const zero = money(0);
+
+    if (bookingFeeCents > 0) {
+      rows.push({
+        label: rowLabel(lang, 'BOOKING_FEE', { party: agencyName }),
+        due: dateOnly(f.booking_fee_due),
+        subtotal: money(bookingFeeCents),
+        vat: zero,
+        wht: zero,
+        total: money(bookingFeeCents),
+      });
+    }
+    rows.push({
+      label: rowLabel(lang, 'DEPOSIT', { pct: depositPct, party: artistName }),
+      due: dateOnly(f.advance_due),
+      subtotal: money(depositCents),
+      vat: zero,
+      wht: zero,
+      total: money(depositCents),
+    });
+    rows.push({
+      label: rowLabel(lang, 'BALANCE', { pct: balancePct, party: artistName }),
+      due: dateOnly(f.balance_due),
+      subtotal: money(balanceCents),
+      vat: zero,
+      wht: zero,
+      total: money(balanceCents),
+    });
+
+    const subtotalCents = bookingFeeCents + depositCents + balanceCents;
+    totals = { subtotal: money(subtotalCents), vat: zero, wht: zero, grand: money(subtotalCents) };
+  }
+
+  const ctx = {
+    contractDate: f.contract_date || new Date().toISOString().split('T')[0],
+    companyName: f.company_name || '[COMPANY NAME]',
+    companyAddress: f.company_address || '[COMPANY ADDRESS]',
+    companyVat: f.company_vat || '[VAT]',
+    artistName,
+    agencyName,
+    agencyAddress: f.agency_address || '[AGENCY ADDRESS]',
+    agencyTaxId: f.agency_rut || '[TAX ID]',
+    eventName: f.event_name || '[EVENT NAME]',
+    venue: f.venue || '[VENUE]',
+    country: f.country || '[COUNTRY]',
+    dateOfShow: f.date_of_show || '[DATE]',
+    timing: f.timing || 'TBA',
+    billingRequirements: f.billing_requirements || 'A-Z',
+    billingPosition: f.billing_position || 'A-Z',
+    whtRate: f.wht_rate ?? 0,
+    rows,
+    totals,
+    paymentClauses: buildPaymentClauses(lang, {
+      depositPct,
+      balancePct,
+      depositMonth: f.deposit_month,
+      artistName,
+      templateKey,
+    }),
+    contractNotes: f.contract_notes || '',
+    companySignatory: f.company_signatory || '[SIGNATORY NAME]',
+    agencySignatory: f.agency_signatory || 'Luis Honrado',
+  };
+
+  return { ctx, lang };
+}
+
+/** Admin smoke test: render every template variant with representative data. */
+async function runSmokeTest(base44, body) {
+  const keys = Array.isArray(body.template_keys) && body.template_keys.length ? body.template_keys : TEMPLATE_KEYS;
+  const results = [];
+
+  for (const key of keys) {
+    const f = {
+      contract_date: new Date().toISOString().split('T')[0],
+      company_name: 'Smoke Test Promotions SL',
+      company_address: 'Calle Mayor 1, Madrid, 28013, Spain',
+      company_vat: 'ESB12345678',
+      artist_name: 'Smoke Test Artist',
+      agency_name: 'Analog',
+      agency_address: 'Ruta 10 s/n, km 185, Jose Ignacio, Uruguay',
+      agency_rut: 'RUT 216151090016',
+      event_name: 'PDFShift Smoke Test',
+      venue: 'Test Venue',
+      country: 'Spain',
+      date_of_show: '2026-12-31',
+      timing: '02:00 - 04:00',
+      wht_rate: 15,
+      currency: 'EUR',
+      booking_fee: 2000,
+      booking_fee_due: new Date().toISOString().split('T')[0],
+      advance_pct: 50,
+      advance_amount: 4000,
+      advance_due: new Date().toISOString().split('T')[0],
+      balance_pct: 50,
+      balance_amount: 4000,
+      balance_due: '2026-12-17',
+      deposit_month: 'December 2026',
+      company_signatory: 'Test Signatory',
+      agency_signatory: 'Luis Honrado',
+      contract_notes: 'Smoke test run — additional agreed terms render here.',
+    };
+
+    const built = buildScheduleContext({ f, breakdown: null, templateKey: key });
+    const { html, footerHtml } = renderContractDocument(key, built.ctx);
+    const pdfBytes = await htmlToPdf(html, { footerHtml });
+    const file = new File(
+      [new Blob([pdfBytes], { type: 'application/pdf' })],
+      `smoketest_${key}.pdf`,
+      { type: 'application/pdf' },
+    );
+    const { file_url } = await base44.asServiceRole.integrations.Core.UploadFile({ file });
+    results.push({ template_key: key, bytes: pdfBytes.byteLength, file_url });
+  }
+
+  return Response.json({ success: true, smoke_test: true, results });
+}

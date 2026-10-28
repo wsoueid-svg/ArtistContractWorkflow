@@ -1,0 +1,750 @@
+{
+  "name": "Show",
+  "type": "object",
+  "rls": {
+    "read": {
+      "$and": [
+        {
+          "user_condition": {
+            "data.is_active": true
+          }
+        },
+        {
+          "$or": [
+            {
+              "data.created_by_org_id": "{{user.data.active_org}}"
+            },
+            {
+              "data.shared_with_org": "{{user.data.active_org}}"
+            }
+          ]
+        }
+      ]
+    },
+    "create": {
+      "user_condition": {
+        "data.is_active": true
+      }
+    },
+    "update": {
+      "$and": [
+        {
+          "user_condition": {
+            "data.is_active": true
+          }
+        },
+        {
+          "$or": [
+            {
+              "data.created_by_org_id": "{{user.data.active_org}}"
+            },
+            {
+              "data.shared_with_org": "{{user.data.active_org}}"
+            }
+          ]
+        }
+      ]
+    },
+    "delete": {
+      "$and": [
+        {
+          "user_condition": {
+            "data.is_active": true
+          }
+        },
+        {
+          "$or": [
+            {
+              "data.created_by_org_id": "{{user.data.active_org}}"
+            },
+            {
+              "data.shared_with_org": "{{user.data.active_org}}"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "properties": {
+    "artist_id": {
+      "type": "string",
+      "indexed": true
+    },
+    "tour_id": {
+      "type": "string",
+      "indexed": true
+    },
+    "contact_id": {
+      "type": "string",
+      "indexed": true
+    },
+    "client_contact_id": {
+      "type": "string",
+      "indexed": true
+    },
+    "contract_contact_id": {
+      "type": "string",
+      "indexed": true
+    },
+    "invoice_contact_id": {
+      "type": "string",
+      "indexed": true
+    },
+    "contract_person_id": {
+      "type": "string",
+      "description": "Person key (lowercase email or name) within the Account's contact_persons chosen as contract signer."
+    },
+    "invoice_person_id": {
+      "type": "string",
+      "description": "Person key (lowercase email or name) within the Account's contact_persons chosen as invoice recipient."
+    },
+    "gmail_thread_id": {
+      "type": "string",
+      "indexed": true
+    },
+    "gmail_thread_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "indexed": true
+    },
+    "active_thread_id": {
+      "type": "string",
+      "indexed": true
+    },
+    "gmail_root_message_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "indexed": true
+    },
+    "legal_entity_id": {
+      "type": "string",
+      "indexed": true
+    },
+    "legal_entity_locked_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "responsible_agent_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "indexed": true
+    },
+    "logistics_agent_id": {
+      "type": "string",
+      "indexed": true
+    },
+    "logistics_agent_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "indexed": true,
+      "description": "A-2: Array of BookingAgent IDs assigned as logistics agents for this show. Gates contract dispatch \u2014 only these agents, the show creator, or Admin/Finance can dispatch. Backfilled from the singular logistics_agent_id field."
+    },
+    "event_name": {
+      "type": "string"
+    },
+    "venue": {
+      "type": "string"
+    },
+    "city": {
+      "type": "string"
+    },
+    "country": {
+      "type": "string"
+    },
+    "date": {
+      "type": "string",
+      "format": "date",
+      "indexed": true
+    },
+    "time": {
+      "type": "string"
+    },
+    "capacity": {
+      "type": "number"
+    },
+    "ticket_price": {
+      "type": "number"
+    },
+    "guarantee_fee": {
+      "type": "number"
+    },
+    "currency": {
+      "type": "string",
+      "enum": [
+        "EUR",
+        "USD",
+        "GBP"
+      ],
+      "default": "EUR"
+    },
+    "exchange_rate_locked": {
+      "type": "string"
+    },
+    "guarantee_fee_eur": {
+      "type": "number"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "confirmed",
+        "pending",
+        "cancelled",
+        "completed"
+      ],
+      "default": "pending",
+      "indexed": true
+    },
+    "flyer_url": {
+      "type": "string"
+    },
+    "flyer_approved": {
+      "type": "boolean",
+      "default": false
+    },
+    "visa_required": {
+      "type": "boolean",
+      "default": false
+    },
+    "visa_status": {
+      "type": "string",
+      "enum": [
+        "not_needed",
+        "pending",
+        "approved",
+        "denied"
+      ],
+      "default": "not_needed"
+    },
+    "data_source": {
+      "type": "string",
+      "enum": [
+        "elevate_owned",
+        "analog_push"
+      ],
+      "default": "elevate_owned",
+      "indexed": true
+    },
+    "created_by_org_id": {
+      "type": "string",
+      "indexed": true
+    },
+    "shared_with_org": {
+      "type": "string",
+      "indexed": true
+    },
+    "last_modified_by_org_id": {
+      "type": "string"
+    },
+    "last_modified_by_user_id": {
+      "type": "string"
+    },
+    "last_modified_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "aboss_id": {
+      "type": "string",
+      "indexed": true
+    },
+    "import_batch_id": {
+      "type": "string",
+      "indexed": true
+    },
+    "is_aboss_import": {
+      "type": "boolean",
+      "default": false
+    },
+    "is_locked": {
+      "type": "boolean",
+      "default": false
+    },
+    "raw_aboss_data": {
+      "type": "object"
+    },
+    "deal_type": {
+      "type": "string",
+      "enum": [
+        "flat_fee",
+        "guarantee",
+        "guarantee_plus",
+        "guarantee_vs",
+        "door_deal",
+        "landed"
+      ],
+      "default": "flat_fee"
+    },
+    "deal_card_notes": {
+      "type": "string"
+    },
+    "contract_notes": {
+      "type": "string",
+      "description": "Free-text clauses printed into the generated contract PDF under 'Additional Agreed Terms'. Editable from both the Show Drawer and the contract generation form."
+    },
+    "fee_structure": {
+      "type": "string"
+    },
+    "contractual_set_window": {
+      "type": "string",
+      "description": "Free-text legal set window for the contract (e.g. TBA, 02:00-04:00, Headline Slot). Exclusive source for ContractFillForm Timing/Set Window; decoupled from logistics.stage_time and timeline_events."
+    },
+    "gross_fee": {
+      "type": "number"
+    },
+    "deal_after_break": {
+      "type": "number"
+    },
+    "nett_fee": {
+      "type": "number"
+    },
+    "deal_vat_rate": {
+      "type": "number"
+    },
+    "deal_subject_to_vat": {
+      "type": "boolean",
+      "default": false
+    },
+    "deal_subject_to_wht": {
+      "type": "boolean",
+      "default": true
+    },
+    "deal_wht_base": {
+      "type": "string",
+      "enum": [
+        "gross_fee",
+        "gross_fee_minus_costs",
+        "gross_fee_minus_costs_minus_booking_fee"
+      ],
+      "default": "gross_fee"
+    },
+    "deposit_percentage": {
+      "type": "number",
+      "default": 50,
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Deposit percentage inherited from the selected ContractTemplate"
+    },
+    "balance_due_offset_days": {
+      "type": "number",
+      "default": 14,
+      "minimum": 0,
+      "description": "Days before show date when the balance invoice becomes due"
+    },
+    "deal_snapshot_source_contact_id": {
+      "type": "string"
+    },
+    "deal_snapshot_taken_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "commission_timing": {
+      "type": "string",
+      "enum": [
+        "after_wht",
+        "before_wht"
+      ],
+      "default": "after_wht"
+    },
+    "booking_fee_type": {
+      "type": "string",
+      "enum": [
+        "inclusive",
+        "exclusive"
+      ],
+      "default": "exclusive"
+    },
+    "booking_fee_amount_fixed": {
+      "type": "number"
+    },
+    "booking_fee_rate": {
+      "type": "number"
+    },
+    "commission_amount_fixed": {
+      "type": "number"
+    },
+    "commission_rate": {
+      "type": "number"
+    },
+    "withholding_tax_rate": {
+      "type": "number"
+    },
+    "wht_amount_fixed": {
+      "type": "number"
+    },
+    "due_to_booker": {
+      "type": "number"
+    },
+    "due_to_artist": {
+      "type": "number"
+    },
+    "logistics": {
+      "type": "object",
+      "properties": {
+        "flight_link": {
+          "type": "string"
+        },
+        "flight_data": {
+          "type": "object",
+          "properties": {
+            "date": {
+              "type": "string",
+              "format": "date"
+            },
+            "departure_time": {
+              "type": "string"
+            },
+            "arrival_time": {
+              "type": "string"
+            },
+            "departure_city": {
+              "type": "string"
+            },
+            "arrival_city": {
+              "type": "string"
+            },
+            "airline": {
+              "type": "string"
+            },
+            "flight_number": {
+              "type": "string"
+            },
+            "confirmation_number": {
+              "type": "string"
+            }
+          }
+        },
+        "hotel_link": {
+          "type": "string"
+        },
+        "hotel_data": {
+          "type": "object",
+          "properties": {
+            "check_in_date": {
+              "type": "string",
+              "format": "date"
+            },
+            "check_out_date": {
+              "type": "string",
+              "format": "date"
+            },
+            "hotel_name": {
+              "type": "string"
+            },
+            "address": {
+              "type": "string"
+            },
+            "confirmation_number": {
+              "type": "string"
+            }
+          }
+        },
+        "ground_transport": {
+          "type": "string"
+        },
+        "ground_transport_notes": {
+          "type": "string"
+        },
+        "load_in_time": {
+          "type": "string"
+        },
+        "sound_check_time": {
+          "type": "string"
+        },
+        "doors_time": {
+          "type": "string"
+        },
+        "stage_time": {
+          "type": "string"
+        },
+        "show_contacts": {
+          "type": "array",
+          "description": "Show-day points of contact (drivers, hotel managers, promoter reps, security). Free-text by default; crm_contact_id links the entry to the promoter Contact whose contact_persons array it was saved into.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "Client-generated UUID for stable list keys."
+              },
+              "name": {
+                "type": "string"
+              },
+              "role": {
+                "type": "string",
+                "enum": [
+                  "driver",
+                  "hotel_manager",
+                  "promoter_rep",
+                  "security",
+                  "venue_manager",
+                  "other"
+                ],
+                "default": "other"
+              },
+              "phone": {
+                "type": "string"
+              },
+              "whatsapp": {
+                "type": "string",
+                "description": "Only when it differs from phone."
+              },
+              "email": {
+                "type": "string"
+              },
+              "notes": {
+                "type": "string"
+              },
+              "crm_contact_id": {
+                "type": "string",
+                "description": "Promoter/venue Contact this person is filed under in the CRM. Null for free-text-only entries."
+              }
+            }
+          }
+        }
+      }
+    },
+    "timeline_events": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "load_in",
+              "sound_check",
+              "doors_open",
+              "support_act",
+              "artist_on_stage",
+              "set_end",
+              "curfew",
+              "travel",
+              "other"
+            ]
+          },
+          "time": {
+            "type": "string"
+          },
+          "notes": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "offer_details": {
+      "type": "object",
+      "properties": {
+        "bonus_extra": {
+          "type": "string"
+        },
+        "on_top": {
+          "type": "boolean",
+          "default": false
+        },
+        "on_top_amount": {
+          "type": "number"
+        },
+        "fro_set_time_artist": {
+          "type": "string"
+        },
+        "exclusivity": {
+          "type": "string",
+          "enum": [
+            "exclusive",
+            "non_exclusive",
+            "first_right_of_refusal"
+          ]
+        },
+        "exclusivity_radius_km": {
+          "type": "number"
+        },
+        "exclusivity_days_before": {
+          "type": "number"
+        },
+        "exclusivity_days_after": {
+          "type": "number"
+        }
+      }
+    },
+    "cost_items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "amount": {
+            "type": "number"
+          }
+        }
+      }
+    },
+    "contact_person": {
+      "type": "string"
+    },
+    "contact_email": {
+      "type": "string"
+    },
+    "contact_phone": {
+      "type": "string"
+    },
+    "notes": {
+      "type": "string"
+    },
+    "contract_url": {
+      "type": "string"
+    },
+    "contract_id": {
+      "type": "string"
+    },
+    "deal_card_url": {
+      "type": "string"
+    },
+    "invoice_id": {
+      "type": "string",
+      "indexed": true
+    },
+    "invoice_sent": {
+      "type": "boolean",
+      "default": false
+    },
+    "payment_received": {
+      "type": "boolean",
+      "default": false
+    },
+    "advance_paid": {
+      "type": "boolean",
+      "default": false
+    },
+    "booking_fee_paid": {
+      "type": "boolean",
+      "default": false
+    },
+    "dropbox_folder_url": {
+      "type": "string"
+    },
+    "dropbox_folder_id": {
+      "type": "string"
+    },
+    "documents_folder_path": {
+      "type": "string"
+    },
+    "ticket_link": {
+      "type": "string"
+    },
+    "marketing_status": {
+      "type": "string",
+      "enum": [
+        "not_started",
+        "requested",
+        "in_progress",
+        "approved",
+        "completed"
+      ],
+      "default": "not_started"
+    },
+    "marketing": {
+      "type": "object",
+      "properties": {
+        "announcement_datetime": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "announcement_ready": {
+          "type": "boolean",
+          "default": false
+        },
+        "ticket_link": {
+          "type": "string"
+        },
+        "copy_text": {
+          "type": "string"
+        },
+        "copy_status": {
+          "type": "string",
+          "enum": [
+            "pending",
+            "pending_approval",
+            "approved",
+            "rejected"
+          ],
+          "default": "pending"
+        },
+        "resident_advisor_link": {
+          "type": "string"
+        },
+        "artwork_approved": {
+          "type": "boolean",
+          "default": false
+        },
+        "artwork_proposal_count": {
+          "type": "number",
+          "default": 0
+        },
+        "promo_materials_submitted": {
+          "type": "boolean",
+          "default": false
+        },
+        "content_delivery_contact_name": {
+          "type": "string"
+        },
+        "content_delivery_contact_email": {
+          "type": "string"
+        },
+        "content_delivery_contact_phone": {
+          "type": "string"
+        },
+        "post_event_content_received": {
+          "type": "boolean",
+          "default": false
+        }
+      }
+    },
+    "google_calendar_event_id": {
+      "type": "string"
+    },
+    "ical_token": {
+      "type": "string"
+    },
+    "visa_file_url": {
+      "type": "string",
+      "description": "VS1: private file URI of the uploaded visa document (signed URL on download)."
+    },
+    "visa_file_name": {
+      "type": "string",
+      "description": "Original filename of the visa document, for display."
+    },
+    "advance_pop_url": {
+      "type": "string",
+      "description": "DC3: private file URI of the advance proof-of-payment."
+    },
+    "advance_pop_name": {
+      "type": "string",
+      "description": "Original filename of the proof-of-payment, for display."
+    },
+    "advance_pop_uploaded_by_id": {
+      "type": "string",
+      "description": "User who uploaded the proof-of-payment; always retains visibility."
+    },
+    "artist_facing_notes": {
+      "type": "string",
+      "description": "LA1: notes written for the artist \u2014 shown prominently in the artist portal and itinerary PDF."
+    }
+  },
+  "required": [
+    "artist_id",
+    "event_name",
+    "date"
+  ]
+}

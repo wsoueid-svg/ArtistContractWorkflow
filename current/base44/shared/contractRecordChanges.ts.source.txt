@@ -1,0 +1,16 @@
+import { AccessError } from './assertShowAccess.ts';
+const fields=['artist_id','contact_id','title','type','value','currency','commission_rate','commission_amount','start_date','end_date','renewal_date','contract_file_url','signed_contract_url','dropbox_folder_url','notes','payment_terms','payment_received'];
+export function assertLegacyDraft(record) {
+  if(record.show_id || record.draft_id || record.status!=='draft' || record.immutable_at || record.contract_hash || record.dispatch_lock || record.generation_lock) throw new AccessError('Issued, generated and show-linked contracts are read-only here. Use the show contract workflow.',409);
+}
+export function draftRecordPatch(data, prior=null) {
+  if(data.status && data.status!=='draft')throw new AccessError('Stages change only through dispatch, return and signature actions.',422);
+  const patch=Object.fromEntries(fields.filter(k=>data[k]!==undefined).map(k=>[k,data[k]]));
+  if(!String(patch.title||prior?.title||'').trim() || !(patch.artist_id||prior?.artist_id))throw new AccessError('Artist and title are required.',422);
+  for(const key of ['contract_file_url','signed_contract_url']) {
+    const value=patch[key];
+    if(value && value!==prior?.[key] && (/^https?:/i.test(value)||typeof value!=='string'))throw new AccessError('Upload a private document instead of attaching a public URL.',422);
+  }
+  for(const key of ['value','commission_rate','commission_amount'])if(patch[key]!=null&&(!Number.isFinite(Number(patch[key]))||Number(patch[key])<0))throw new AccessError('Contract amounts must be non-negative numbers.',422);
+  return {...patch,status:'draft'};
+}

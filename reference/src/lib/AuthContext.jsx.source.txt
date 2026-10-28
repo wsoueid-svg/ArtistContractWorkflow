@@ -1,0 +1,211 @@
+import React, { createContext, useState, useContext, useEffect } from 'react';
+import { base44 } from '@/api/base44Client';
+import { appParams } from '@/lib/app-params';
+import { createAxiosClient } from '@base44/sdk/dist/utils/axios-client';
+import { queryClientInstance } from '@/lib/query-client';
+import { isPortalRole } from '@/lib/portal/portalRoles';
+
+const AuthContext = createContext();
+
+// Module-level ref guard: the kill-switch must fire at most once per page load,
+// otherwise a failed navigation would loop.
+let deactivationHandled = false;
+
+/**
+ * Session kill-switch. A user whose access was revoked keeps a valid token, so
+ * the server still authenticates them — this drops every cached record from
+ * memory and parks them on the terminal /deactivated screen.
+ */
+const enforceDeactivation = () => {
+  if (deactivationHandled) return;
+  deactivationHandled = true;
+  try {
+    queryClientInstance.cancelQueries();
+    queryClientInstance.clear();
+  } catch (e) {
+    console.error('Failed to clear cached data on deactivation:', e);
+  }
+  if (window.location.pathname !== '/deactivated') {
+    window.location.replace('/deactivated');
+  }
+};
+
+export const AuthProvider = ({ children }) => {
+  const [user, setUser] = useState(null);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isLoadingAuth, setIsLoadingAuth] = useState(true);
+  const [isLoadingPublicSettings, setIsLoadingPublicSettings] = useState(true);
+  const [authError, setAuthError] = useState(null);
+  const [appPublicSettings, setAppPublicSettings] = useState(null); // Contains only { id, public_settings }
+  const [preferredLanguage, setPreferredLanguage] = useState('en');
+
+  useEffect(() => {
+    checkAppState();
+  }, []);
+
+  const checkAppState = async () => {
+    try {
+      setIsLoadingPublicSettings(true);
+      setAuthError(null);
+      
+      // First, check app public settings (with token if available)
+      // This will tell us if auth is required, user not registered, etc.
+      const appClient = createAxiosClient({
+        baseURL: `${appParams.serverUrl}/api/apps/public`,
+        headers: {
+          'X-App-Id': appParams.appId
+        },
+        token: appParams.token, // Include token if available
+        interceptResponses: true
+      });
+      
+      try {
+        const publicSettings = await appClient.get(`/prod/public-settings/by-id/${appParams.appId}`);
+        setAppPublicSettings(publicSettings);
+        
+        // If we got the app public settings successfully, check if user is authenticated
+        if (appParams.token) {
+          await checkUserAuth();
+        } else {
+          setIsLoadingAuth(false);
+          setIsAuthenticated(false);
+        }
+        setIsLoadingPublicSettings(false);
+      } catch (appError) {
+        console.error('App state check failed:', appError);
+        
+        // Handle app-level errors
+        if (appError.status === 403 && appError.data?.extra_data?.reason) {
+          const reason = appError.data.extra_data.reason;
+          if (reason === 'auth_required') {
+            setAuthError({
+              type: 'auth_required',
+              message: 'Authentication required'
+            });
+          } else if (reason === 'user_not_registered') {
+            setAuthError({
+              type: 'user_not_registered',
+              message: 'User not registered for this app'
+            });
+          } else {
+            setAuthError({
+              type: reason,
+              message: appError.message
+            });
+          }
+        } else {
+          setAuthError({
+            type: 'unknown',
+            message: appError.message || 'Failed to load app'
+          });
+        }
+        setIsLoadingPublicSettings(false);
+        setIsLoadingAuth(false);
+      }
+    } catch (error) {
+      console.error('Unexpected error:', error);
+      setAuthError({
+        type: 'unknown',
+        message: error.message || 'An unexpected error occurred'
+      });
+      setIsLoadingPublicSettings(false);
+      setIsLoadingAuth(false);
+    }
+  };
+
+  const checkUserAuth = async () => {
+    try {
+      // Now check if the user is authenticated
+      setIsLoadingAuth(true);
+      const currentUser = await base44.auth.me();
+
+      // Access revoked — stop here, wipe cached data, go to the terminal screen.
+      if (currentUser?.is_active === false) {
+        setIsLoadingAuth(false);
+        setIsAuthenticated(false);
+        enforceDeactivation();
+        return;
+      }
+
+      // First sign-in after an invitation: the User record has only just been
+      // created, so the recorded invitation (role, orgs, access type) is applied
+      // now. Skipped for everyone already marked accepted.
+      let effectiveUser = currentUser;
+      if (currentUser?.invite_status !== 'accepted') {
+        try {
+          const res = await base44.functions.invoke('claimInvitation', {});
+          if (res?.data?.claimed) {
+            effectiveUser = await base44.auth.me();
+          }
+        } catch (e) {
+          console.error('Invitation claim failed:', e);
+        }
+      }
+
+      setUser(effectiveUser);
+      setIsAuthenticated(true);
+      if (effectiveUser?.preferred_language === 'es' || effectiveUser?.preferred_language === 'en') {
+        setPreferredLanguage(effectiveUser.preferred_language);
+      }
+      setIsLoadingAuth(false);
+    } catch (error) {
+      console.error('User auth check failed:', error);
+      setIsLoadingAuth(false);
+      setIsAuthenticated(false);
+      
+      // If user auth fails, it might be an expired token
+      if (error.status === 401 || error.status === 403) {
+        setAuthError({
+          type: 'auth_required',
+          message: 'Authentication required'
+        });
+      }
+    }
+  };
+
+  const logout = (shouldRedirect = true) => {
+    setUser(null);
+    setIsAuthenticated(false);
+    
+    if (shouldRedirect) {
+      // Use the SDK's logout method which handles token cleanup and redirect
+      base44.auth.logout(window.location.href);
+    } else {
+      // Just remove the token without redirect
+      base44.auth.logout();
+    }
+  };
+
+  const navigateToLogin = () => {
+    // Use the SDK's redirectToLogin method
+    base44.auth.redirectToLogin(window.location.href);
+  };
+
+  return (
+    <AuthContext.Provider value={{ 
+      user, 
+      isAuthenticated, 
+      isLoadingAuth,
+      isLoadingPublicSettings,
+      authError,
+      appPublicSettings,
+      preferredLanguage,
+      // Routing airgap: artists and tour managers are confined to /portal — the
+      // staff router is never mounted for them.
+      isPortalUser: isPortalRole(user),
+      logout,
+      navigateToLogin,
+      checkAppState
+    }}>
+      {children}
+    </AuthContext.Provider>
+  );
+};
+
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
+};

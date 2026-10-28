@@ -1,0 +1,14 @@
+diff --git a/src/components/shared/StageBadge.jsx b/src/components/shared/StageBadge.jsx
+index 0e228b9c69b209fd8072be5eae1af5148fa6efa3..d738552e45f4644c8655969c1f8ff80dd4446c53 100644
+--- a/src/components/shared/StageBadge.jsx
++++ b/src/components/shared/StageBadge.jsx
+@@ -31,6 +31,9 @@ const STAGE_MAP = {
+   completed:    { label: 'Completed',    color: 'bg-gray-100  text-gray-600  border-gray-200',  glow: '' },
+ 
+   // Contract statuses
++  ready: { label: 'Ready', color: 'bg-purple-50 text-purple-600 border-purple-200', glow: '' },
++  dispatching: { label: 'Sending', color: 'bg-blue-50 text-blue-600 border-blue-200', glow: '' },
++  returned: { label: 'Returned', color: 'bg-orange-50 text-orange-700 border-orange-200', glow: '' },
+   draft:        { label: 'Draft',        color: 'bg-gray-100  text-gray-600  border-gray-200',  glow: '' },
+   requested:    { label: 'Requested',    color: 'bg-blue-50   text-blue-600  border-blue-200',  glow: 'glow-blue' },
+   ready_to_send:{ label: 'Ready',        color: 'bg-purple-50 text-purple-600 border-purple-200', glow: 'glow-purple' },

@@ -1,0 +1,91 @@
+{
+  "name": "ContractRedline",
+  "type": "object",
+  "properties": {
+    "show_id": {
+      "type": "string"
+    },
+    "contract_id": {
+      "type": "string"
+    },
+    "version_number": {
+      "type": "integer"
+    },
+    "file_uri": {
+      "type": "string"
+    },
+    "file_name": {
+      "type": "string"
+    },
+    "file_mime": {
+      "type": "string"
+    },
+    "file_size": {
+      "type": "integer"
+    },
+    "uploaded_by_id": {
+      "type": "string"
+    },
+    "uploaded_by_name": {
+      "type": "string"
+    },
+    "review_status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "reviewed",
+        "incorporated",
+        "declined"
+      ],
+      "default": "pending"
+    },
+    "review_notes": {
+      "type": "string"
+    },
+    "reviewed_by_id": {
+      "type": "string"
+    },
+    "reviewed_by_name": {
+      "type": "string"
+    },
+    "reviewed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "review_revision": {
+      "type": "integer",
+      "default": 0
+    }
+  },
+  "required": [
+    "show_id",
+    "contract_id",
+    "version_number",
+    "file_uri",
+    "file_name",
+    "uploaded_by_id",
+    "review_status"
+  ],
+  "rls": {
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

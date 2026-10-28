@@ -1,0 +1,34 @@
+const normalizedStatus = (invoice) => String(invoice?.status || '').toUpperCase();
+const isPaid = (invoice) => normalizedStatus(invoice) === 'PAID';
+const isEmitted = (invoice) => ['SENT', 'VIEWED', 'PARTIALLY PAID', 'OVERDUE', 'DISPUTED'].includes(normalizedStatus(invoice));
+
+const expectedInvoiceTypes = (show) => {
+  const deposit = Number(show.deposit_percentage ?? 50);
+  if (deposit <= 0) return [['BALANCE', 'FULL_FEE']];
+  if (deposit >= 100) return [['DEPOSIT', 'FULL_FEE']];
+  return [['DEPOSIT'], ['BALANCE']];
+};
+
+export const getInvoiceChaseStatus = (show, invoices = [], now = new Date()) => {
+  if (show.status === 'cancelled') return null;
+  const active = invoices.filter(invoice => !invoice.is_deleted);
+  const outstanding = active.filter(invoice => isEmitted(invoice) && !isPaid(invoice));
+  const today = now.toISOString().slice(0, 10);
+  if (outstanding.some(invoice => invoice.due_date && invoice.due_date.slice(0, 10) < today)) return 'overdue';
+  if (outstanding.length) return 'unpaid';
+  if (show.status !== 'confirmed') return null;
+  const emittedOrPaid = active.filter(invoice => isEmitted(invoice) || isPaid(invoice));
+  const missingExpected = expectedInvoiceTypes(show).some(group =>
+    !emittedOrPaid.some(invoice => group.includes(String(invoice.invoice_type || 'FULL_FEE').toUpperCase()))
+  );
+  return missingExpected ? 'pending' : null;
+};
+
+export const getInvoicePaymentStatus = (show, invoices = []) => {
+  if (show.status === 'cancelled') return 'cancelled';
+  if (!invoices.length) return 'not_invoiced';
+  const paid = invoices.filter(isPaid).length;
+  if (paid === invoices.length) return 'paid';
+  if (paid > 0 || invoices.some(invoice => normalizedStatus(invoice) === 'PARTIALLY PAID')) return 'partially_paid';
+  return invoices.some(isEmitted) ? 'invoiced' : 'not_invoiced';
+};

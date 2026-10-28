@@ -1,0 +1,35 @@
+3256361c5c94c1fa65f490f236dd21224d22605f 2026-10-13T21:38:08+00:00 Refactor contract draft and document generation system
+0decbbfccfb7936e892528a93dbb21e1797014d6 2026-10-13T21:51:41+00:00 Implement staging environment and contract draft features
+f672b7d7e837eb4dad6c4cb2c53397b923d4a120 2026-10-14T13:59:02+00:00 Update base44 packages
+c9a352ae87ec0375f008f0d395def67e0c2c7a9c 2026-10-14T14:06:41+00:00 Refactor contract draft and generation logic
+639566b3b6e8723da6bb10e536561f22cd7ca1f9 2026-10-14T14:22:10+00:00 File changes
+df6956ee0d06e082a42c275d874abff18a7cc897 2026-10-14T15:39:13+00:00 File changes
+7293de169eb030cd2d6bb18a15e717087abd1f12 2026-10-14T16:10:17+00:00 Update base44 packages
+f9dea4e80d1b887cbeb2a1dae6bd59db0e433c5b 2026-10-14T16:15:55+00:00 File changes
+b418d49e3348027c069e667b04bff78cf9614556 2026-10-14T16:20:05+00:00 File changes
+1c11fc06e19802c31a51c7a2f29738340d814d2d 2026-10-14T16:22:55+00:00 File changes
+b2d7a86b15ab6078fd811161a36273832af146ff 2026-10-14T16:46:29+00:00 File changes
+92e1f107a1cad32d82db26cb83046fadbad9d288 2026-10-14T17:15:03+00:00 File changes
+938ba733c72b5becc250f55d45cdafc45d1d0e30 2026-10-14T17:20:57+00:00 File changes
+e109f27daded86430093de9435bb901fc2ca548a 2026-10-16T11:09:57+00:00 Update base44 packages
+aaf1edfc7d760b931d9d7dff805384eca8574cf1 2026-10-16T11:35:56+00:00 Refactor promoter and contact handling logic
+5e21b553c67f576f7759899d62582c8205ad3f93 2026-10-27T15:12:59+00:00 Update base44 packages
+eb07e58a41c12b76ab222ba19075ff47bb7cbf0e 2026-10-27T16:38:47+00:00 Update error message for missing guarantee fee
+47cd5d6d163e73097898d30a6ed5ae5b87bcd562 2026-10-27T17:07:30+00:00 Enable venue and country editing within contract draft
+62311f5a3ae5c63f21017cfe5a682c99b416f8b8 2026-10-27T18:41:41+00:00 Implement PDF preview and download functionality
+e348de0bad8cd749b34b05f3edaefa09fc9b008c 2026-10-27T21:03:50+00:00 Add mobile zoom functionality to PDF viewer
+7430f4561fe5fc70dcf4bd5a5dd9f7af3168714b 2026-10-27T21:20:03+00:00 Merge branch 'b44/6ae0ee8deebec1515dcce9d5'
+3533818027f4cbd344542900f8cc047f9740964e 2026-10-27T22:39:35+00:00 Refactor contract redline and revision management system
+99eb3b690eb710beb0bde25cafd3cea3f875c0de 2026-10-27T22:48:24+00:00 Implement contract revision, redline, and locking features
+2e1bbf4dca61ac8996e769c2e2e4415a0f3de627 2026-10-28T01:17:02+00:00 Refactor contract management and audit logging system
+45131aef1c089d42811453a9e0e3e8388e63f17a 2026-10-28T07:54:12+00:00 Update base44 packages
+09111e0ebc268206a4c4ac3c58ff42b4a14bb506 2026-10-28T07:54:26+00:00 Approved file changes
+c4325087e186de69a94f76d95b1f6ae14bc655e5 2026-10-28T07:57:03+00:00 Update contract access and save logic
+a1f7eb2a5cf386be0f14de7207b41674fa35c768 2026-10-28T08:20:41+00:00 Update smart contract management and display logic
+c44b0a35a41f3e11aed469b4b24bd2fe4694e320 2026-10-28T08:29:17+00:00 Restrict contract access and audit log visibility
+9528cbe3de9084cbcc2323c66356b2ce6f212533 2026-10-28T11:41:09+00:00 File changes
+b493e72d06fb889a8a8772c7fdcbbbf40945b573 2026-10-28T11:43:24+00:00 File changes
+66182247a68b3ff898bd3c09c07df42b4a0bda6c 2026-10-28T11:45:57+00:00 File changes
+8b2b21685ae6d5cc23f2e75d98c79df9dded9cc9 2026-10-28T11:47:51+00:00 Update contract workflow documentation and navigation mapping
+ed0d5b08eb842ebc55a5fd68db118e087bf1771b 2026-10-28T12:38:00+00:00 Fix artist creation and cleanup test data
+ca8a6369782cbfd215db27bf23c98569daf09d2b 2026-10-28T12:58:22+00:00 Update base44 packages

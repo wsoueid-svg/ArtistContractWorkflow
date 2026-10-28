@@ -1,0 +1,74 @@
+{
+  "name": "Analog Advancing \u2014 Contract Milestones",
+  "description": "Creates the booking-fee draft for Analog contracts when sent and completes advancing tasks for later milestones.",
+  "trigger": {
+    "config": {
+      "trigger_type": "entity",
+      "entity_name": "Contract",
+      "events": [
+        "update"
+      ]
+    },
+    "condition": "${ (.trigger.data.show_id // \"\") != \"\" and (.trigger.data.created_by_org_id // \"\") == \"analog\" and ((.trigger.data.status // \"\") | IN(\"SENT\",\"RETURNED\",\"SIGNED\")) and (.trigger.changed_fields | index(\"status\") != null) }"
+  },
+  "definition": {
+    "document": {
+      "dsl": "1.0.0",
+      "name": "analog_advancing_contract_milestones",
+      "version": "1.2",
+      "namespace": "base44"
+    },
+    "do": [
+      {
+        "route_contract_status": {
+          "switch": [
+            {
+              "when": "${ .trigger.data.status == \"SENT\" }",
+              "then": "generate_booking_fee_draft"
+            },
+            {
+              "when": "${ true }",
+              "then": "sync_advancing_tasks"
+            }
+          ],
+          "x-base44": {
+            "title": "Route contract milestone",
+            "description": "Analog contracts only"
+          }
+        }
+      },
+      {
+        "generate_booking_fee_draft": {
+          "call": "invoke_backend_function",
+          "with": {
+            "function_name": "runAnalogContractMilestone",
+            "args": {
+              "show_id": "${ .trigger.data.show_id }"
+            }
+          },
+          "then": "sync_advancing_tasks",
+          "x-base44": {
+            "title": "Create booking-fee draft",
+            "description": "Secure workflow bridge"
+          }
+        }
+      },
+      {
+        "sync_advancing_tasks": {
+          "call": "invoke_backend_function",
+          "with": {
+            "function_name": "syncAnalogAdvancingTasks",
+            "args": {
+              "show_id": "${ .trigger.data.show_id }"
+            }
+          },
+          "then": "end",
+          "x-base44": {
+            "title": "Complete contract tasks",
+            "description": "Sync advancing milestones"
+          }
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,217 @@
+import React, { useState, useMemo } from 'react';
+import { base44 } from '@/api/base44Client';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { FileDown, Loader2, Pencil } from 'lucide-react';
+import { toast } from 'sonner';
+import { computeDealTerms, dealTypeLabel, dealTypeProvision, formatMoney } from '@/lib/dealCardTerms';
+import DealCardPreview from './DealCardPreview';
+import { getContractualSetWindow } from '@/lib/showTiming';
+
+/**
+ * Deal Card Preview & Dispatch.
+ * Instant client-side preview computed from Show + Contact + LogisticsEvent,
+ * with per-field overrides before server-side PDF generation.
+ */
+export default function DealCardModal({ show, artist, open, onClose, onGenerated }) {
+  const [editing, setEditing] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [fileUrl, setFileUrl] = useState(show?.deal_card_url || '');
+  const [contact, setContact] = useState(null);
+  const [logistics, setLogistics] = useState([]);
+  const [loaded, setLoaded] = useState(false);
+  const [ov, setOv] = useState({});
+
+  // Load promoter contact + normalized logistics when the modal opens
+  React.useEffect(() => {
+    if (!open || !show?.id || loaded) return;
+    let mounted = true;
+    const contactId = show.client_contact_id || show.contact_id;
+    Promise.all([
+      contactId ? base44.entities.Contact.filter({ id: contactId }) : Promise.resolve([]),
+      base44.entities.LogisticsEvent.filter({ show_id: show.id }),
+    ]).then(([c, l]) => {
+      if (!mounted) return;
+      setContact(c[0] || null);
+      setLogistics(l || []);
+      setLoaded(true);
+    });
+    return () => { mounted = false; };
+  }, [open, show?.id, show?.client_contact_id, show?.contact_id, loaded]);
+
+  const base = useMemo(() => {
+    const addr = [
+      contact?.billing_address?.street || contact?.address,
+      contact?.billing_address?.city || contact?.city,
+      contact?.billing_address?.postal_code,
+      contact?.billing_address?.country || contact?.country,
+    ].filter(Boolean).join(', ');
+
+    return {
+      promoter_name: contact?.default_deal_terms?.legal_company_name || contact?.company || contact?.name || '',
+      promoter_vat: contact?.vat_tax_id || '',
+      promoter_address: addr,
+      promoter_contact_person: show?.contact_person || contact?.name || '',
+      promoter_email: show?.contact_email || contact?.email || '',
+      promoter_phone: show?.contact_phone || contact?.phone || '',
+      event_name: show?.event_name || '',
+      venue: show?.venue || '',
+      city: show?.city || '',
+      country: show?.country || '',
+      date: show?.date || '',
+      set_time: getContractualSetWindow(show),
+      capacity: show?.capacity || '',
+      currency: show?.currency || 'EUR',
+      guarantee_fee: show?.guarantee_fee || 0,
+      booking_fee: show?.booking_fee_amount_fixed
+        || (show?.booking_fee_rate ? Math.round((show?.guarantee_fee || 0) * show.booking_fee_rate / 100) : 0),
+      booking_fee_type: show?.booking_fee_type || 'exclusive',
+      deposit_pct: 50,
+      deposit_due: '',
+      balance_due: '',
+      deal_type: show?.deal_type || '',
+      notes: show?.deal_card_notes || show?.notes || '',
+    };
+  }, [show, contact]);
+
+  const f = { ...base, ...ov };
+  const terms = computeDealTerms({
+    guarantee: f.guarantee_fee,
+    bookingFee: f.booking_fee,
+    bookingFeeType: f.booking_fee_type,
+    depositPct: f.deposit_pct,
+  });
+
+  const set = (k) => (e) => setOv((p) => ({ ...p, [k]: e.target.value }));
+
+  const generate = async () => {
+    setGenerating(true);
+    try {
+      const res = await base44.functions.invoke('generateDealCard', {
+        show_id: show.id,
+        overrides: { ...ov, currency: f.currency, notes: f.notes, deposit_pct: Number(f.deposit_pct) },
+        view: 'artist',
+      });
+      const data = res?.data || res;
+      if (data?.error) throw new Error(data.error);
+      setFileUrl(data.file_url);
+      toast.success('Deal card generated');
+      onGenerated?.(data.file_url);
+    } catch (err) {
+      toast.error(err.message || 'Failed to generate deal card');
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const field = (key, label, type = 'text') => (
+    <div className="space-y-1">
+      <Label className="text-xs text-slate-500">{label}</Label>
+      <Input
+        type={type}
+        value={f[key] ?? ''}
+        onChange={set(key)}
+        className="h-11 text-sm"
+      />
+    </div>
+  );
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose?.()}>
+      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto p-0">
+        <DialogHeader className="px-6 pt-6 pb-4 border-b border-slate-200">
+          <DialogTitle className="text-lg font-bold">Deal Card — Preview &amp; Dispatch</DialogTitle>
+          <p className="text-xs text-slate-500">
+            {artist?.stage_name || artist?.name} · {f.event_name || 'Untitled event'}
+          </p>
+        </DialogHeader>
+
+        <div className="px-6 py-5 space-y-4">
+          {!loaded ? (
+            <div className="py-16 flex items-center justify-center text-slate-400">
+              <Loader2 className="w-5 h-5 animate-spin" />
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-slate-500">
+                  Artist-facing view — deal value only, no commissions or tax.
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-11 gap-1.5 text-xs"
+                  onClick={() => setEditing((v) => !v)}
+                >
+                  <Pencil className="w-3.5 h-3.5" />
+                  {editing ? 'Done editing' : 'Override fields'}
+                </Button>
+              </div>
+
+              {editing && (
+                <div className="border border-slate-200 rounded-xl p-4 space-y-4 bg-slate-50/60">
+                  <div className="grid sm:grid-cols-2 gap-3">
+                    {field('promoter_name', 'Promoter / Client')}
+                    {field('promoter_vat', 'VAT / Tax ID')}
+                    {field('promoter_address', 'Billing Address')}
+                    {field('promoter_contact_person', 'Contact Person')}
+                    {field('venue', 'Venue')}
+                    {field('set_time', 'Set Time')}
+                    {field('guarantee_fee', 'Guarantee Fee', 'number')}
+                    {field('booking_fee', 'Booking Fee', 'number')}
+                    {field('deposit_pct', 'Deposit %', 'number')}
+                    {field('deposit_due', 'Deposit Due')}
+                    {field('balance_due', 'Balance Due')}
+                    {field('currency', 'Currency')}
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-slate-500">Deal Card Notes</Label>
+                    <Textarea
+                      value={f.notes || ''}
+                      onChange={set('notes')}
+                      rows={3}
+                      className="text-sm"
+                    />
+                  </div>
+                </div>
+              )}
+
+              <DealCardPreview
+                f={f}
+                terms={terms}
+                logistics={logistics}
+                show={show}
+                dealLabel={dealTypeLabel(f.deal_type)}
+                provision={dealTypeProvision(f.deal_type)}
+                money={(c) => formatMoney(c, f.currency)}
+              />
+            </>
+          )}
+        </div>
+
+        <div className="px-6 py-4 border-t border-slate-200 flex items-center justify-between gap-3">
+          {fileUrl ? (
+            <a
+              href={fileUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-blue-600 hover:underline font-medium"
+            >
+              Download last generated PDF
+            </a>
+          ) : <span />}
+          <div className="flex items-center gap-2">
+            <Button variant="outline" className="h-11" onClick={onClose}>Close</Button>
+            <Button className="h-11 gap-2" onClick={generate} disabled={generating || !loaded}>
+              {generating ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileDown className="w-4 h-4" />}
+              Generate PDF
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}

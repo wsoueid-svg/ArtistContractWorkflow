@@ -1,0 +1,287 @@
+{
+  "name": "Artist",
+  "type": "object",
+  "rls": {
+    "read": {
+      "$and": [
+        {
+          "user_condition": {
+            "data.is_active": true
+          }
+        },
+        {
+          "$or": [
+            {
+              "data.created_by_org_id": "{{user.data.active_org}}"
+            },
+            {
+              "data.shared_with_org": "{{user.data.active_org}}"
+            }
+          ]
+        }
+      ]
+    },
+    "create": {
+      "user_condition": {
+        "data.is_active": true
+      }
+    },
+    "update": {
+      "$and": [
+        {
+          "user_condition": {
+            "data.is_active": true
+          }
+        },
+        {
+          "$or": [
+            {
+              "data.created_by_org_id": "{{user.data.active_org}}"
+            },
+            {
+              "data.shared_with_org": "{{user.data.active_org}}"
+            }
+          ]
+        }
+      ]
+    },
+    "delete": {
+      "$and": [
+        {
+          "user_condition": {
+            "data.is_active": true
+          }
+        },
+        {
+          "data.created_by_org_id": "{{user.data.active_org}}"
+        }
+      ]
+    }
+  },
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Artist name"
+    },
+    "stage_name": {
+      "type": "string"
+    },
+    "bio": {
+      "type": "string"
+    },
+    "photo_url": {
+      "type": "string"
+    },
+    "press_kit_url": {
+      "type": "string"
+    },
+    "org": {
+      "type": "string",
+      "enum": [
+        "analog",
+        "elevate",
+        "both"
+      ],
+      "default": "elevate",
+      "indexed": true,
+      "description": "Org ownership: 'analog' = Analog-owned (ABOSS stubs), 'elevate' = Elevate-owned, 'both' = shared across orgs"
+    },
+    "created_by_org_id": {
+      "type": "string",
+      "indexed": true,
+      "description": "Org ID of the tenant that created this artist record. Used by RLS to restrict access to the owning org."
+    },
+    "shared_with_org": {
+      "type": "string",
+      "indexed": true,
+      "description": "Denormalized ACL projection from OrgArtistAccess \u2014 the org (other than created_by_org_id) granted cross-org access to this artist. RLS reads this field natively."
+    },
+    "genres": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "social_media": {
+      "type": "object",
+      "properties": {
+        "instagram": {
+          "type": "string"
+        },
+        "facebook": {
+          "type": "string"
+        },
+        "twitter": {
+          "type": "string"
+        },
+        "tiktok": {
+          "type": "string"
+        },
+        "spotify": {
+          "type": "string"
+        },
+        "youtube": {
+          "type": "string"
+        }
+      }
+    },
+    "contact_info": {
+      "type": "object",
+      "properties": {
+        "email": {
+          "type": "string"
+        },
+        "phone": {
+          "type": "string"
+        },
+        "emergency_contact": {
+          "type": "string"
+        },
+        "emergency_phone": {
+          "type": "string"
+        }
+      }
+    },
+    "preferences": {
+      "type": "object",
+      "properties": {
+        "dietary": {
+          "type": "string"
+        },
+        "hotel_preferences": {
+          "type": "string"
+        },
+        "transportation_notes": {
+          "type": "string"
+        },
+        "technical_rider": {
+          "type": "string"
+        }
+      }
+    },
+    "frequent_flyer": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "airline": {
+            "type": "string"
+          },
+          "number": {
+            "type": "string"
+          },
+          "tier": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "manager_id": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "inactive",
+        "on_tour",
+        "in_studio",
+        "archived"
+      ],
+      "default": "active"
+    },
+    "archived_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "contract_end_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "dropbox_folder_url": {
+      "type": "string"
+    },
+    "dropbox_folder_id": {
+      "type": "string"
+    },
+    "documents_folder_path": {
+      "type": "string"
+    },
+    "marketing_template": {
+      "type": "object"
+    },
+    "approval_settings": {
+      "type": "object",
+      "properties": {
+        "default_approver_id": {
+          "type": "string"
+        },
+        "whatsapp_approval": {
+          "type": "boolean",
+          "default": false
+        },
+        "whatsapp_number": {
+          "type": "string"
+        },
+        "reminder_days_before_show": {
+          "type": "number",
+          "default": 7
+        }
+      }
+    },
+    "primary_label_id": {
+      "type": "string"
+    },
+    "associated_label_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "ical_feed_token": {
+      "type": "string"
+    },
+    "gcal_channel_id": {
+      "type": "string"
+    },
+    "gcal_resource_id": {
+      "type": "string"
+    },
+    "gcal_channel_expiry": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "google_calendar_id": {
+      "type": "string"
+    },
+    "google_calendar_name": {
+      "type": "string"
+    },
+    "google_calendar_linked_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "aboss_id": {
+      "type": "string",
+      "description": "aBoss project/artist name used as import key",
+      "indexed": true
+    },
+    "import_batch_id": {
+      "type": "string",
+      "description": "Import batch id of the run that created this stub artist. Enables full rollback via revertImport.",
+      "indexed": true
+    },
+    "is_aboss_import": {
+      "type": "boolean",
+      "default": false,
+      "description": "True if this is a stub artist auto-created during aBoss import (legacy proxy for org affiliation \u2014 use 'org' field instead)"
+    },
+    "raw_aboss_data": {
+      "type": "object",
+      "description": "Raw data from aBoss import"
+    }
+  },
+  "required": [
+    "name"
+  ]
+}

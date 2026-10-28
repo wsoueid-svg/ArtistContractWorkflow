@@ -1,0 +1,8 @@
+import { base44 } from '@/api/base44Client';
+export async function saveContractRecord(data,id=null) {
+  return (await base44.functions.invoke('manageContractRecord',{action:'save',id,data,expected_updated_date:data.updated_date})).data;
+}
+export async function deleteContractRecord(id) {
+  const record=await base44.entities.Contract.get(id);
+  return (await base44.functions.invoke('manageContractRecord',{action:'delete',id,expected_updated_date:record.updated_date})).data;
+}

@@ -1,0 +1,218 @@
+/**
+ * Shared contract document layout.
+ *
+ * Every one of the 5 templates renders through this single builder: branding and
+ * language are injected as data (brand + pack), never forked into copies of the
+ * markup. This is what guarantees the cidony / nysm / nysm-es / aesl-en / aesl-es
+ * editions stay structurally identical.
+ */
+import { CONTRACT_CSS } from './styles.ts';
+
+export function esc(value: unknown) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/** Bold-marks **text** and preserves author line breaks. */
+function rich(value: unknown) {
+  return esc(value).replace(/\*\*(.+?)\*\*/g, '<span class="strong">$1</span>');
+}
+
+export type ContractBrand = {
+  key: string;
+  wordmark: string;
+  signatureParty: string;
+  footerLines: string[];
+};
+
+export type ContractPack = {
+  lang: 'en' | 'es';
+  labels: Record<string, string>;
+  preamble: string;
+  whtClause: string;
+  whtProof: string;
+  billingNote: string;
+  paymentTail: string[];
+  vatNote: string;
+  transferNote: string;
+  expensesIntro: string;
+  expenseItems: string[];
+  terms: string[];
+  rider: Array<[string, string]>;
+  billingPositionSentence: (artist: string, position: string) => string;
+};
+
+export type ContractRow = {
+  label: string;
+  due: string;
+  subtotal: string;
+  vat: string;
+  wht: string;
+  total: string;
+};
+
+export type ContractContext = {
+  contractDate: string;
+  companyName: string;
+  companyAddress: string;
+  companyVat: string;
+  artistName: string;
+  agencyName: string;
+  agencyAddress: string;
+  agencyTaxId: string;
+  eventName: string;
+  venue: string;
+  country: string;
+  dateOfShow: string;
+  timing: string;
+  billingRequirements: string;
+  billingPosition: string;
+  whtRate: number | string;
+  rows: ContractRow[];
+  totals: { subtotal: string; vat: string; wht: string; grand: string };
+  paymentClauses: string[];
+  contractNotes?: string;
+  companySignatory: string;
+  agencySignatory: string;
+};
+
+export function buildFooterHtml(brand: ContractBrand) {
+  return `<div style="font-family:Helvetica,Arial,sans-serif;font-size:6.5pt;color:#787878;text-align:center;width:100%;">
+    ${brand.footerLines.map(line => `<div>${esc(line)}</div>`).join('')}
+    <div style="margin-top:2pt;">{{page}} / {{total}}</div>
+  </div>`;
+}
+
+export function buildContractHtml(opts: {
+  brand: ContractBrand;
+  pack: ContractPack;
+  ctx: ContractContext;
+}) {
+  const { brand, pack, ctx } = opts;
+  const L = pack.labels;
+
+  const scheduleRow = (k: string, v: string) =>
+    `<div class="schedule-row"><span class="k">${esc(k)}</span><span class="v">${esc(v)}</span></div>`;
+
+  const paymentRows = ctx.rows.map(row => `
+      <tr>
+        <td>${esc(row.label)}</td>
+        <td>${esc(row.due)}</td>
+        <td class="num">${esc(row.subtotal)}</td>
+        <td class="num">${esc(row.vat)}</td>
+        <td class="num">${esc(row.wht)}</td>
+        <td class="num">${esc(row.total)}</td>
+      </tr>`).join('');
+
+  const notesBlock = ctx.contractNotes && String(ctx.contractNotes).trim()
+    ? `<h2 class="section">${esc(L.notesHeading)}</h2>
+       <div class="notes-box">${esc(ctx.contractNotes)}</div>`
+    : '';
+
+  return `<!DOCTYPE html>
+<html lang="${pack.lang}">
+<head>
+  <meta charset="utf-8" />
+  <title>${esc(L.headline)} — ${esc(ctx.artistName)}</title>
+  <style>${CONTRACT_CSS}</style>
+</head>
+<body>
+
+  <div class="masthead">
+    <div class="wordmark">${esc(brand.wordmark)}</div>
+    <div class="doc-kind">${esc(L.docKind)}</div>
+  </div>
+
+  <div class="doc-title">
+    <div class="headline">${esc(L.headline)}</div>
+    <div class="dated-label">${esc(L.dated)}</div>
+    <div class="dated-value">${esc(ctx.contractDate)}</div>
+  </div>
+
+  <h2 class="section">${esc(L.between)}</h2>
+  <p>${esc(ctx.companyName)} — ${esc(ctx.companyAddress)} — ${esc(ctx.companyVat)}</p>
+
+  <h2 class="section">${esc(L.and)}</h2>
+  <p>${esc(ctx.artistName)}, c/o ${esc(ctx.agencyName)} — ${esc(ctx.agencyAddress)} (${esc(ctx.agencyTaxId)}).</p>
+
+  <p>${esc(pack.preamble)}</p>
+
+  <div class="rule"></div>
+
+  <h2 class="section">${esc(L.schedule)}</h2>
+  <p class="tight">${esc(L.scheduleIntro)}</p>
+  <div class="schedule-list">
+    ${scheduleRow(L.eventName, ctx.eventName)}
+    ${scheduleRow(L.venueCountry, `${ctx.venue}, ${ctx.country}`)}
+    ${scheduleRow(L.dates, ctx.dateOfShow)}
+    ${scheduleRow(L.timing, ctx.timing)}
+    ${scheduleRow(L.billing, ctx.billingRequirements)}
+  </div>
+
+  <p>${esc(pack.billingPositionSentence(ctx.artistName, ctx.billingPosition))}</p>
+  <p>${esc(pack.billingNote)}</p>
+
+  <p class="strong tight">${esc(L.whtHeading)}</p>
+  <p>${esc(pack.whtClause)} — ${esc(ctx.whtRate)}%.</p>
+  <p>${esc(pack.whtProof)}</p>
+
+  <p class="strong tight">${esc(L.considerationHeading)}</p>
+  <p class="tight">${esc(ctx.agencyName)} — ${esc(ctx.agencyAddress)} — ${esc(ctx.agencyTaxId)}</p>
+
+  <table class="payments">
+    <thead>
+      <tr>
+        <th>${esc(L.colDescription)}</th>
+        <th>${esc(L.colDue)}</th>
+        <th class="num">${esc(L.colSubtotal)}</th>
+        <th class="num">${esc(L.colVat)}</th>
+        <th class="num">${esc(L.colWht)} ${esc(ctx.whtRate)}%</th>
+        <th class="num">${esc(L.colTotal)}</th>
+      </tr>
+    </thead>
+    <tbody>${paymentRows}</tbody>
+  </table>
+
+  <table class="totals">
+    <tr><td class="label">${esc(L.totalSubtotal)}</td><td class="value">${esc(ctx.totals.subtotal)}</td></tr>
+    <tr><td class="label">${esc(L.totalVat)}</td><td class="value">${esc(ctx.totals.vat)}</td></tr>
+    <tr><td class="label">${esc(L.totalWht)}</td><td class="value">- ${esc(ctx.totals.wht)}</td></tr>
+    <tr class="grand"><td class="label">${esc(L.totalGrand)}</td><td class="value">${esc(ctx.totals.grand)}</td></tr>
+  </table>
+
+  ${ctx.paymentClauses.map(clause => `<p class="tight">${rich(clause)}</p>`).join('')}
+  ${pack.paymentTail.map(clause => `<p>${esc(clause)}</p>`).join('')}
+  <p class="strong">${esc(pack.vatNote)}</p>
+  <p>${rich(pack.transferNote)}</p>
+
+  <p class="strong tight">${esc(pack.expensesIntro)}</p>
+  ${pack.expenseItems.map(item => `<p class="tight strong">${esc(item)}</p>`).join('')}
+
+  ${notesBlock}
+
+  <h2 class="section">${esc(L.terms)}</h2>
+  <ol class="clauses">
+    ${pack.terms.map(term => `<li>${esc(term)}</li>`).join('')}
+  </ol>
+
+  <p>${esc(L.signatureIntro)}</p>
+
+  <table class="signatures">
+    <tr>
+      <td>
+        <div class="party">${esc(ctx.companyName)}</div>
+        <div class="sigline">${esc(ctx.companySignatory)}</div>
+      </td>
+      <td>
+        <div class="party">${esc(brand.signatureParty)}</div>
+        <div class="sigline">${esc(ctx.agencySignatory)}</div>
+      </td>
+    </tr>
+  </table>
+
+</body>
+</html>`;
+}

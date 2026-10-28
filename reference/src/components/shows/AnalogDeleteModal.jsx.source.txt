@@ -1,0 +1,56 @@
+import React from 'react';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { AlertTriangle } from 'lucide-react';
+
+/**
+ * Intercept modal shown when an Elevate user attempts to delete a show
+ * that was created by Analog-A (data_source === 'analog_push').
+ *
+ * Options:
+ *  - "Hide from my view"  → creates a ShowOrgVisibility record (Elevate unlink)
+ *  - "Cancel"             → dismisses, no action
+ */
+export default function AnalogDeleteModal({ open, onClose, onHide, isLoading }) {
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-gray-900">
+            <AlertTriangle className="w-5 h-5 text-amber-500 flex-shrink-0" />
+            Show booked by Analog-A
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-4 py-2">
+          <p className="text-sm text-gray-600 leading-relaxed">
+            This show was booked by <strong>Analog-A</strong>. Deleting it will only hide it from your view —
+            Analog-A's booking record will be fully preserved.
+          </p>
+
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800">
+            Analog-A will not be notified and their show data remains intact.
+          </div>
+
+          <div className="flex flex-col gap-2 pt-2">
+            <Button
+              onClick={onHide}
+              disabled={isLoading}
+              className="w-full bg-black text-white hover:bg-gray-900"
+            >
+              {isLoading ? 'Hiding…' : 'Hide from my view'}
+            </Button>
+            <Button variant="outline" onClick={onClose} disabled={isLoading} className="w-full">
+              Cancel
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}

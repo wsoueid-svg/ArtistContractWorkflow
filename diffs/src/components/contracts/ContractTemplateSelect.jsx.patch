@@ -1,0 +1,22 @@
+diff --git a/src/components/contracts/ContractTemplateSelect.jsx b/src/components/contracts/ContractTemplateSelect.jsx
+index d264049283b089b1262b9a6e0ea434a30dff4107..de52746cb1df98e878d28f00df4e901e02f41cae 100644
+--- a/src/components/contracts/ContractTemplateSelect.jsx
++++ b/src/components/contracts/ContractTemplateSelect.jsx
+@@ -1,4 +1,4 @@
+-import React, { useEffect, useState } from 'react';
++import { useEffect, useState } from 'react';
+ import { base44 } from '@/api/base44Client';
+ import { Label } from '@/components/ui/label';
+ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+@@ -20,9 +20,9 @@ export default function ContractTemplateSelect({ value, onSelect, disabled }) {
+ 
+   return (
+     <div className="space-y-1.5">
+-      <Label className="text-xs font-semibold text-gray-700">Contract Template *</Label>
++      <Label htmlFor="contract-template-choice" className="text-xs font-semibold text-gray-700">Contract Template *</Label>
+       <Select value={value || ''} onValueChange={(id) => onSelect(readyTemplates.find((item) => item.id === id))} disabled={disabled || loading || readyTemplates.length === 0}>
+-        <SelectTrigger><SelectValue placeholder={loading ? 'Loading templates…' : 'Select the billing entity template'} /></SelectTrigger>
++        <SelectTrigger id="contract-template-choice" aria-label="Contract template"><SelectValue placeholder={loading ? 'Loading templates…' : 'Select the billing entity template'} /></SelectTrigger>
+         <SelectContent>
+           {readyTemplates.map((template) => <SelectItem key={template.id} value={template.id}>{template.name}</SelectItem>)}
+         </SelectContent>

@@ -1,0 +1,23 @@
+export const escapeText = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+export const textOf = html => new DOMParser().parseFromString(html || '', 'text/html').body.textContent || '';
+export const formatTime = value => value ? new Intl.DateTimeFormat('en-GB', {dateStyle:'medium', timeStyle:'short', timeZone:'Europe/Madrid'}).format(new Date(/Z|[+-]\d\d:\d\d$/.test(value) ? value : value+'Z')) + ' Madrid' : 'Not recorded';
+export const lockedBlock = block => ['protected','economics'].includes(block?.kind);
+export const appendixTitle = block => { const match=block.rich_text.match(/^<p><strong>Appendix: ([\s\S]*?)<\/strong><\/p>/);return match?textOf(match[1]):block.master?'Additional agreed terms':'Untitled appendix'; };
+export function renameAppendix(block, title) {
+  const body = block.rich_text.replace(/^<p><strong>Appendix: [\s\S]*?<\/strong><\/p>/, '');
+  return {...block, rich_text:`<p><strong>Appendix: ${escapeText(title)}</strong></p>${body}`};
+}
+export function wordChanges(before, after) {
+  const a=textOf(before).match(/\S+\s*/g)||[], b=textOf(after).match(/\S+\s*/g)||[];
+  if(a.length*b.length>1000000) return [{type:'removed',text:a.join('')},{type:'inserted',text:b.join('')}];
+  const rows=Array.from({length:a.length+1},()=>new Uint16Array(b.length+1));
+  for(let i=a.length-1;i>=0;i--) for(let j=b.length-1;j>=0;j--) rows[i][j]=a[i]===b[j]?rows[i+1][j+1]+1:Math.max(rows[i+1][j],rows[i][j+1]);
+  const parts=[];let i=0,j=0;
+  const add=(type,text)=>{const last=parts.at(-1);if(last?.type===type)last.text+=text;else parts.push({type,text});};
+  while(i<a.length||j<b.length) {
+    if(i<a.length&&j<b.length&&a[i]===b[j]){add('same',a[i++]);j++;}
+    else if(j<b.length&&(i===a.length||rows[i][j+1]>=rows[i+1][j]))add('inserted',b[j++]);
+    else add('removed',a[i++]);
+  }
+  return parts;
+}

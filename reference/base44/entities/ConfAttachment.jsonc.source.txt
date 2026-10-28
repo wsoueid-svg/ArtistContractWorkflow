@@ -1,0 +1,66 @@
+{
+  "name": "ConfAttachment",
+  "type": "object",
+  "rls": {
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  },
+  "properties": {
+    "dedupe_key": {
+      "type": "string",
+      "indexed": true,
+      "unique": true
+    },
+    "conf_thread_id": {
+      "type": "string",
+      "indexed": true
+    },
+    "conf_message_id": {
+      "type": "string",
+      "indexed": true
+    },
+    "mailbox_owner_user_id": {
+      "type": "string",
+      "indexed": true
+    },
+    "display_name": {
+      "type": "string"
+    },
+    "mime_type": {
+      "type": "string"
+    },
+    "size_bytes": {
+      "type": "number"
+    },
+    "file_uri": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "dedupe_key",
+    "conf_thread_id",
+    "conf_message_id",
+    "mailbox_owner_user_id",
+    "display_name",
+    "mime_type",
+    "file_uri"
+  ]
+}

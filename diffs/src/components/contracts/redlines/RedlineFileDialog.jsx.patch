@@ -1,0 +1,18 @@
+diff --git a/src/components/contracts/redlines/RedlineFileDialog.jsx b/src/components/contracts/redlines/RedlineFileDialog.jsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..4295634358c1edf5e1884bba3a517e8e26981f99
+--- /dev/null
++++ b/src/components/contracts/redlines/RedlineFileDialog.jsx
+@@ -0,0 +1,11 @@
++import { useEffect, useState } from 'react';
++import { base44 } from '@/api/base44Client';
++import { Button } from '@/components/ui/button';
++import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
++import contractError from '@/components/contract-lab/contractErrors';
++export default function RedlineFileDialog({record,onClose}) {
++  const [url,setUrl]=useState(''),[error,setError]=useState('');
++  useEffect(()=>{let active=true,objectUrl; (async()=>{try{const {data}=await base44.functions.invoke('contractRedlines',{action:'file',show_id:record.show_id,redline_id:record.id});const response=await fetch(data.signed_url);if(!response.ok)throw new Error('Could not open the returned file.');objectUrl=URL.createObjectURL(await response.blob());if(active)setUrl(objectUrl);}catch(e){if(active)setError(contractError(e));}})();return()=>{active=false;if(objectUrl)URL.revokeObjectURL(objectUrl);};},[record.id,record.show_id]);
++  const download=()=>{const link=document.createElement('a');link.href=url;link.download=record.file_name;document.body.appendChild(link);link.click();link.remove();};
++  return <Dialog open onOpenChange={open=>{if(!open)onClose();}}><DialogContent className="flex max-h-[90dvh] max-w-4xl flex-col overflow-hidden"><DialogHeader><DialogTitle className="break-all pr-6">{record.file_name}</DialogTitle><DialogDescription>Promoter redline • version {record.version_number} • reference only, not an approved contract.</DialogDescription></DialogHeader>{error?<p role="alert" className="text-destructive">{error}</p>:!url?<p role="status">Opening private file…</p>:<>{record.file_mime==='application/pdf'?<iframe title="Returned promoter redline" src={url} className="h-[60dvh] w-full rounded border border-border"/>:<p className="text-sm text-muted-foreground">Download this DOCX document to review tracked changes in your document editor.</p>}<Button onClick={download}>Download returned file</Button></>}</DialogContent></Dialog>;
++}
+\ No newline at end of file

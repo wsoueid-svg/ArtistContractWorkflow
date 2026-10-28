@@ -1,0 +1,94 @@
+diff --git a/src/components/analog/show-detail/AnalogContractTab.jsx b/src/components/analog/show-detail/AnalogContractTab.jsx
+index 183ad3e793ae4df1d1f312d0349a494d6449c842..2fcf7f9f5c8b5b71c2fdeb709e7ff08810fa2d90 100644
+--- a/src/components/analog/show-detail/AnalogContractTab.jsx
++++ b/src/components/analog/show-detail/AnalogContractTab.jsx
+@@ -1,53 +1,42 @@
+-import React, { useState } from 'react';
+-import { useQuery, useQueryClient } from '@tanstack/react-query';
++import { useState } from 'react';
++import { useNavigate } from 'react-router-dom';
++import contractPreviewUrl from '@/components/contracts/contractPreviewUrl';
++import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
+ import { Upload } from 'lucide-react';
+ import { base44 } from '@/api/base44Client';
+ import { Button } from '@/components/ui/button';
+-import GenerateContractButton from '@/components/shows/GenerateContractButton';
+ import UploadContractModal from '@/components/shows/UploadContractModal';
++import GenerateDealCardButton from '@/components/shows/GenerateDealCardButton';
+ import ContractSignatureControl from '@/components/contracts/ContractSignatureControl';
+-import DealStatusBadge from '@/components/shared/DealStatusBadge';
+-import ContractHistory from './ContractHistory';
+-import DetailPanel from './DetailPanel';
++import ContractHistory from '@/components/analog/show-detail/ContractHistory';
++import DetailPanel from '@/components/analog/show-detail/DetailPanel';
+ import { getContractualSetWindow } from '@/lib/showTiming';
+-
+-export default function AnalogContractTab({ show, artist }) {
+-  const [uploadOpen, setUploadOpen] = useState(false);
+-  const queryClient = useQueryClient();
+-  const { data: contracts = [] } = useQuery({ queryKey: ['show-contracts', show.id], queryFn: () => base44.entities.Contract.filter({ show_id: show.id }, '-created_date'), enabled: !!show.id });
+-  const current = contracts.find(item => item.id === show.contract_id) || contracts[0] || null;
+-  const refresh = () => { queryClient.invalidateQueries({ queryKey: ['show', show.id] }); queryClient.invalidateQueries({ queryKey: ['show-contracts', show.id] }); };
+-  return (
+-    <div className="space-y-0 md:space-y-4">
+-      <DetailPanel>
+-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+-          <div>
+-            <h2 className="font-semibold text-slate-900">Contract workflow</h2>
+-            <p className="mt-1 text-[13px] text-slate-500 sm:text-sm">Generate, dispatch, upload, and sign the legal show agreement.</p>
+-          </div>
+-          <div className="flex flex-wrap gap-2">
+-            <Button variant="outline" onClick={() => setUploadOpen(true)} className="min-h-[44px]"><Upload className="h-4 w-4" />Upload version</Button>
+-            <GenerateContractButton show={{ ...show, artist_name: artist?.stage_name || artist?.name }} contractId={show.contract_id} contract={current} />
+-          </div>
+-        </div>
+-        <div className="mt-4 border-t border-slate-200 pt-4">
+-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Contractual Set Window</p>
+-          <p className="mt-1 text-[13px] tabular-nums text-slate-700 sm:text-sm">{getContractualSetWindow(show)}</p>
+-        </div>
+-        {current && (
+-          <div className="mt-5 flex flex-wrap items-center gap-3 border-t border-slate-200 pt-4">
+-            <DealStatusBadge kind="contract" status={current.status} size="sm" />
+-            <span className="text-[13px] text-slate-700 sm:text-sm">{current.title}</span>
+-            {current.contract_file_url && <a href={current.contract_file_url} target="_blank" rel="noreferrer" className="inline-flex min-h-[44px] items-center text-[13px] text-blue-700 underline sm:text-sm">View current PDF</a>}
+-            <ContractSignatureControl contract={current} onChange={refresh} />
+-          </div>
+-        )}
+-      </DetailPanel>
+-      <DetailPanel>
+-        <h2 className="mb-4 font-semibold text-slate-900">Version &amp; status history</h2>
+-        <ContractHistory contracts={contracts} />
+-      </DetailPanel>
+-      <UploadContractModal show={show} open={uploadOpen} onClose={() => setUploadOpen(false)} onSaved={refresh} />
+-    </div>
+-  );
++import CurrentRevisionCard from '@/components/contract-lab/CurrentRevisionCard';
++import ContractEditorModal from '@/components/contract-lab/ContractEditorModal';
++import RevisionDocumentView from '@/components/contract-lab/RevisionDocumentView';
++import documentValidation from '@/components/contract-lab/documentValidation';
++import contractError from '@/components/contract-lab/contractErrors';
++import ContractRedlines from '@/components/contracts/redlines/ContractRedlines';
++import refreshContractWorkspace from '@/components/contracts/refreshContractWorkspace';
++export default function AnalogContractTab({show,artist}) {
++  const [uploadOpen,setUploadOpen]=useState(false),[modal,setModal]=useState(null),[view,setView]=useState(null),[busy,setBusy]=useState(false),[actionError,setActionError]=useState('');
++  const queryClient=useQueryClient(),navigate=useNavigate();
++  const revisions=useInfiniteQuery({queryKey:['contract-revisions',show.id],initialPageParam:null,queryFn:async({pageParam})=>(await base44.functions.invoke('getContractRevisionView',{show_id:show.id,cursor:pageParam})).data,getNextPageParam:last=>last.has_more?last.next_cursor:undefined,enabled:!!show.id,retry:false});
++  const first=revisions.data?.pages[0],current=first?.current,draft=first?.draft,contracts=revisions.data?.pages.flatMap(p=>p.items)||[];
++  const refresh=()=>refreshContractWorkspace(queryClient,show.id);
++  const enriched={...show,artist_name:artist?.stage_name||artist?.name};
++  const edit=d=>{setActionError('');setModal({draftId:d?.id||null,forceAmendment:!!d?.parent_draft_id});};
++  const generate=async d=>{
++    setBusy(true);setActionError('');
++    try{const {data}=await base44.functions.invoke('getContractDraft',{show_id:show.id,draft_id:d.id,force_amendment:!!d.parent_draft_id});if(data.draft.status!=='approved'||data.draft.browser_dirty||documentValidation(data.draft).length){edit(d);return;}const result=await base44.functions.invoke('generateSmartContract',{show_id:show.id,draft_id:d.id,contract_template_id:data.draft.template_id,expected_content_hash:data.draft.content_hash,force_amendment:!!data.draft.parent_draft_id});refresh();navigate(contractPreviewUrl(result.data.contract_id,show.id));}
++    catch(e){setActionError(contractError(e));}finally{setBusy(false);}
++  };
++  return <div className="space-y-4">{revisions.isLoading?<p role="status" className="p-5 text-sm text-muted-foreground">Loading revisions…</p>:revisions.error?<p role="alert" className="p-5 text-sm text-destructive">{contractError(revisions.error)}</p>:<CurrentRevisionCard show={enriched} current={current} draft={draft} onEdit={edit} onGenerate={generate} onAmend={c=>setModal({cloneId:c.id})} onChanged={refresh} busy={busy} error={actionError}/>}
++    <DetailPanel><div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-sm font-semibold">Contractual set window</h2><p className="mt-1 text-sm tabular-nums text-muted-foreground">{getContractualSetWindow(show)}</p></div><div className="flex flex-wrap gap-2">{!current&&<Button variant="outline" onClick={()=>setUploadOpen(true)}><Upload className="h-4 w-4"/>Upload existing PDF</Button>}<GenerateDealCardButton show={enriched}/></div></div>{current&&<details className="mt-4 border-t border-border"><summary className="flex min-h-11 cursor-pointer items-center text-sm text-muted-foreground">Record a received signature</summary><ContractSignatureControl contract={current} onChange={refresh}/></details>}</DetailPanel>
++    {current&&<ContractRedlines showId={show.id} contractId={current.id} readOnly={current.status==='SIGNED'}/>}
++    <DetailPanel><h2 className="mb-2 text-base font-semibold">Revision history</h2><ContractHistory contracts={contracts} currentId={current?.id} onView={setView} hasMore={revisions.hasNextPage} onLoadMore={()=>revisions.fetchNextPage()} loadingMore={revisions.isFetchingNextPage}/></DetailPanel>
++    {modal&&<ContractEditorModal key={`${modal.draftId||'new'}-${modal.cloneId||''}`} show={enriched} open onClose={()=>setModal(null)} draftId={modal.draftId} cloneId={modal.cloneId} forceAmendment={modal.forceAmendment} onGenerated={refresh}/>}
++    {view&&<RevisionDocumentView showId={show.id} contract={view} onClose={()=>setView(null)}/>}
++    <UploadContractModal show={show} open={uploadOpen} onClose={()=>setUploadOpen(false)} onSaved={refresh}/>
++  </div>;
+ }
+\ No newline at end of file

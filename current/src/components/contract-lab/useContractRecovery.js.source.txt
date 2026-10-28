@@ -1,0 +1,25 @@
+import { useEffect, useState } from 'react';
+import { base44 } from '@/api/base44Client';
+import { recoveryKey, readRecovery, writeRecovery, blockContent } from '@/components/contract-lab/draftRecovery';
+export default function useContractRecovery(doc,dirty,readOnly) {
+  const [key,setKey]=useState(null),[recovery,setRecovery]=useState(null),[localAt,setLocalAt]=useState(null),[notice,setNotice]=useState('');
+  useEffect(()=>{
+    if(readOnly)return;
+    let live=true;
+    base44.auth.me().then(user=>{
+      if(!live)return;
+      const next=recoveryKey(user.id,doc.show_id,doc.id||`new-${doc.template_id}`),entry=readRecovery(next);
+      setKey(next);
+      if(entry?.malformed)setNotice('A damaged browser copy was ignored. Other documents are unaffected.');
+      else if(entry&&entry.savedAt>new Date(doc.approved_at||0).getTime()&&blockContent(entry.document.blocks)!==blockContent(doc.blocks))setRecovery(entry);
+    });
+    return()=>{live=false;};
+  },[doc.id,doc.show_id,doc.template_id,readOnly]);
+  useEffect(()=>{
+    if(!dirty||!key||recovery||readOnly)return;
+    try {const savedAt=writeRecovery(key,doc);setLocalAt(savedAt);setNotice('Saved in this browser');}
+    catch {setNotice('Unsaved changes. Browser recovery is unavailable; save to server before closing.');}
+  },[doc,dirty,key,recovery,readOnly]);
+  const clear=()=>{if(key)localStorage.removeItem(key);setRecovery(null);setLocalAt(null);setNotice('');};
+  return {recovery,setRecovery,localAt,notice,clear};
+}

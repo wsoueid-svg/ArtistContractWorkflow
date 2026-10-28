@@ -1,0 +1,76 @@
+import React, { useState } from 'react';
+import { Navigate } from 'react-router-dom';
+import { useOrg } from '@/lib/OrgContext';
+import { useIsMobile } from '@/hooks/useMobileViewport';
+import AnalogMasterCalendar from '@/components/calendar/AnalogMasterCalendar';
+import MobileCalendarAgenda from '@/components/calendar/agenda/MobileCalendarAgenda';
+import BookingAssistantBot from '@/components/calendar/BookingAssistantBot';
+import { Bot } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import PageHeader from '@/components/shared/PageHeader';
+
+export default function AnalogCalendar() {
+  const { activeOrg } = useOrg();
+  const isMobile = useIsMobile();
+  const [hiddenArtistIds, setHiddenArtistIds] = useState([]);
+  const [botOpen, setBotOpen] = useState(false);
+
+  // Analog-org-only guard: land on the Elevate calendar instead
+  if (activeOrg && activeOrg !== 'analog') {
+    return <Navigate to="/calendar" replace />;
+  }
+
+  const handleToggleArtist = (artistId) => {
+    setHiddenArtistIds(prev =>
+      prev.includes(artistId) ? prev.filter(id => id !== artistId) : [...prev, artistId]
+    );
+  };
+
+  const assistantButton = (
+    <Button
+      size="sm"
+      onClick={() => setBotOpen(true)}
+      className="bg-yellow-400 text-black hover:bg-yellow-300 min-h-[44px] md:h-9 gap-1.5 font-semibold"
+    >
+      <Bot className="w-4 h-4" />
+      <span className="hidden sm:inline">Ask Assistant</span>
+    </Button>
+  );
+
+  // Mobile: vertical agenda (no horizontal Gantt scrolling)
+  if (isMobile) {
+    return (
+      <div>
+        {/* The Booking Assistant renders its own floating button on mobile */}
+        <MobileCalendarAgenda />
+        <BookingAssistantBot
+          hiddenArtistIds={hiddenArtistIds}
+          open={botOpen}
+          onOpenChange={setBotOpen}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <PageHeader
+        title="Analog Master Calendar"
+        subtitle="Multi-artist schedule with AI booking intelligence"
+        actions={assistantButton}
+      />
+
+      <AnalogMasterCalendar
+        hiddenArtistIds={hiddenArtistIds}
+        onToggleArtist={handleToggleArtist}
+        onSetHiddenArtists={setHiddenArtistIds}
+      />
+
+      <BookingAssistantBot
+        hiddenArtistIds={hiddenArtistIds}
+        open={botOpen}
+        onOpenChange={setBotOpen}
+      />
+    </div>
+  );
+}

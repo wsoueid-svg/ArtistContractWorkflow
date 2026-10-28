@@ -1,0 +1,150 @@
+{
+  "name": "BookingAgent",
+  "type": "object",
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "data.is_cfo": true
+          }
+        },
+        {
+          "user_condition": {
+            "data.finance_role": "Finance Manager"
+          }
+        },
+        {
+          "user_condition": {
+            "data.finance_role": "Finance Viewer"
+          }
+        }
+      ]
+    },
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "data.is_cfo": true
+          }
+        },
+        {
+          "user_condition": {
+            "data.finance_role": "Finance Manager"
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "data.is_cfo": true
+          }
+        },
+        {
+          "user_condition": {
+            "data.finance_role": "Finance Manager"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "data.is_cfo": true
+          }
+        }
+      ]
+    }
+  },
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Agent display name (e.g. 'Ian Hindmarsh')",
+      "indexed": true
+    },
+    "user_id": {
+      "type": "string",
+      "description": "Linked User entity ID if the agent is an app user"
+    },
+    "email": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "former"
+      ],
+      "default": "active",
+      "indexed": true
+    },
+    "agent_type": {
+      "type": "string",
+      "enum": [
+        "booking",
+        "logistics",
+        "both"
+      ],
+      "default": "booking",
+      "indexed": true
+    },
+    "org": {
+      "type": "string",
+      "enum": [
+        "analog",
+        "elevate",
+        "both"
+      ],
+      "default": "analog"
+    },
+    "commission_rate": {
+      "type": "number",
+      "default": 0,
+      "description": "Agent bonus commission as a percentage of the agency booking fee"
+    },
+    "bank_details": {
+      "type": "object",
+      "properties": {
+        "iban": {
+          "type": "string"
+        },
+        "swift_bic": {
+          "type": "string"
+        },
+        "account_name": {
+          "type": "string"
+        },
+        "account_address": {
+          "type": "string"
+        }
+      },
+      "description": "Payout instructions shown only within finance workflows"
+    }
+  },
+  "required": [
+    "name"
+  ]
+}

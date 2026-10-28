@@ -1,0 +1,20 @@
+diff --git a/src/App.jsx b/src/App.jsx
+index 40234c32e5a3138dfee3642d76f81cba669f1562..8b34f2e07e77e47e390b59e5a28f7c35361e4b53 100644
+--- a/src/App.jsx
++++ b/src/App.jsx
+@@ -23,6 +23,7 @@ import AnalogShowDetail from './pages/AnalogShowDetail';
+ import AnalogTasks from './pages/AnalogTasks';
+ import Deactivated from './pages/Deactivated';
+ import PublicItinerary from './pages/PublicItinerary';
++import ContractPreview from '@/pages/ContractPreview';
+ import { AuthProvider, useAuth } from '@/lib/AuthContext';
+ import { OrgProvider } from '@/lib/OrgContext';
+ import { LanguageProvider } from '@/lib/LanguageContext';
+@@ -141,6 +142,7 @@ const AuthenticatedApp = () => {
+         <Route path="tours/:tourId" element={<PortalTourDetail />} />
+         <Route path="profile" element={<PortalProfile />} />
+       </Route>
++      <Route path="/contract-preview" element={<LayoutWrapper currentPageName="ContractPreview"><ContractPreview /></LayoutWrapper>} />
+       <Route path="/dashboard" element={<LayoutWrapper currentPageName="MyDashboard"><OrgAwareDashboardRoute /></LayoutWrapper>} />
+       <Route path="/trash" element={<LayoutWrapper currentPageName="Trash"><ElevateRouteGuard><Trash /></ElevateRouteGuard></LayoutWrapper>} />
+       <Route path="/finance/*" element={<LayoutWrapper currentPageName="Finance"><Finance /></LayoutWrapper>} />

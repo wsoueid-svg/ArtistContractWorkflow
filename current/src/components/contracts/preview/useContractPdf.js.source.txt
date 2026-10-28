@@ -1,0 +1,18 @@
+import { useEffect, useState } from 'react';
+import loadContractPdf from '@/components/contracts/preview/loadContractPdf';
+
+export default function useContractPdf(contractId, showId, variant = 'original') {
+  const [state, setState] = useState({ loading: true }), [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    let active = true, url;
+    const controller = new AbortController();
+    setState({ loading: true });
+    loadContractPdf(contractId, showId, controller.signal, variant).then(data => {
+      if (!active) return;
+      if (data.file) url = URL.createObjectURL(data.file);
+      setState({ loading: false, ...data, url });
+    }).catch(() => { if (active) setState({ loading: false, error: 'This PDF is unavailable or you do not have access. Return to the contract, or try again.' }); });
+    return () => { active = false; controller.abort(); if (url) URL.revokeObjectURL(url); };
+  }, [contractId, showId, variant, attempt]);
+  return { ...state, retry: () => setAttempt(value => value + 1) };
+}

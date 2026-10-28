@@ -1,0 +1,34 @@
+{
+  "name": "ShowOrgVisibility",
+  "type": "object",
+  "properties": {
+    "show_id": {
+      "type": "string",
+      "description": "FK to Show entity",
+      "indexed": true
+    },
+    "org_id": {
+      "type": "string",
+      "description": "The org that has hidden this show from their view (e.g. 'elevate')",
+      "indexed": true
+    },
+    "is_hidden": {
+      "type": "boolean",
+      "default": false,
+      "description": "When true, this show is hidden from the org's views. Does NOT affect other orgs."
+    },
+    "hidden_by_user_id": {
+      "type": "string",
+      "description": "User ID who hid this show"
+    },
+    "hidden_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp when this show was hidden"
+    }
+  },
+  "required": [
+    "show_id",
+    "org_id"
+  ]
+}

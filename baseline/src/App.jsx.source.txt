@@ -1,0 +1,177 @@
+import './App.css'
+import { Toaster } from "@/components/ui/toaster"
+import { QueryClientProvider } from '@tanstack/react-query'
+import { queryClientInstance } from '@/lib/query-client'
+import VisualEditAgent from '@/lib/VisualEditAgent'
+import NavigationTracker from '@/lib/NavigationTracker'
+import { pagesConfig } from './pages.config'
+import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
+import PortalLayout from '@/components/portal/PortalLayout';
+import PortalShows from './pages/portal/PortalShows';
+import PortalShowDetail from './pages/portal/PortalShowDetail';
+import PortalTours from './pages/portal/PortalTours';
+import PortalTourDetail from './pages/portal/PortalTourDetail';
+import PortalProfile from './pages/portal/PortalProfile';
+import PageNotFound from './lib/PageNotFound';
+import Trash from './pages/Trash';
+import Home from './pages/Home';
+import Finance from './pages/Finance';
+import Residencies from './pages/Residencies';
+import AnalogReports from './pages/AnalogReports';
+import AnalogCalendar from './pages/AnalogCalendar';
+import AnalogShowDetail from './pages/AnalogShowDetail';
+import AnalogTasks from './pages/AnalogTasks';
+import Deactivated from './pages/Deactivated';
+import PublicItinerary from './pages/PublicItinerary';
+import { AuthProvider, useAuth } from '@/lib/AuthContext';
+import { OrgProvider } from '@/lib/OrgContext';
+import { LanguageProvider } from '@/lib/LanguageContext';
+import UserNotRegisteredError from '@/components/UserNotRegisteredError';
+import DashboardSwitcher from '@/components/shared/DashboardSwitcher.jsx';
+import ElevateRouteGuard from '@/components/shared/ElevateRouteGuard.jsx';
+import OrgAwareShows from '@/components/shared/OrgAwareShows.jsx';
+import OrgAwareDashboardRoute from '@/components/shared/OrgAwareDashboardRoute.jsx';
+import OrgAwareTours from '@/components/shared/OrgAwareTours.jsx';
+
+const { Pages, Layout, mainPage } = pagesConfig;
+const mainPageKey = mainPage ?? Object.keys(Pages)[0];
+const MainPage = mainPageKey ? Pages[mainPageKey] : <></>;
+
+const LayoutWrapper = ({ children, currentPageName }) => Layout ?
+  <Layout currentPageName={currentPageName}>{children}</Layout>
+  : <>{children}</>;
+
+const AuthenticatedApp = () => {
+  const { isLoadingAuth, isLoadingPublicSettings, authError, isAuthenticated, navigateToLogin, preferredLanguage, isPortalUser } = useAuth();
+
+  // Terminal deactivation screen — rendered BEFORE any auth/loading gate so a
+  // revoked account can never be bounced into a login or redirect loop.
+  if (window.location.pathname === '/deactivated') {
+    return <Deactivated />;
+  }
+
+  // Token-gated read-only itinerary for artists / promoters / drivers — public,
+  // so it renders before any auth gate.
+  if (window.location.pathname === '/itinerary') {
+    return <PublicItinerary />;
+  }
+
+  // Show loading spinner while checking app public settings or auth
+  if (isLoadingPublicSettings || isLoadingAuth) {
+    return (
+      <div className="fixed inset-0 flex items-center justify-center">
+        <div className="w-8 h-8 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin"></div>
+      </div>
+    );
+  }
+
+  // Handle authentication errors
+  if (authError) {
+    if (authError.type === 'user_not_registered') {
+      return <UserNotRegisteredError />;
+    } else if (authError.type === 'auth_required') {
+      // Redirect to login automatically
+      navigateToLogin();
+      return null;
+    }
+  }
+
+  // ROUTING AIRGAP — artists and tour managers get their own router. The staff
+  // routes are never mounted for them, so /shows, /settings, /finance and every
+  // other internal path simply does not exist and bounces back to /portal.
+  if (isPortalUser) {
+    return (
+      <LanguageProvider initialLocale={preferredLanguage}>
+        <Routes>
+          <Route path="/portal" element={<PortalLayout />}>
+            <Route index element={<PortalShows />} />
+            <Route path="shows/:showId" element={<PortalShowDetail />} />
+            <Route path="tours" element={<PortalTours />} />
+            <Route path="tours/:tourId" element={<PortalTourDetail />} />
+            <Route path="profile" element={<PortalProfile />} />
+          </Route>
+          <Route path="/deactivated" element={<Deactivated />} />
+          <Route path="/itinerary" element={<PublicItinerary />} />
+          <Route path="*" element={<Navigate to="/portal" replace />} />
+        </Routes>
+      </LanguageProvider>
+    );
+  }
+
+  // Render the main app
+  return (
+    <LanguageProvider initialLocale={preferredLanguage}>
+    <Routes>
+      <Route path="/" element={
+        <LayoutWrapper currentPageName={mainPageKey}>
+          <DashboardSwitcher />
+        </LayoutWrapper>
+      } />
+      {Object.entries(Pages).map(([path, Page]) => {
+        const elevateOnly = [
+          'ApprovalInbox','ArtistWorkspace','Calendar','Contracts',
+          'Database','Documents','Finances','FormTemplates','Labels',
+          'Merchandise','Press','PressReleases','Releases','Reports',
+          'RoyaltyStatements','SocialCalendar','Tasks',
+        ].includes(path);
+        const orgAware = path === 'Shows' || path === 'Tours';
+        return (
+          <Route
+            key={path}
+            path={`/${path.toLowerCase()}`}
+            element={
+              <LayoutWrapper currentPageName={path}>
+                {orgAware
+                  ? (path === 'Shows' ? <OrgAwareShows /> : <OrgAwareTours />)
+                  : elevateOnly
+                    ? <ElevateRouteGuard><Page /></ElevateRouteGuard>
+                    : <Page />}
+              </LayoutWrapper>
+            }
+          />
+        );
+      })}
+      <Route path="/deactivated" element={<Deactivated />} />
+      <Route path="/itinerary" element={<PublicItinerary />} />
+      {/* Staff may preview the artist portal (scoped by ?artist=<id>) */}
+      <Route path="/portal" element={<PortalLayout />}>
+        <Route index element={<PortalShows />} />
+        <Route path="shows/:showId" element={<PortalShowDetail />} />
+        <Route path="tours" element={<PortalTours />} />
+        <Route path="tours/:tourId" element={<PortalTourDetail />} />
+        <Route path="profile" element={<PortalProfile />} />
+      </Route>
+      <Route path="/dashboard" element={<LayoutWrapper currentPageName="MyDashboard"><OrgAwareDashboardRoute /></LayoutWrapper>} />
+      <Route path="/trash" element={<LayoutWrapper currentPageName="Trash"><ElevateRouteGuard><Trash /></ElevateRouteGuard></LayoutWrapper>} />
+      <Route path="/finance/*" element={<LayoutWrapper currentPageName="Finance"><Finance /></LayoutWrapper>} />
+      <Route path="/residencies" element={<LayoutWrapper currentPageName="Residencies"><ElevateRouteGuard><Residencies /></ElevateRouteGuard></LayoutWrapper>} />
+      <Route path="/analogreports" element={<LayoutWrapper currentPageName="AnalogReports"><AnalogReports /></LayoutWrapper>} />
+      <Route path="/analog-calendar" element={<LayoutWrapper currentPageName="AnalogCalendar"><AnalogCalendar /></LayoutWrapper>} />
+      <Route path="/analogshowdetail" element={<LayoutWrapper currentPageName="AnalogShowDetail"><AnalogShowDetail /></LayoutWrapper>} />
+      <Route path="/analog-tasks" element={<LayoutWrapper currentPageName="MyDashboard"><AnalogTasks /></LayoutWrapper>} />
+      <Route path="*" element={<PageNotFound />} />
+    </Routes>
+    </LanguageProvider>
+  );
+};
+
+
+function App() {
+
+  return (
+    <AuthProvider>
+      <QueryClientProvider client={queryClientInstance}>
+        <Router>
+          <OrgProvider>
+            <NavigationTracker />
+            <AuthenticatedApp />
+          </OrgProvider>
+        </Router>
+        <Toaster />
+        <VisualEditAgent />
+      </QueryClientProvider>
+    </AuthProvider>
+  )
+}
+
+export default App

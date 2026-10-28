@@ -1,0 +1,201 @@
+{
+  "name": "ConfThread",
+  "type": "object",
+  "rls": {
+    "read": {
+      "$and": [
+        {
+          "user_condition": {
+            "data.is_active": true
+          }
+        },
+        {
+          "$or": [
+            {
+              "user_condition": {
+                "role": "admin"
+              }
+            },
+            {
+              "data.scanned_by_user_ids": "{{user.id}}"
+            },
+            {
+              "data.matched_user_ids": "{{user.id}}"
+            },
+            {
+              "data.accessible_user_ids": "{{user.id}}"
+            }
+          ]
+        }
+      ]
+    },
+    "create": {
+      "user_condition": {
+        "data.is_active": true
+      }
+    },
+    "update": {
+      "$and": [
+        {
+          "user_condition": {
+            "data.is_active": true
+          }
+        },
+        {
+          "$or": [
+            {
+              "user_condition": {
+                "role": "admin"
+              }
+            },
+            {
+              "data.scanned_by_user_ids": {
+                "$in": [
+                  "{{user.id}}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "delete": {
+      "$and": [
+        {
+          "user_condition": {
+            "data.is_active": true
+          }
+        },
+        {
+          "$or": [
+            {
+              "user_condition": {
+                "role": "admin"
+              }
+            },
+            {
+              "data.scanned_by_user_ids": {
+                "$in": [
+                  "{{user.id}}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "properties": {
+    "thread_id": {
+      "type": "string",
+      "description": "Gmail thread ID (the deal spine)",
+      "indexed": true,
+      "unique": true
+    },
+    "root_message_id": {
+      "type": "string",
+      "description": "RFC 2822 Message-ID of the original (root) message \u2014 taken from the first message's own Message-ID, or the first entry of its References / In-Reply-To when the thread was forwarded. Used for global dedup across users' inboxes.",
+      "indexed": true
+    },
+    "scanned_by_user_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "App users whose own Gmail inbox contained this thread during a per-user scan. Drives the personal Unassigned CONF queue and the admin God View agent filter.",
+      "indexed": true
+    },
+    "accessible_user_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Denormalized read ACL: scanned users, matched participants, and responsible/logistics agents on the assigned Show. Maintained by ingestion, assignment, and Show agent-change automation.",
+      "indexed": true
+    },
+    "dismissed_by_user_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Personal dismissals: users who hid this thread from their own queue. Never auto-promoted to a global dismissal."
+    },
+    "is_dismissed_globally": {
+      "type": "boolean",
+      "default": false,
+      "indexed": true,
+      "description": "Admin-only global dismissal (true duplicate / spam). Hides the thread from every queue."
+    },
+    "subject": {
+      "type": "string",
+      "description": "Thread subject with Re/Fwd prefixes stripped"
+    },
+    "from_email": {
+      "type": "string",
+      "description": "Sender of the first message in the thread (the booker)"
+    },
+    "participant_emails": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Union of To/Cc/From across the thread"
+    },
+    "matched_user_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "App users found among the thread participants (the cc'd logistics agents)"
+    },
+    "snippet": {
+      "type": "string"
+    },
+    "message_count": {
+      "type": "number",
+      "default": 0
+    },
+    "first_message_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "last_message_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "last_message_id": {
+      "type": "string",
+      "description": "RFC 2822 Message-ID of the most recent message"
+    },
+    "last_message_from": {
+      "type": "string"
+    },
+    "is_assigned": {
+      "type": "boolean",
+      "default": false,
+      "indexed": true,
+      "description": "True once a Show carries this thread_id"
+    },
+    "assigned_show_id": {
+      "type": "string",
+      "indexed": true
+    },
+    "last_checked_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "created_by_org_id": {
+      "type": "string",
+      "indexed": true,
+      "description": "Owning org (elevate/analog). Populated before G2 RLS predicates are applied."
+    },
+    "shared_with_org": {
+      "type": "string",
+      "indexed": true,
+      "description": "Cross-org ACL projection \u2014 the other org granted read access. Null = owning-org only."
+    }
+  },
+  "required": [
+    "thread_id"
+  ]
+}

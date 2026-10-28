@@ -1,0 +1,13 @@
+diff --git a/src/components/contracts/contractPreviewUrl.js b/src/components/contracts/contractPreviewUrl.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..e0af0be9a966a27c99fed2a3295b96735e16de44
+--- /dev/null
++++ b/src/components/contracts/contractPreviewUrl.js
+@@ -0,0 +1,6 @@
++export default function contractPreviewUrl(contractId, showId) {
++  const params = new URLSearchParams();
++  if (contractId) params.set('contract', contractId);
++  else if (showId) params.set('show', showId);
++  return `/contract-preview?${params}`;
++}
+\ No newline at end of file

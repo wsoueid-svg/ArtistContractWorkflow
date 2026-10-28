@@ -1,0 +1,54 @@
+export class AccessError extends Error {
+  constructor(message, status = 403) {
+    super(message);
+    this.status = status;
+  }
+}
+
+export async function assertShowAccess(base44, showId, authenticatedUser = null) {
+  const user = authenticatedUser || await base44.auth.me();
+  if (!user) throw new AccessError('Unauthorized', 401);
+  if (user.is_active === false || !['admin','user'].includes(user.role)) throw new AccessError('Active staff access required',403);
+  if (!showId) throw new AccessError('show_id is required', 400);
+
+  let show = null;
+  try {
+    show = await base44.entities.Show.get(showId);
+  } catch (_error) {
+    show = null;
+  }
+  if (!show) {
+    throw new AccessError('Show not found or you do not have access', 403);
+  }
+  if (user.role !== 'admin' && show.created_by_id !== user.id && ![show.created_by_org_id,show.shared_with_org].some(org=>org && (user.org_access||[]).includes(org))) throw new AccessError('This show is outside your authorized organizations',403);
+  return { show, user };
+}
+
+/**
+ * A-2: Dispatch is permitted ONLY for the show's creator, any agent in
+ * logistics_agent_ids, or Admin/Finance. The user_type === 'staff' loophole
+ * is removed — being staff is necessary but not sufficient.
+ *
+ * logistics_agent_ids stores BookingAgent IDs (consistent with the singular
+ * logistics_agent_id and responsible_agent_ids). We resolve the caller's
+ * linked BookingAgent(s) and check membership.
+ */
+export async function canDispatchContracts(base44, user, show) {
+  if (!user || user.is_active === false || !['admin','user'].includes(user.role)) return false;
+  if (user.role === 'admin' || user.is_cfo === true || user.finance_role === 'Finance Manager') return true;
+  if (!show) return false;
+  // Creator of the show
+  if (show.created_by_id && show.created_by_id === user.id) return true;
+  // Assigned logistics agent (resolve user -> BookingAgent IDs)
+  const logisticsAgentIds = Array.isArray(show.logistics_agent_ids) ? show.logistics_agent_ids : [];
+  if (logisticsAgentIds.length > 0) {
+    try {
+      const myAgents = await base44.asServiceRole.entities.BookingAgent.filter({ user_id: user.id });
+      const myAgentIds = new Set(myAgents.map(a => a.id));
+      if (logisticsAgentIds.some(id => myAgentIds.has(id))) return true;
+    } catch (_error) {
+      // If the lookup fails, fall through to deny — never silently allow.
+    }
+  }
+  return false;
+}

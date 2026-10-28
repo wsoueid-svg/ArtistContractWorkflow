@@ -1,0 +1,18 @@
+import React from 'react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { SUPPORTED_CURRENCIES } from './CurrencyUtils';
+
+export default function CurrencySelect({ value, onChange, disabled = false, className = '' }) {
+  return (
+    <Select value={value || 'EUR'} onValueChange={onChange} disabled={disabled}>
+      <SelectTrigger className={`mt-1 ${className}`}>
+        <SelectValue placeholder="Currency" />
+      </SelectTrigger>
+      <SelectContent>
+        {SUPPORTED_CURRENCIES.map(c => (
+          <SelectItem key={c.code} value={c.code}>{c.label}</SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}

@@ -1,0 +1,18 @@
+import React from 'react';
+import { useIsMobile } from '@/hooks/useMobileViewport';
+
+/**
+ * Mobile: full-bleed edge-to-edge section with a slate-200 hairline divider.
+ * Desktop (>=768px): the original rounded card. Keeps the two aesthetics in one place.
+ */
+export function usePanelClass() {
+  const isMobile = useIsMobile();
+  return isMobile
+    ? '-mx-4 border-b border-slate-200 bg-white px-4 py-4'
+    : 'rounded-2xl border border-slate-200 bg-white p-5';
+}
+
+export default function DetailPanel({ className = '', children }) {
+  const panelClass = usePanelClass();
+  return <section className={`${panelClass} ${className}`}>{children}</section>;
+}

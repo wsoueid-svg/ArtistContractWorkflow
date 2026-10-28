@@ -1,0 +1,96 @@
+import { assertShowAccess, canDispatchContracts, AccessError } from './assertShowAccess.ts';
+import { computeDealBreakdown } from './calcDeal.ts';
+import { getContractualSetWindow } from './showTiming.ts';
+import { buildScheduleContext } from './contractSchedule.ts';
+import { getTemplate, renderContractDocument } from './contractTemplates/index.ts';
+import { CONTRACT_CSS } from './contractTemplates/styles.ts';
+import { validateShowInputs, validDate } from './contractValidation.ts';
+import { ANALOG_BANNER_URL, AESL_REPRESENTATION_EN, AESL_REPRESENTATION_ES, CONTRACT_RENDER_CONFIG } from './contractTemplates/representation.ts';
+
+export async function contentHash(value) {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(value)));
+  return [...new Uint8Array(digest)].map(x => x.toString(16).padStart(2, '0')).join('');
+}
+export async function draftAccess(base44, user, showId) {
+  if (!user || user.is_active === false) throw new AccessError('Active account required', 403);
+  const { show } = await assertShowAccess(base44, showId, user);
+  if (!await canDispatchContracts(base44, user, show)) throw new AccessError('Only the show creator, assigned logistics agents, or Admin/Finance can edit contract drafts', 403);
+  return show;
+}
+export async function loadContractSource(base44, show, templateId, fields = {}) {
+  const svc = base44.asServiceRole.entities;
+  if ('contract_date' in fields) validDate(fields.contract_date, 'Contract date');
+  const template = await svc.ContractTemplate.get(templateId);
+  if (!template?.is_active || !getTemplate(template.template_key)) throw new AccessError('Select an active contract template', 422);
+  const legalEntity = await svc.LegalEntity.get(template.legal_entity_id);
+  if (!legalEntity?.is_active) throw new AccessError('Template Legal Entity is unavailable', 422);
+  if ((show.status === 'completed' || show.legal_entity_locked_at) && show.legal_entity_id !== legalEntity.id) throw new AccessError('Show Legal Entity binding is locked', 409);
+  const contactId = show.contract_contact_id || show.client_contact_id || show.contact_id;
+  if (!contactId) throw new AccessError('Link a promoter Contact before opening the document', 422);
+  const [artist, contact] = await Promise.all([svc.Artist.get(show.artist_id), svc.Contact.get(contactId)]);
+  if (!contact || contact.is_deleted) throw new AccessError('Promoter Contact is unavailable', 422);
+  const currency = String(show.currency || legalEntity.default_currency || 'EUR').toUpperCase();
+  if (fields.currency && String(fields.currency).toUpperCase() !== currency) throw new AccessError('Contract currency must match Show currency', 422);
+  if (!(legalEntity.allowed_currencies?.length ? legalEntity.allowed_currencies : [legalEntity.default_currency || 'EUR']).includes(currency)) throw new AccessError('Show currency is not allowed by the Legal Entity', 422);
+  const allowed = ['company_name','company_address','company_vat','company_signatory','agency_signatory','contract_date','deposit_month','billing_requirements','billing_position','contract_notes'];
+  const submitted = Object.fromEntries(allowed.filter(k => fields[k] != null && fields[k] !== '').map(k => [k, String(fields[k]).slice(0, 8000)]));
+  const f = { contract_date: new Date().toISOString().slice(0,10), company_name: contact.default_deal_terms?.legal_company_name || contact.company || contact.name, company_address: [contact.default_deal_terms?.billing_address?.street || contact.billing_address?.street || contact.address, contact.default_deal_terms?.billing_address?.city || contact.billing_address?.city || contact.city, contact.default_deal_terms?.billing_address?.postal_code || contact.billing_address?.postal_code, contact.default_deal_terms?.billing_address?.country || contact.billing_address?.country || contact.country].filter(Boolean).join(', '), company_vat: contact.vat_tax_id || '', company_signatory: contact.name, billing_requirements: show.offer_details?.exclusivity || 'A-Z', billing_position: 'A-Z', contract_notes: show.contract_notes || '', ...submitted, currency, artist_name: artist.name, event_name: show.event_name, venue: show.venue, country: show.country, date_of_show: show.date, timing: getContractualSetWindow(show), agency_name: legalEntity.name, agency_address: [legalEntity.registered_address?.street, legalEntity.registered_address?.city, legalEntity.registered_address?.postal_code, legalEntity.registered_address?.country || legalEntity.country].filter(Boolean).join(', '), agency_rut: legalEntity.tax_id, agency_signatory: template.agency_signatory_name || 'Luis Honrado' };
+  validateShowInputs(show, template);
+  const breakdown = computeDealBreakdown({ show, legalEntity, contact, depositPct: template.default_terms?.deposit_percentage ?? show.deposit_percentage, balanceDueOffsetDays: template.default_terms?.balance_due_offset_days ?? show.balance_due_offset_days });
+  f.wht_rate = breakdown.whtRate;
+  f.advance_pct = breakdown.depositPct; f.balance_pct = 100 - breakdown.depositPct;
+  f.booking_fee = breakdown.bookingFeeCents / 100;
+  const deposit = breakdown.parts.find(part => part.type === 'DEPOSIT');
+  const balance = breakdown.parts.find(part => part.type === 'BALANCE');
+  const booking = breakdown.parts.find(part => part.type === 'BOOKING_FEE');
+  f.advance_amount = (deposit?.feeCents || 0) / 100; f.balance_amount = (balance?.feeCents || 0) / 100;
+  f.advance_due = String(deposit?.dueDate || '').split('T')[0]; f.balance_due = String(balance?.dueDate || '').split('T')[0]; f.booking_fee_due = String(booking?.dueDate || '').split('T')[0];
+  return { show, template, legalEntity, artist, contact, fields: f, breakdown, captured_at: new Date().toISOString() };
+}
+export async function buildContractDocument(source) {
+  const { template, fields, breakdown } = source;
+  const entry = getTemplate(template.template_key);
+  const { ctx } = buildScheduleContext({ f: fields, breakdown, templateKey: template.template_key });
+  const { html } = renderContractDocument(template.template_key, ctx);
+  let slot = 0;
+  const blocks = [...html.matchAll(/<!--block:([^:]+):(clause|appendix|protected|economics)-->([\s\S]*?)<!--\/block-->/g)].map((m, order) => {
+    const locked = ['protected','economics'].includes(m[2]);
+    const rawHtml = m[3].trim().startsWith('<') ? m[3].trim() : `<p>${m[3].trim()}</p>`;
+    const rich_text = locked ? rawHtml : safeRichText(rawHtml.replace(/<p class="[^"]*strong[^"]*">([\s\S]*?)<\/p>/g, '<p><strong>$1</strong></p>').replace(/<h2[^>]*>([\s\S]*?)<\/h2>/g, '<p><strong>$1</strong></p>').replace(/<div[^>]*>([\s\S]*?)<\/div>/g, '<p>$1</p>'));
+    const block = { id: m[1], kind: m[2], order, slot, rich_text, baseline_html: rich_text, baseline_text: rich_text.replace(/<[^>]*>/g, '').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"'), master: true };
+    if (locked) slot++;
+    return block;
+  });
+  const reference = buildScheduleContext({ f: { contract_date: '2000-01-01', artist_name: '{{artist}}', agency_name: '{{agency}}' }, breakdown: null, templateKey: template.template_key });
+  const renderedReference = renderContractDocument(template.template_key, reference.ctx);
+  const master_content_version = await contentHash({ brand: entry.brand, pack: entry.pack, billingPositionSentence: entry.pack.billingPositionSentence('{{artist}}', '{{position}}'), protectedText: [AESL_REPRESENTATION_EN, AESL_REPRESENTATION_ES], banner: ANALOG_BANNER_URL, styles: CONTRACT_CSS, config: CONTRACT_RENDER_CONFIG, renderedReference, version: 'block-markers-v2' });
+  return { show_id: source.show.id, contract_id: source.show.contract_id || null, template_id: template.id, template_key: template.template_key, legal_entity_id: source.legalEntity.id, source_snapshot: source, master_content_version, blocks, content_hash: await contentHash(blocks), revision_no: 0, parent_draft_id: null, status: 'editing', lock_token: crypto.randomUUID(), required_inputs: [] };
+}
+function safeRichText(html) {
+  if (typeof html !== 'string' || html.length > 24000) throw new AccessError('Clause content is too large', 422);
+  if (/<\s*(script|style|iframe|object|svg|math)\b/i.test(html)) throw new AccessError('Unsupported rich-text content', 422);
+  return html.replace(/<\/?([a-z][a-z0-9]*)\b[^>]*>/gi, (tag, name) => {
+    if (!['p','br','strong','b','em','i','u','ol','ul','li','span'].includes(name.toLowerCase())) throw new AccessError('Only paragraphs, bold, italic, underline and lists are allowed', 422);
+    return `<${tag.startsWith('</') ? '/' : ''}${name.toLowerCase()}>`;
+  });
+}
+export function validateDraftBlocks(candidate, master) {
+  if (!Array.isArray(candidate) || candidate.length > 120 || JSON.stringify(candidate).length > 250000) throw new AccessError('Invalid document blocks', 422);
+  const originals = new Map(master.map(b => [b.id,b]));
+  const ids = new Set(); let slot = 0;
+  const protectedIds = master.filter(b => ['protected','economics'].includes(b.kind)).map(b=>b.id); let protectedIndex=0;
+  const blocks = candidate.map((b,order) => {
+    if (!b || typeof b.id !== 'string' || ids.has(b.id)) throw new AccessError('Invalid or duplicate block id',422);
+    ids.add(b.id); const original=originals.get(b.id);
+    if (original && ['protected','economics'].includes(original.kind)) {
+      if (b.id!==protectedIds[protectedIndex++] || b.kind!==original.kind || b.rich_text!==original.rich_text || b.slot!==slot) throw new AccessError('Protected blocks cannot be edited, removed or reordered',422);
+      slot++; return {...original,order};
+    }
+    if (!['clause','appendix'].includes(b.kind) || b.slot!==slot || (original && (original.kind!==b.kind || original.slot!==slot))) throw new AccessError('Editable blocks must stay within their protected section',422);
+    if (!original && !/^custom-[a-z0-9-]+$/i.test(b.id)) throw new AccessError('Invalid inserted block id',422);
+    const rich_text=safeRichText(b.rich_text);
+    return {id:b.id,kind:b.kind,order,slot,rich_text,baseline_html:original?.baseline_html||'',baseline_text:original?.baseline_text||'',master:!!original};
+  });
+  if(protectedIndex!==protectedIds.length) throw new AccessError('All protected blocks must remain',422);
+  return blocks;
+}

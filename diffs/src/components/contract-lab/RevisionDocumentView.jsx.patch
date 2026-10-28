@@ -1,0 +1,22 @@
+diff --git a/src/components/contract-lab/RevisionDocumentView.jsx b/src/components/contract-lab/RevisionDocumentView.jsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..1968ea2746e41888590d2c1c0c7295c0fc7b1ed6
+--- /dev/null
++++ b/src/components/contract-lab/RevisionDocumentView.jsx
+@@ -0,0 +1,15 @@
++import { useQuery } from '@tanstack/react-query';
++import contractPreviewUrl from '@/components/contracts/contractPreviewUrl';
++import { Link } from 'react-router-dom';
++import { base44 } from '@/api/base44Client';
++import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
++import ContractDocumentEditor from '@/components/contract-lab/ContractDocumentEditor';
++import contractError from '@/components/contract-lab/contractErrors';
++import { Button } from '@/components/ui/button';
++import '@/components/contract-lab/document.css';
++export default function RevisionDocumentView({showId,contract,onClose}) {
++  const {data,isLoading,error}=useQuery({queryKey:['contract-revision-document',contract?.id],queryFn:async()=>(await base44.functions.invoke('getContractRevisionView',{show_id:showId,contract_id:contract.id})).data,enabled:!!contract,retry:false});
++  return <Dialog open={!!contract} onOpenChange={open=>{if(!open)onClose();}}><DialogContent className="contract-editor-dialog flex h-[100dvh] w-screen max-w-none flex-col gap-0 overflow-hidden rounded-none p-0 sm:h-[94dvh] sm:w-[94vw] sm:max-w-6xl sm:rounded-lg"><DialogHeader className="sr-only"><DialogTitle>Revision {contract?.version_number||1} • Read-only document</DialogTitle><DialogDescription>Exact saved document snapshot for this contract revision. Historical revisions cannot be edited here.</DialogDescription></DialogHeader>
++    {isLoading?<p className="p-6" role="status">Opening saved revision…</p>:error?<p className="p-6 text-destructive" role="alert">{contractError(error)}</p>:data?.document?<ContractDocumentEditor key={contract.id} document={data.document} readOnly onBack={onClose}/>:<div className="p-6"><h2 className="text-lg font-semibold">Uploaded PDF • no document snapshot</h2><p className="my-3 text-sm text-muted-foreground">This older revision was uploaded without a canonical document. Open its original PDF to read the exact version.</p>{contract?.contract_file_url&&<Button asChild><Link to={contractPreviewUrl(contract.id)}>Open PDF</Link></Button>}</div>}
++  </DialogContent></Dialog>;
++}
+\ No newline at end of file

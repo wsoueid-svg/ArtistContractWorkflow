@@ -1,0 +1,14 @@
+import React from 'react';
+import { Navigate } from 'react-router-dom';
+import { useOrg } from '@/lib/OrgContext';
+import Home from '@/pages/Home';
+
+/**
+ * OrgAwareDashboardRoute — /dashboard is a legacy entry point. In Analog the
+ * desk now lives at "/", so redirect there instead of showing a duplicate.
+ * Elevate keeps its Home dashboard on this path.
+ */
+export default function OrgAwareDashboardRoute() {
+  const { activeOrg } = useOrg();
+  return activeOrg === 'analog' ? <Navigate to="/" replace /> : <Home />;
+}

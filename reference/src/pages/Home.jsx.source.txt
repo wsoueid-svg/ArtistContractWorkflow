@@ -1,0 +1,122 @@
+import React, { useState } from 'react';
+import { Search } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
+import useMyDeals from '../hooks/useMyDeals';
+import ShowDrawer from '../components/analog/ShowDrawer';
+import useTriageDeepLink from '@/hooks/useTriageDeepLink';
+import { saveAnalogShow } from '@/lib/showSave';
+import { useOrg } from '@/lib/OrgContext';
+import UnassignedConfCard from '../components/dashboard/UnassignedConfCard';
+import MyShowsContractCard from '../components/dashboard/MyShowsContractCard';
+import InvoiceStatusCard from '../components/dashboard/InvoiceStatusCard';
+import MyTasksCard from '../components/dashboard/MyTasksCard';
+import UpcomingShowsCard from '../components/dashboard/UpcomingShowsCard';
+import GmailRefreshButton from '../components/dashboard/GmailRefreshButton';
+import PageHeader from '../components/shared/PageHeader';
+import { useLanguage } from '@/lib/LanguageContext';
+
+/**
+ * Home — the personal command center: every deal the signed-in user owns,
+ * tracked from inbound CONF email → contract → invoice.
+ */
+export default function Home() {
+  const { locale, t } = useLanguage();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const { activeOrg } = useOrg();
+  const {
+    user, myShows, contractByShow, invoiceByShow, tasks, confThreads,
+    artists, artistMap, agentMap, canViewInvoices, isLoading, confLoading,
+  } = useMyDeals();
+
+  // CONF thread → new show, created in place so the user never leaves My Deals
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [initialThreadId, setInitialThreadId] = useState(null);
+
+  const closeDrawer = () => { setDrawerOpen(false); setInitialThreadId(null); };
+  useTriageDeepLink(threadId => { setInitialThreadId(threadId); setDrawerOpen(true); });
+
+  const handleSaveShow = async (form) => {
+    try {
+      const savedId = await saveAnalogShow({
+        form,
+        existingShow: null,
+        artist: artistMap[form.artist_id],
+        user,
+        activeOrg,
+        queryClient,
+      });
+      closeDrawer();
+      // The one legitimate redirect: straight to the new show so the agent can
+      // generate the contract immediately.
+      if (savedId) navigate(`/analogshowdetail?id=${savedId}`);
+    } catch (err) {
+      console.error('[Home] save error:', err);
+      toast.error('Could not create the show. Please try again.');
+      throw err;
+    }
+  };
+
+  return (
+    <div className="studio-home space-y-5">
+      {/* Header — shared app-wide page header treatment */}
+      <PageHeader
+        eyebrow="My Deals"
+        title={`${getGreeting(t)}, ${user?.full_name?.split(' ')[0] || 'there'}`}
+        subtitle={`${new Date().toLocaleDateString(locale === 'es' ? 'es-ES' : 'en-US', { weekday: 'long', month: 'long', day: 'numeric' })} · ${myShows.length} show${myShows.length === 1 ? '' : 's'} on your desk`}
+        actions={
+          <>
+            <button
+              onClick={() => window.dispatchEvent(new CustomEvent('open-command-palette'))}
+              aria-label="Open search"
+              className="flex items-center gap-2 px-3 h-9 rounded-lg border border-white/15 bg-white/5 text-xs text-gray-400 hover:border-yellow-400/60 hover:text-white transition-colors min-h-[44px] md:min-h-0"
+            >
+              <Search className="w-3.5 h-3.5" aria-hidden="true" />
+              <span className="hidden sm:inline">Search...</span>
+              <kbd className="hidden sm:inline text-[10px] bg-white/10 px-1.5 py-0.5 rounded font-mono">⌘K</kbd>
+            </button>
+            <GmailRefreshButton />
+          </>
+        }
+      />
+
+      {/* Row 1 — inbound + contract pipeline */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <UnassignedConfCard
+          threads={confThreads}
+          user={user}
+          isLoading={confLoading}
+          onCreateFromThread={(threadId) => { setInitialThreadId(threadId); setDrawerOpen(true); }}
+        />
+        <MyShowsContractCard shows={myShows} contractByShow={contractByShow} artistMap={artistMap} isLoading={isLoading} />
+      </div>
+
+      {/* Row 2 — money + duties */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <InvoiceStatusCard shows={myShows} invoiceByShow={invoiceByShow} artistMap={artistMap} canView={canViewInvoices} />
+        <MyTasksCard tasks={tasks} artistMap={artistMap} />
+      </div>
+
+      {/* Row 3 — what's next */}
+      <UpcomingShowsCard shows={myShows} artistMap={artistMap} agentMap={agentMap} contractByShow={contractByShow} />
+
+      <ShowDrawer
+        open={drawerOpen}
+        onClose={closeDrawer}
+        show={null}
+        artists={artists}
+        onSave={handleSaveShow}
+        initialThreadId={initialThreadId}
+      />
+    </div>
+  );
+}
+
+function getGreeting(t) {
+  const h = new Date().getHours();
+  if (h < 12) return t('greeting_morning');
+  if (h < 18) return t('greeting_afternoon');
+  return t('greeting_evening');
+}

@@ -1,0 +1,322 @@
+{
+  "name": "Contract",
+  "type": "object",
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "$and": [
+            {
+              "user_condition": {
+                "role": "user",
+                "data.is_active": true
+              }
+            },
+            {
+              "$or": [
+                {
+                  "created_by_id": "{{user.id}}"
+                },
+                {
+                  "data.created_by_org_id": {
+                    "$in": "{{user.data.org_access}}"
+                  }
+                },
+                {
+                  "data.shared_with_org": {
+                    "$in": "{{user.data.org_access}}"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "create": {
+      "user_condition": {
+        "collaborator_role": "editor"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "collaborator_role": "editor"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "collaborator_role": "editor"
+      }
+    }
+  },
+  "properties": {
+    "artist_id": {
+      "type": "string",
+      "description": "Linked artist"
+    },
+    "show_id": {
+      "type": "string",
+      "description": "Linked show (optional)"
+    },
+    "contact_id": {
+      "type": "string",
+      "description": "Linked contact/promoter (optional)"
+    },
+    "contract_template_id": {
+      "type": "string",
+      "description": "ContractTemplate selected for this contract"
+    },
+    "template_key": {
+      "type": "string",
+      "enum": [
+        "cidony",
+        "nysm",
+        "nysm-es",
+        "aesl-en",
+        "aesl-es"
+      ],
+      "description": "Branded HTML template actually rendered"
+    },
+    "legal_entity_id": {
+      "type": "string",
+      "description": "Billing LegalEntity inherited from selected template"
+    },
+    "deposit_percentage": {
+      "type": "number",
+      "default": 50
+    },
+    "balance_due_offset_days": {
+      "type": "number",
+      "default": 14
+    },
+    "title": {
+      "type": "string"
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "show_agreement",
+        "management",
+        "label",
+        "sponsorship",
+        "merchandise",
+        "other"
+      ],
+      "default": "show_agreement"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "READY",
+        "DISPATCHING",
+        "SENT",
+        "RETURNED",
+        "SIGNED"
+      ],
+      "default": "draft"
+    },
+    "dispatch_lock": {
+      "type": "string"
+    },
+    "dispatch_heartbeat_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "value": {
+      "type": "number"
+    },
+    "currency": {
+      "type": "string",
+      "default": "USD"
+    },
+    "exchange_rate_locked": {
+      "type": "string"
+    },
+    "value_base_eur": {
+      "type": "number"
+    },
+    "commission_rate": {
+      "type": "number"
+    },
+    "commission_amount": {
+      "type": "number"
+    },
+    "start_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "end_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "renewal_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "signed_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "contract_file_url": {
+      "type": "string",
+      "description": "Private file URI for new contracts; legacy public URLs are read-only compatibility references."
+    },
+    "signed_contract_url": {
+      "type": "string"
+    },
+    "dropbox_folder_url": {
+      "type": "string"
+    },
+    "notes": {
+      "type": "string"
+    },
+    "snapshot_contract_notes": {
+      "type": "string"
+    },
+    "payment_terms": {
+      "type": "string"
+    },
+    "payment_received": {
+      "type": "boolean",
+      "default": false
+    },
+    "contract_hash": {
+      "type": "string"
+    },
+    "dispatched_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "last_dispatched_message_id": {
+      "type": "string"
+    },
+    "last_modified_by_user_id": {
+      "type": "string"
+    },
+    "last_modified_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "e_signed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "e_signed_by_user_id": {
+      "type": "string"
+    },
+    "e_signed_by_name": {
+      "type": "string"
+    },
+    "snapshot_promoter_name": {
+      "type": "string"
+    },
+    "snapshot_promoter_address": {
+      "type": "string"
+    },
+    "snapshot_promoter_vat": {
+      "type": "string"
+    },
+    "snapshot_agency_name": {
+      "type": "string"
+    },
+    "snapshot_agency_address": {
+      "type": "string"
+    },
+    "snapshot_agency_rut": {
+      "type": "string"
+    },
+    "snapshot_venue_name": {
+      "type": "string"
+    },
+    "snapshot_venue_address": {
+      "type": "string"
+    },
+    "snapshot_artist_name": {
+      "type": "string"
+    },
+    "snapshot_event_name": {
+      "type": "string"
+    },
+    "snapshot_show_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "snapshot_currency": {
+      "type": "string"
+    },
+    "snapshot_guarantee_fee": {
+      "type": "number"
+    },
+    "snapshot_booking_fee": {
+      "type": "number"
+    },
+    "snapshot_tax_rate": {
+      "type": "number"
+    },
+    "snapshot_taken_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "created_by_org_id": {
+      "type": "string"
+    },
+    "shared_with_org": {
+      "type": "string"
+    },
+    "supersedes_contract_id": {
+      "type": "string"
+    },
+    "version_number": {
+      "type": "number",
+      "default": 1
+    },
+    "is_amendment": {
+      "type": "boolean",
+      "default": false
+    },
+    "immutable_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "content_hash": {
+      "type": "string",
+      "description": "Approved canonical document hash"
+    },
+    "pdf_hash": {
+      "type": "string",
+      "description": "SHA-256 of generated PDF bytes; equals legacy contract_hash"
+    },
+    "draft_id": {
+      "type": "string",
+      "description": "Reference to frozen generated ContractDraft"
+    },
+    "draft_revision_no": {
+      "type": "integer"
+    },
+    "master_content_version": {
+      "type": "string"
+    },
+    "rendered_template_key": {
+      "type": "string"
+    },
+    "needs_resend": {
+      "type": "boolean",
+      "default": false
+    },
+    "generation_lock": {
+      "type": "string",
+      "description": "Generator-owned READY/draft reservation; dispatch cannot claim draft status"
+    }
+  },
+  "required": [
+    "artist_id",
+    "title",
+    "type"
+  ]
+}

@@ -1,0 +1,17 @@
+diff --git a/src/components/contract-lab/displayDocumentHTML.js b/src/components/contract-lab/displayDocumentHTML.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..bfc9aa4f09ceed2db8de06e3b229e5a25a4ceb81
+--- /dev/null
++++ b/src/components/contract-lab/displayDocumentHTML.js
+@@ -0,0 +1,10 @@
++export default function displayDocumentHTML(html) {
++  const document=new DOMParser().parseFromString(html || '', 'text/html');
++  document.querySelectorAll('table').forEach(table=>{
++    const labels=[...table.querySelectorAll('thead th')].map(th=>th.textContent.trim());
++    if(!labels.length)return;
++    table.classList.add('document-payment-table');
++    table.querySelectorAll('tbody tr').forEach(row=>[...row.cells].forEach((cell,i)=>cell.setAttribute('data-label',labels[i]||'')));
++  });
++  return document.body.innerHTML;
++}
+\ No newline at end of file

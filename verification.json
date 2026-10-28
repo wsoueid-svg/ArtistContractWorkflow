@@ -1,0 +1,31 @@
+{
+  "bundle_verification": "Artifact integrity and exact baseline diffs will be checked separately; no contract lifecycle test is performed by export.",
+  "historical_evidence_files": [
+    "evidence/INCREMENT1_REPORT.md.source.txt",
+    "evidence/WORKFLOW_MAP.md.source.txt"
+  ],
+  "known_coverage": {
+    "navigation_and_mobile_setup": "Historically checked in WORKFLOW_MAP.md; not rerun for documentation export.",
+    "artist_wizard": "Previous turn verified mobile full-name retention, create/save, modal closure, directory/profile display and cleanup on a disposable record.",
+    "draft_save_reopen": "Increment 1 report contains earlier passes; latest workspace report leaves final Save persistence incomplete. Current end-to-end acceptance not certified.",
+    "pdf_generation_and_pagination": "Current complete UI generation/preview/download acceptance not certified.",
+    "amendment_history": "Implemented source included; full persistence acceptance not certified.",
+    "sent_returned_signed": "End-to-end status transition audit not completed; the supplied automated report was blocked before reaching a contract.",
+    "gmail_delivery": "No real email sent by this export. Gmail account authorization not verified.",
+    "multi_user_authorization": "Not automatically verified.",
+    "elevate_workspace": "Not automatically verified."
+  },
+  "required_post_merge_acceptance": [
+    "Review all changed permissions and trusted User fields on the destination.",
+    "Disposable show: promoter link, template setup, protected blocks, save/close/reopen, concurrent stale revision conflict and browser recovery.",
+    "Generate PDF using an authorized renderer; verify private access, preview, download, pagination and immutable prior PDF.",
+    "Create amendment and confirm correct ancestry/version/current-show binding without overwriting issued PDFs.",
+    "Verify READY, DISPATCHING, SENT, RETURNED and SIGNED boundaries without real mail; if there is no safe controlled email environment, report delivery and mailbox-based RETURNED as untested.",
+    "Verify staff-only signing and signed/historical mutation guards with a separate non-admin identity.",
+    "Verify milestone side effects and exchange-rate behavior on disposable records without duplicating existing workflows."
+  ],
+  "main_app_integration_performed": false,
+  "published_or_deployed": false,
+  "database_records_changed": false,
+  "emails_sent": false
+}

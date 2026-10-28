@@ -1,0 +1,20 @@
+import React from 'react';
+import { contractMeta, invoiceMeta, CONF_STATUS_META } from '@/lib/dealStatus';
+
+/**
+ * DealStatusBadge — one colour-coded pill for contract / invoice / thread stages.
+ * kind: 'contract' | 'invoice' | 'conf'
+ */
+export default function DealStatusBadge({ kind = 'contract', status, size = 'xs', className = '' }) {
+  let meta;
+  if (kind === 'contract') meta = contractMeta(status);
+  else if (kind === 'invoice') meta = invoiceMeta(status);
+  else meta = CONF_STATUS_META[status ? 'linked' : 'unlinked'];
+
+  const sizeCls = size === 'sm' ? 'text-xs px-2.5 py-1' : 'text-[10px] px-2 py-0.5';
+  return (
+    <span className={`inline-flex items-center rounded-full font-semibold uppercase tracking-wide whitespace-nowrap ${sizeCls} ${meta.className} ${className}`}>
+      {meta.label}
+    </span>
+  );
+}

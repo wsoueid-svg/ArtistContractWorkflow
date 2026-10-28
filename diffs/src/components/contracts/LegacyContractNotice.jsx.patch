@@ -1,0 +1,13 @@
+diff --git a/src/components/contracts/LegacyContractNotice.jsx b/src/components/contracts/LegacyContractNotice.jsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..c3ab3515352eaf31669b53d32a56b65946c6223b
+--- /dev/null
++++ b/src/components/contracts/LegacyContractNotice.jsx
+@@ -0,0 +1,6 @@
++import { Link } from 'react-router-dom';
++import { Button } from '@/components/ui/button';
++import contractPreviewUrl from '@/components/contracts/contractPreviewUrl';
++export default function LegacyContractNotice({contract,onCancel}) {
++  return <div className="space-y-4 p-6"><h2 className="text-lg font-semibold">Contract protected</h2><p className="text-sm text-muted-foreground">Issued, generated, and show-linked contracts cannot be edited or deleted from this form. Use the current revision on the show to make an amendment.</p><div className="flex flex-wrap gap-2">{contract.contract_file_url&&<Button asChild variant="outline"><Link to={contractPreviewUrl(contract.id)}>Open contract</Link></Button>}{contract.show_id&&<Button asChild variant="outline"><Link to={`/analogshowdetail?id=${encodeURIComponent(contract.show_id)}&tab=contract`}>Open show contract</Link></Button>}<Button variant="ghost" onClick={onCancel}>Close</Button></div></div>;
++}
+\ No newline at end of file

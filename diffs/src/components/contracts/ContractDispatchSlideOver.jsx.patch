@@ -1,0 +1,54 @@
+diff --git a/src/components/contracts/ContractDispatchSlideOver.jsx b/src/components/contracts/ContractDispatchSlideOver.jsx
+index ec18259483015308483f8888cbc89921013643a8..04ddb9f96d2b19ba57739a64f5c1ba9a4d1986e9 100644
+--- a/src/components/contracts/ContractDispatchSlideOver.jsx
++++ b/src/components/contracts/ContractDispatchSlideOver.jsx
+@@ -11,7 +11,7 @@ import {
+ } from 'lucide-react';
+ import EmailChipInput from '@/components/contracts/EmailChipInput';
+ import PersonalTemplatePicker from '@/components/contracts/PersonalTemplatePicker';
+-import ContractReviewEditor from '@/components/contracts/ContractReviewEditor';
++import ContractRevisionAction from '@/components/contracts/ContractRevisionAction';
+ import RiderAttachmentPicker from '@/components/contracts/RiderAttachmentPicker';
+ 
+ const fmtDate = (d) => {
+@@ -47,13 +47,6 @@ export default function ContractDispatchSlideOver({
+   useEffect(() => { setPdfUrl(contractUrl); }, [contractUrl]);
+   useEffect(() => { if (open) { setReviewing(false); setRiders([]); } }, [open]);
+ 
+-  const handleRegenerated = async () => {
+-    const fresh = await base44.entities.Contract.get(contractId);
+-    setContractState(fresh);
+-    setPdfUrl(fresh?.contract_file_url || pdfUrl);
+-    await invalidateShowQueries(queryClient, show.id);
+-    setReviewing(false);
+-  };
+ 
+   useEffect(() => {
+     let alive = true;
+@@ -200,7 +193,7 @@ export default function ContractDispatchSlideOver({
+   };
+ 
+   const canReview = ['draft', 'READY'].includes(contractState?.status) && !!contractState?.contract_template_id;
+-  const canSend = !!to && !!subject && !!pdfUrl && !!contractId && !gmailBlocked && !loading && contractState?.status === 'READY';
++  const canSend = !!to && !!subject && !!pdfUrl && !!contractId && !gmailBlocked && !loading && contractState?.status === 'READY' && !contractState?.generation_lock;
+ 
+   return (
+     <Sheet open={open} onOpenChange={(v) => !v && onClose?.()}>
+@@ -241,7 +234,7 @@ export default function ContractDispatchSlideOver({
+             <Button onClick={onClose} className="h-11 bg-slate-900 text-white hover:bg-slate-800">Done</Button>
+           </div>
+         ) : reviewing ? (
+-          <ContractReviewEditor show={show} contract={contractState} onBack={() => setReviewing(false)} onUpdated={handleRegenerated} />
++          <div className="space-y-4 p-5"><p className="text-sm text-muted-foreground">Revisions preserve this PDF and open as a new version. After generating, dispatch from the new current contract.</p><ContractRevisionAction showId={show.id} contractId={contractId} onChanged={onClose}/><Button variant="ghost" onClick={()=>setReviewing(false)}>Back to dispatch</Button></div>
+         ) : (
+           <>
+             <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
+@@ -346,7 +339,7 @@ export default function ContractDispatchSlideOver({
+                 )}
+                 {pdfUrl && (
+                   <a
+-                    href={pdfUrl}
++                    href={`/contract-preview?contract=${encodeURIComponent(contractId)}`}
+                     target="_blank"
+                     rel="noopener noreferrer"
+                     className="inline-flex min-h-[44px] items-center px-1 text-xs font-semibold text-slate-500 hover:text-slate-900 hover:underline"

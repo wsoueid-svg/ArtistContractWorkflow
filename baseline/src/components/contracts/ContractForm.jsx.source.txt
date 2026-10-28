@@ -1,0 +1,325 @@
+import React, { useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { X, FolderOpen, ExternalLink } from 'lucide-react';
+import FileUploader from '../shared/FileUploader';
+import CurrencySelect from '../shared/CurrencySelect';
+
+export default function ContractForm({ contract, artists, contacts, onSubmit, onCancel, onDelete }) {
+  const [formData, setFormData] = useState(
+    contract || {
+      artist_id: '',
+      contact_id: '',
+      title: '',
+      type: 'show_agreement',
+      status: 'draft',
+      value: '',
+      currency: 'USD',
+      commission_rate: '',
+      commission_amount: '',
+      start_date: '',
+      end_date: '',
+      renewal_date: '',
+      contract_file_url: '',
+      signed_contract_url: '',
+      dropbox_folder_url: '',
+      notes: '',
+      payment_terms: '',
+      payment_received: false,
+    }
+  );
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    const submitData = {
+      ...formData,
+      value: formData.value ? parseFloat(formData.value) : undefined,
+      commission_rate: formData.commission_rate ? parseFloat(formData.commission_rate) : undefined,
+      commission_amount: formData.commission_amount ? parseFloat(formData.commission_amount) : undefined,
+    };
+    onSubmit(submitData);
+  };
+
+  return (
+    <div className="p-6">
+      <div className="flex justify-between items-center mb-6 border-b-2 border-yellow-400 pb-4">
+        <h2 className="text-2xl font-bold text-black">
+          {contract ? 'Edit Contract' : 'New Contract'}
+        </h2>
+        <button onClick={onCancel} className="text-gray-500 hover:text-black transition">
+          <X className="w-6 h-6" />
+        </button>
+      </div>
+
+      <form onSubmit={handleSubmit} className="space-y-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <Label htmlFor="artist_id">Artist *</Label>
+            <Select
+              value={formData.artist_id}
+              onValueChange={(value) => setFormData({ ...formData, artist_id: value })}
+            >
+              <SelectTrigger className="mt-1">
+                <SelectValue placeholder="Select artist" />
+              </SelectTrigger>
+              <SelectContent>
+                {artists.map((artist) => (
+                  <SelectItem key={artist.id} value={artist.id}>
+                    {artist.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div>
+            <Label htmlFor="contact_id">Contact/Promoter</Label>
+            <Select
+              value={formData.contact_id || ''}
+              onValueChange={(value) => setFormData({ ...formData, contact_id: value })}
+            >
+              <SelectTrigger className="mt-1">
+                <SelectValue placeholder="Select contact" />
+              </SelectTrigger>
+              <SelectContent>
+                {contacts.map((contact) => (
+                  <SelectItem key={contact.id} value={contact.id}>
+                    {contact.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <div>
+          <Label htmlFor="title">Contract Title *</Label>
+          <Input
+            id="title"
+            value={formData.title}
+            onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+            required
+            className="mt-1"
+          />
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <Label htmlFor="type">Type</Label>
+            <Select
+              value={formData.type}
+              onValueChange={(value) => setFormData({ ...formData, type: value })}
+            >
+              <SelectTrigger className="mt-1">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="show_agreement">Show Agreement</SelectItem>
+                <SelectItem value="management">Management</SelectItem>
+                <SelectItem value="label">Label</SelectItem>
+                <SelectItem value="sponsorship">Sponsorship</SelectItem>
+                <SelectItem value="merchandise">Merchandise</SelectItem>
+                <SelectItem value="other">Other</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div>
+            <Label htmlFor="status">Status</Label>
+            <Select
+              value={formData.status}
+              onValueChange={(value) => setFormData({ ...formData, status: value })}
+            >
+              <SelectTrigger className="mt-1">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="draft">Draft</SelectItem>
+                <SelectItem value="requested">Requested</SelectItem>
+                <SelectItem value="ready_to_send">Ready to Send</SelectItem>
+                <SelectItem value="sent">Sent</SelectItem>
+                <SelectItem value="signed">Signed</SelectItem>
+                <SelectItem value="paid">Paid</SelectItem>
+                <SelectItem value="cancelled">Cancelled</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <Label htmlFor="value">Contract Value</Label>
+            <Input
+              id="value"
+              type="number"
+              step="0.01"
+              value={formData.value || ''}
+              onChange={(e) => setFormData({ ...formData, value: e.target.value })}
+              className="mt-1"
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="currency">Currency</Label>
+            <CurrencySelect
+              value={formData.currency}
+              onChange={(value) => setFormData({ ...formData, currency: value })}
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="commission_rate">Commission %</Label>
+            <Input
+              id="commission_rate"
+              type="number"
+              step="0.1"
+              value={formData.commission_rate || ''}
+              onChange={(e) => setFormData({ ...formData, commission_rate: e.target.value })}
+              className="mt-1"
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <Label htmlFor="start_date">Start Date</Label>
+            <Input
+              id="start_date"
+              type="date"
+              value={formData.start_date || ''}
+              onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
+              className="mt-1"
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="end_date">End Date</Label>
+            <Input
+              id="end_date"
+              type="date"
+              value={formData.end_date || ''}
+              onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
+              className="mt-1"
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="renewal_date">Renewal Date</Label>
+            <Input
+              id="renewal_date"
+              type="date"
+              value={formData.renewal_date || ''}
+              onChange={(e) => setFormData({ ...formData, renewal_date: e.target.value })}
+              className="mt-1"
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <FileUploader
+              label="Contract File"
+              value={formData.contract_file_url || ''}
+              onChange={(url) => setFormData({ ...formData, contract_file_url: url })}
+              accept=".pdf,.doc,.docx"
+            />
+          </div>
+
+          <div>
+            <FileUploader
+              label="Signed Contract"
+              value={formData.signed_contract_url || ''}
+              onChange={(url) => setFormData({ ...formData, signed_contract_url: url })}
+              accept=".pdf,.doc,.docx"
+            />
+          </div>
+        </div>
+
+        {/* Dropbox Folder */}
+        <div>
+          <Label className="flex items-center gap-1.5">
+            <FolderOpen className="w-3.5 h-3.5" /> Dropbox Folder URL
+            <span className="font-normal text-gray-400 text-xs">(optional)</span>
+          </Label>
+          <Input
+            value={formData.dropbox_folder_url || ''}
+            onChange={(e) => setFormData({ ...formData, dropbox_folder_url: e.target.value })}
+            placeholder="https://www.dropbox.com/sh/..."
+            className="mt-1"
+          />
+          {formData.dropbox_folder_url && (
+            <a
+              href={formData.dropbox_folder_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-xs text-yellow-600 hover:text-yellow-800 mt-1"
+            >
+              <ExternalLink className="w-3 h-3" /> Open Dropbox folder
+            </a>
+          )}
+        </div>
+
+        <div>
+          <Label htmlFor="payment_terms">Payment Terms</Label>
+          <Textarea
+            id="payment_terms"
+            value={formData.payment_terms || ''}
+            onChange={(e) => setFormData({ ...formData, payment_terms: e.target.value })}
+            rows={2}
+            className="mt-1"
+          />
+        </div>
+
+        <div>
+          <Label htmlFor="notes">Notes</Label>
+          <Textarea
+            id="notes"
+            value={formData.notes || ''}
+            onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+            rows={3}
+            className="mt-1"
+          />
+        </div>
+
+        <div className="flex justify-between items-center pt-4 border-t">
+          <div>
+            {contract && onDelete && (
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => {
+                  if (confirm('Delete this contract? This cannot be undone.')) {
+                    onDelete(contract.id);
+                  }
+                }}
+                className="text-red-500 hover:text-red-700 hover:bg-red-50"
+              >
+                Delete
+              </Button>
+            )}
+          </div>
+          <div className="flex gap-3">
+            <Button type="button" variant="outline" onClick={onCancel}>
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              className="bg-yellow-400 text-black hover:bg-yellow-500 font-semibold"
+            >
+              {contract ? 'Update' : 'Create'}
+            </Button>
+          </div>
+        </div>
+      </form>
+    </div>
+  );
+}

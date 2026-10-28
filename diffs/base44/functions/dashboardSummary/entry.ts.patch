@@ -1,0 +1,22 @@
+diff --git a/base44/functions/dashboardSummary/entry.ts b/base44/functions/dashboardSummary/entry.ts
+index 1db5d6f2afe5bd37173939049a7e4dfaa86bc568..14c2d4be5183e1dd8ec8ec9f6c00e9cd04894a60 100644
+--- a/base44/functions/dashboardSummary/entry.ts
++++ b/base44/functions/dashboardSummary/entry.ts
+@@ -56,7 +56,7 @@ Deno.serve(async (req) => {
+       base44.entities.Task.filter({ status: ['todo', 'in_progress', 'blocked'] }, '-due_date', 200),
+       base44.entities.Release.filter({ status: 'upcoming' }, 'release_date', 50),
+       base44.entities.Approval.filter({ status: 'pending' }, '-created_date', 50),
+-      base44.entities.Contract.filter({ status: 'sent' }, '-created_date', 50),
++      base44.entities.Contract.filter({ status: { $in: ['SENT', 'sent'] } }, '-created_date', 50),
+       base44.entities.Artist.filter({ org: 'analog' }, 'name', 500),
+     ]);
+ 
+@@ -161,7 +161,7 @@ Deno.serve(async (req) => {
+       label: c.title,
+       sublabel: `Unsigned · ${c.type || 'contract'}`,
+       priority: 3,
+-      link_path: 'Contracts',
++      link_path: c.show_id ? `ShowDetail?id=${encodeURIComponent(c.show_id)}&tab=contract` : 'Contracts',
+     }));
+ 
+     // Shows within 30 days missing logistics/contract/invoice

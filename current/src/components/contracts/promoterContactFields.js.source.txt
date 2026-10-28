@@ -1,0 +1,10 @@
+export default function promoterContactFields(contact) {
+  const terms = contact.default_deal_terms || {};
+  const address = terms.billing_address || contact.billing_address || {};
+  return {
+    company_name: terms.legal_company_name || contact.company || contact.name || '',
+    company_address: [address.street || contact.address, address.city || contact.city, address.postal_code, address.country || contact.country].filter(Boolean).join(', '),
+    company_vat: contact.vat_tax_id || terms.company_registration_number || '',
+    company_signatory: contact.contact_persons?.[0]?.name || contact.contact_person || '',
+  };
+}

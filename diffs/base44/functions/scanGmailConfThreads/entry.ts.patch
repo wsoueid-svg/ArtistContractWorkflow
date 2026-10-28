@@ -1,0 +1,58 @@
+diff --git a/base44/functions/scanGmailConfThreads/entry.ts b/base44/functions/scanGmailConfThreads/entry.ts
+index 11d0db194949353f1f86e7e2cdf856e88923303d..788f9c06c55ea0d33aa8d960b7fcd07ad59a5f08 100644
+--- a/base44/functions/scanGmailConfThreads/entry.ts
++++ b/base44/functions/scanGmailConfThreads/entry.ts
+@@ -3,6 +3,7 @@ import { header, parseAddresses, cleanSubject, gmailGet, getMailboxEmail } from
+ import { getUserGmailToken, isGmailAuthError, rootMessageId, acquireSyncLock, releaseSyncLock, countUnassignedFor } from '../../shared/gmailUser.ts';
+ import { ingestConfThread, isCommunicationFrozen } from '../../shared/confIngestion.ts';
+ import { buildConfThreadAccess } from '../../shared/confThreadAccess.ts';
++import { recordContractReturn } from '../../shared/contractReturn.ts';
+ 
+ export default async function(req) {
+   const base44 = createClientFromRequest(req);
+@@ -11,6 +12,7 @@ export default async function(req) {
+   try {
+     const user = await base44.auth.me();
+     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
++    if(user.is_active===false||!['admin','user'].includes(user.role))return Response.json({error:'Active staff access required'},{status:403});
+     userId = user.id;
+     entities = base44.asServiceRole.entities;
+     const body = await req.json().catch(() => ({}));
+@@ -25,7 +27,7 @@ export default async function(req) {
+     const internalEmails = new Set(users.map((item) => String(item.email || '').toLowerCase()).filter(Boolean));
+     if (mailboxEmail) internalEmails.add(mailboxEmail);
+ 
+-    const shows = await entities.Show.list('-date', 2000).catch(() => []);
++    const shows = await base44.entities.Show.list('-date', 2000);
+     const showByThread = {};
+     shows.forEach((show) => [...(show.gmail_thread_ids || []), show.gmail_thread_id, show.active_thread_id].filter(Boolean).forEach((id) => { showByThread[id] = show; }));
+     const existingThreads = await entities.ConfThread.list('-last_message_at', 2000).catch(() => []);
+@@ -40,8 +42,9 @@ export default async function(req) {
+       pageToken = page.nextPageToken || null;
+     } while (pageToken && threadIds.size < 400);
+ 
+-    const sentContracts = await entities.Contract.filter({ status: 'SENT' }).catch(() => []);
+-    const sentByShow = Object.fromEntries(sentContracts.filter((item) => item.show_id).map((item) => [item.show_id, item]));
++    const currentIds=shows.map(s=>s.contract_id).filter(Boolean);
++    const sentContracts = currentIds.length?await base44.entities.Contract.filter({ id:{$in:currentIds},status:'SENT' }):[];
++    const sentByShow = Object.fromEntries(sentContracts.filter(item=>shows.some(s=>s.id===item.show_id&&s.contract_id===item.id)).map(item=>[item.show_id,item]));
+     shows.forEach((show) => { const id = show.active_thread_id || show.gmail_thread_id; if (id && sentByShow[show.id] && !isCommunicationFrozen(show)) threadIds.add(id); });
+ 
+     let created = 0, updated = 0, returned = 0, messagesCreated = 0, attachmentsCreated = 0, frozen = 0;
+@@ -97,15 +100,7 @@ export default async function(req) {
+         attachmentsCreated += ingestion.attachments_created;
+ 
+         const contract = linkedShow ? sentByShow[linkedShow.id] : null;
+-        const lastFrom = parseAddresses(header(last, 'From'))[0] || '';
+-        if (contract && !ingestion.frozen && lastFrom && !internalEmails.has(lastFrom)) {
+-          const receivedAt = Number(last.internalDate || 0);
+-          const dispatchedAt = contract.dispatched_at ? new Date(contract.dispatched_at).getTime() : 0;
+-          if (receivedAt > dispatchedAt) {
+-            await entities.Contract.update(contract.id, { status: 'RETURNED', last_modified_at: new Date().toISOString() });
+-            returned++;
+-          }
+-        }
++        if(contract && !ingestion.frozen && await recordContractReturn(base44,linkedShow,contract,thread,last,internalEmails,user.id))returned++;
+       }
+     }
+     await releaseSyncLock(entities, user.id, 'IDLE', { completed: true, gmail_connected_email: mailboxEmail || undefined });

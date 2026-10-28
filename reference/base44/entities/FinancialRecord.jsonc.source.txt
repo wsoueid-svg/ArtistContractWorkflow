@@ -1,0 +1,251 @@
+{
+  "name": "FinancialRecord",
+  "type": "object",
+  "rls": {
+    "read": {
+      "$and": [
+        {
+          "user_condition": {
+            "data.is_active": true
+          }
+        },
+        {
+          "$or": [
+            {
+              "user_condition": {
+                "role": "admin"
+              }
+            },
+            {
+              "user_condition": {
+                "data.is_cfo": true
+              }
+            },
+            {
+              "user_condition": {
+                "data.finance_role": "Finance Manager"
+              }
+            },
+            {
+              "user_condition": {
+                "data.finance_role": "Finance Viewer"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "create": {
+      "user_condition": {
+        "data.is_active": true
+      }
+    },
+    "update": {
+      "$and": [
+        {
+          "user_condition": {
+            "data.is_active": true
+          }
+        },
+        {
+          "$or": [
+            {
+              "user_condition": {
+                "role": "admin"
+              }
+            },
+            {
+              "user_condition": {
+                "data.is_cfo": true
+              }
+            },
+            {
+              "data.created_by_org_id": "{{user.data.active_org}}"
+            },
+            {
+              "data.shared_with_org": "{{user.data.active_org}}"
+            }
+          ]
+        }
+      ]
+    },
+    "delete": {
+      "$and": [
+        {
+          "user_condition": {
+            "data.is_active": true
+          }
+        },
+        {
+          "$or": [
+            {
+              "user_condition": {
+                "role": "admin"
+              }
+            },
+            {
+              "user_condition": {
+                "data.is_cfo": true
+              }
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "properties": {
+    "artist_id": {
+      "type": "string",
+      "indexed": true
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "income",
+        "expense"
+      ],
+      "indexed": true
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "show_fee",
+        "merchandise",
+        "streaming",
+        "royalties",
+        "advance",
+        "travel",
+        "accommodation",
+        "equipment",
+        "marketing",
+        "commission",
+        "commission_and_fees",
+        "artist_payout",
+        "operational",
+        "other"
+      ],
+      "default": "other"
+    },
+    "ledger_source": {
+      "type": "string",
+      "enum": [
+        "shared",
+        "tenant",
+        "legacy"
+      ],
+      "default": "legacy",
+      "indexed": true
+    },
+    "amount": {
+      "type": "number",
+      "description": "Cash receivable in integer cents"
+    },
+    "expected_cash_amount": {
+      "type": "number",
+      "description": "Bank reconciliation target in integer cents: fee + VAT - WHT"
+    },
+    "currency": {
+      "type": "string",
+      "default": "EUR"
+    },
+    "exchange_rate_locked": {
+      "type": "string"
+    },
+    "amount_base_eur": {
+      "type": "number"
+    },
+    "recorded_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "date": {
+      "type": "string",
+      "format": "date",
+      "indexed": true
+    },
+    "description": {
+      "type": "string"
+    },
+    "show_id": {
+      "type": "string",
+      "indexed": true
+    },
+    "tour_id": {
+      "type": "string",
+      "indexed": true
+    },
+    "agent_id": {
+      "type": "string",
+      "indexed": true
+    },
+    "royalty_id": {
+      "type": "string"
+    },
+    "merchandise_id": {
+      "type": "string"
+    },
+    "invoice_url": {
+      "type": "string"
+    },
+    "receipt_url": {
+      "type": "string"
+    },
+    "payment_status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "paid",
+        "overdue",
+        "cancelled",
+        "disputed"
+      ],
+      "default": "pending",
+      "indexed": true
+    },
+    "invoice_id": {
+      "type": "string",
+      "indexed": true
+    },
+    "created_by_org_id": {
+      "type": "string",
+      "indexed": true
+    },
+    "shared_with_org": {
+      "type": "string",
+      "indexed": true
+    },
+    "is_deleted": {
+      "type": "boolean",
+      "default": false
+    },
+    "deleted_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "deleted_by_id": {
+      "type": "string"
+    },
+    "aboss_id": {
+      "type": "string",
+      "indexed": true,
+      "unique": true
+    },
+    "import_batch_id": {
+      "type": "string",
+      "indexed": true
+    },
+    "is_aboss_import": {
+      "type": "boolean",
+      "default": false
+    },
+    "raw_aboss_data": {
+      "type": "object"
+    }
+  },
+  "required": [
+    "artist_id",
+    "type",
+    "amount",
+    "date"
+  ]
+}

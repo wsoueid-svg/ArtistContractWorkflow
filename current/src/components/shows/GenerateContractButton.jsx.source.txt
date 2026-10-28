@@ -1,0 +1,26 @@
+import { useEffect, useState } from 'react';
+import contractPreviewUrl from '@/components/contracts/contractPreviewUrl';
+import { Link } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
+import { Button } from '@/components/ui/button';
+import { FileText, Send } from 'lucide-react';
+import GenerateDealCardButton from '@/components/shows/GenerateDealCardButton';
+import ContractDispatchSlideOver from '@/components/contracts/ContractDispatchSlideOver';
+import ContractEditorModal from '@/components/contract-lab/ContractEditorModal';
+import { base44 } from '@/api/base44Client';
+import refreshContractWorkspace from '@/components/contracts/refreshContractWorkspace';
+export default function GenerateContractButton({show,showId,contractId:initialContractId,contract:initialContract=null,primaryOnly=false,onChanged}) {
+  const [seed,setSeed]=useState(null),[generatedUrl,setGeneratedUrl]=useState(show?.contract_url||null),[contractId,setContractId]=useState(initialContractId||show?.contract_id||null),[dispatchOpen,setDispatchOpen]=useState(false),[dispatched,setDispatched]=useState(false),[threadId,setThreadId]=useState(show?.gmail_thread_id||null),[contract,setContract]=useState(initialContract);
+  const queryClient=useQueryClient(),showObj=show||(showId?{id:showId}:null);
+  useEffect(()=>{setGeneratedUrl(show?.contract_url||null);setContractId(initialContractId||show?.contract_id||null);},[show?.contract_url,show?.contract_id,initialContractId]);
+  useEffect(()=>{if(!contractId){setContract(null);return;}if(initialContract?.id===contractId){setContract(initialContract);return;}base44.entities.Contract.get(contractId).then(setContract);},[contractId,initialContract]);
+  const signed=contract?.status==='SIGNED',immutable=['SENT','RETURNED','SIGNED'].includes(contract?.status),locked=contract?.status==='DISPATCHING'||!!contract?.dispatch_lock||!!contract?.generation_lock;
+  const refresh=()=>{refreshContractWorkspace(queryClient,showObj.id);onChanged?.();};
+  const dispatch=showObj&&generatedUrl?<ContractDispatchSlideOver open={dispatchOpen} onClose={()=>setDispatchOpen(false)} show={{...showObj,gmail_thread_id:threadId}} contractId={contractId} contractUrl={generatedUrl} onSent={res=>{setDispatched(true);setContract(current=>({...current,status:'SENT'}));if(res?.gmail_thread_id)setThreadId(res.gmail_thread_id);refresh();}}/>:null;
+  const dispatchButton=<Button disabled={!generatedUrl||immutable||dispatched||locked} onClick={()=>setDispatchOpen(true)}><Send className="h-4 w-4"/>Send contract</Button>;
+  if(primaryOnly)return <>{dispatchButton}{dispatch}</>;
+  return <><div className="flex flex-wrap items-center gap-2">{generatedUrl&&<Button variant="outline" asChild><Link to={contractPreviewUrl(contractId,showObj?.id)}>Open PDF</Link></Button>}{generatedUrl&&!immutable&&dispatchButton}
+    {signed?<span className="text-sm text-muted-foreground">Signed, locked</span>:<Button variant={generatedUrl?'outline':'default'} disabled={locked} onClick={()=>setSeed(generatedUrl?{cloneId:contractId}:{draftId:contract?.draft_id||null})}><FileText className="h-4 w-4"/>{immutable?'Create Amendment':generatedUrl?'Continue editing document':'Fill contract'}</Button>}
+    <GenerateDealCardButton show={showObj}/>
+  </div>{dispatch}{seed&&<ContractEditorModal show={showObj} open draftId={seed.draftId} cloneId={seed.cloneId} onClose={()=>setSeed(null)} onGenerated={(url,id)=>{setGeneratedUrl(url);setContractId(id);setDispatched(false);refresh();}}/>}</>;
+}

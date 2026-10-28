@@ -1,0 +1,245 @@
+diff --git a/base44/functions/generateSmartContract/entry.ts b/base44/functions/generateSmartContract/entry.ts
+index f697678cf2385ea308bde78f43b82982ea86c67c..834979f97f207853af2530eeff6e27b5b8417543 100644
+--- a/base44/functions/generateSmartContract/entry.ts
++++ b/base44/functions/generateSmartContract/entry.ts
+@@ -1,9 +1,13 @@
+-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
+-import { assertShowAccess } from '../../shared/assertShowAccess.ts';
++import { createClientFromRequest } from 'npm:@base44/sdk@0.8.53';
++import { assertShowAccess, canDispatchContracts } from '../../shared/assertShowAccess.ts';
+ import { getContractualSetWindow } from '../../shared/showTiming.ts';
+ import { computeDealBreakdown, formatCents } from '../../shared/calcDeal.ts';
+ import { fromCents, toCents } from '../../shared/dealCardTerms.ts';
+ import { htmlToPdf } from '../../shared/pdfshift.ts';
++import { buildScheduleContext } from '../../shared/contractSchedule.ts';
++import { generateApprovedContract } from '../../shared/generateApprovedContract.ts';
++import { assertContractMutable, currentContract as getCurrentContract } from '../../shared/contractLifecycle.ts';
++import { validateGenerationInputs, validateShowInputs, validDate } from '../../shared/contractValidation.ts';
+ import {
+   renderContractDocument,
+   resolveTemplateKey,
+@@ -50,6 +54,10 @@ export default async function(req) {
+     const { show_id, fields: rawFields, contract_template_id, contract_notes, force_amendment } = body;
+     if (!contract_template_id) return Response.json({ error: 'Contract template is required' }, { status: 400 });
+ 
++    if (body.draft_id) return Response.json(await generateApprovedContract(base44, user, body, sha256Hex));
++    if(!await canDispatchContracts(base44,user,show_id?(await assertShowAccess(base44,show_id,user)).show:null))return Response.json({error:'You do not have permission to generate this contract.'},{status:403});
++    if (rawFields && 'contract_date' in rawFields) validDate(rawFields.contract_date, 'Contract date');
++
+     // ── Immutability guard ───────────────────────────────────────────────────
+     // A contract that has left the building (SENT / RETURNED / SIGNED) must not be
+     // silently re-rendered against current LegalEntity data. Re-generation is only
+@@ -62,7 +70,9 @@ export default async function(req) {
+         base44.asServiceRole.entities.Show.get(show_id).catch(() => null),
+         base44.asServiceRole.entities.Contract.filter({ show_id }, '-version_number', 100).catch(() => []),
+       ]);
+-      const currentContract = priorContracts.find((contract) => contract.id === versionShow?.contract_id) || priorContracts[0] || null;
++      const currentContract = await getCurrentContract(base44,versionShow);
++      assertContractMutable(currentContract, force_amendment === true);
++      if(currentContract?.draft_id&&currentContract.contract_file_url)return Response.json({error:'Open the contract document editor to create and approve a new revision before generating.'},{status:409});
+       if (currentContract && frozenStatuses.includes(currentContract.status)) {
+         supersededContract = currentContract;
+         if (!force_amendment) {
+@@ -125,6 +135,7 @@ export default async function(req) {
+           return Response.json({ error: `Contract currency ${selectedCurrency} does not match the Show currency ${showCurrency}. Correct the Show Deal currency before generating.` }, { status: 422 });
+         }
+         const templateTerms = contractTemplate.default_terms || {};
++        validateShowInputs(show, contractTemplate);
+         breakdown = computeDealBreakdown({
+           show,
+           legalEntity,
+@@ -185,15 +196,15 @@ export default async function(req) {
+     const templateKey = contractTemplate.template_key;
+ 
+     // ── Payment schedule (calcDeal when a show exists, submitted fields otherwise)
++    validateGenerationInputs(f, breakdown, accessibleShow, contractTemplate);
+     const built = buildScheduleContext({ f, breakdown, templateKey });
+-
+-    const { html, footerHtml, lang } = renderContractDocument(templateKey, built.ctx);
+-    const pdfBytes = await htmlToPdf(html, { footerHtml });
++    const { html, footerHtml, headerHtml, lang } = renderContractDocument(templateKey, built.ctx);
++    const pdfBytes = await htmlToPdf(html, { footerHtml, headerHtml });
+     const contractHash = await sha256Hex(pdfBytes);
+ 
+     const fileName = `contract_${templateKey}_${String(f.artist_name || 'artist').replace(/\s+/g, '_')}_${String(f.event_name || 'event').replace(/[^a-zA-Z0-9]/g, '_')}.pdf`;
+     const file = new File([new Blob([pdfBytes], { type: 'application/pdf' })], fileName, { type: 'application/pdf' });
+-    const { file_url } = await base44.asServiceRole.integrations.Core.UploadFile({ file });
++    const { file_uri: file_url } = await base44.asServiceRole.integrations.Core.UploadPrivateFile({ file });
+ 
+     let contractId = null;
+ 
+@@ -230,7 +241,10 @@ export default async function(req) {
+         }).catch(() => {});
+       }
+ 
+-      await base44.asServiceRole.entities.Show.update(show_id, patch);
++      const freshContracts = await base44.asServiceRole.entities.Contract.filter({ show_id }, {sort:'-version_number',limit:1});
++      const latest = freshContracts.items[0] || null;
++      assertContractMutable(latest, force_amendment === true);
++      if ((latest?.id || null) !== (currentEditableContract?.id || supersededContract?.id || null)) return Response.json({error:'Contract revision changed while rendering. Reopen and review.'},{status:409});
+ 
+       const existingContracts = await base44.asServiceRole.entities.Contract.filter({ show_id }).catch(() => []);
+       const templateTerms = contractTemplate.default_terms || {};
+@@ -266,6 +280,9 @@ export default async function(req) {
+         snapshot_contract_notes: f.contract_notes || '',
+         snapshot_taken_at: new Date().toISOString(),
+         contract_hash: contractHash,
++        pdf_hash: contractHash,
++        rendered_template_key: templateKey,
++        needs_resend: Boolean(currentEditableContract?.needs_resend || supersededContract),
+         supersedes_contract_id: currentEditableContract?.supersedes_contract_id || supersededContract?.id || undefined,
+         version_number: currentEditableContract?.version_number || (supersededContract ? Number(supersededContract.version_number || 1) + 1 : 1),
+         is_amendment: Boolean(currentEditableContract?.is_amendment || supersededContract),
+@@ -276,7 +293,8 @@ export default async function(req) {
+       const editable = currentEditableContract;
+       if (editable) {
+         contractId = editable.id;
+-        await base44.asServiceRole.entities.Contract.update(contractId, contractPatch);
++        const written = await base44.asServiceRole.entities.Contract.updateMany({id:contractId,status:editable.status,updated_date:editable.updated_date},{$set:contractPatch});
++        if(written.updated!==1)return Response.json({error:'Contract status changed while rendering; it may be dispatching or signed. Reopen and review.'},{status:409});
+       } else {
+         const created = await base44.asServiceRole.entities.Contract.create(contractPatch);
+         contractId = created?.id || null;
+@@ -284,6 +302,7 @@ export default async function(req) {
+ 
+       if (contractId) {
+         await base44.asServiceRole.entities.Show.update(show_id, {
++          ...patch,
+           contract_id: contractId,
+           legal_entity_id,
+           deposit_percentage: Number(contractPatch.deposit_percentage),
+@@ -308,116 +327,6 @@ export default async function(req) {
+   }
+ }
+ 
+-/**
+- * Build the layout context: payment rows + totals + clauses.
+- * Uses the calcDeal breakdown when available, else the submitted form numbers.
+- */
+-function buildScheduleContext(opts) {
+-  const { f, breakdown, templateKey } = opts;
+-  const currency = f.currency || 'EUR';
+-  const lang = templateKey.endsWith('-es') ? 'es' : 'en';
+-  const artistName = f.artist_name || 'Artist';
+-  const agencyName = f.agency_name || 'Analog';
+-  const money = (cents) => formatCents(cents, currency);
+-  const dateOnly = (value) => (value ? String(value).split('T')[0] : '');
+-
+-  let rows = [];
+-  let totals;
+-  let depositPct = Number(f.advance_pct ?? 50);
+-  let balancePct = Number(f.balance_pct ?? 50);
+-
+-  if (breakdown) {
+-    depositPct = breakdown.depositPct;
+-    balancePct = Math.max(0, 100 - breakdown.depositPct);
+-
+-    rows = breakdown.parts.map((part) => ({
+-      label: rowLabel(lang, part.type, {
+-        pct: part.type === 'DEPOSIT' ? depositPct : part.type === 'BALANCE' ? balancePct : undefined,
+-        party: part.type === 'BOOKING_FEE' ? agencyName : artistName,
+-      }),
+-      due: dateOnly(part.dueDate),
+-      subtotal: money(part.feeCents),
+-      vat: money(part.vatAmountCents),
+-      wht: money(part.whtCents),
+-      total: money(part.cashCents),
+-    }));
+-
+-    totals = {
+-      subtotal: money(breakdown.subtotalCents),
+-      vat: money(breakdown.vatAmountCents),
+-      wht: money(breakdown.whtAmountCents),
+-      grand: money(breakdown.totalPayableCents),
+-    };
+-  } else {
+-    const bookingFeeCents = toCents(f.booking_fee);
+-    const depositCents = toCents(f.advance_amount);
+-    const balanceCents = toCents(f.balance_amount);
+-    const zero = money(0);
+-
+-    if (bookingFeeCents > 0) {
+-      rows.push({
+-        label: rowLabel(lang, 'BOOKING_FEE', { party: agencyName }),
+-        due: dateOnly(f.booking_fee_due),
+-        subtotal: money(bookingFeeCents),
+-        vat: zero,
+-        wht: zero,
+-        total: money(bookingFeeCents),
+-      });
+-    }
+-    rows.push({
+-      label: rowLabel(lang, 'DEPOSIT', { pct: depositPct, party: artistName }),
+-      due: dateOnly(f.advance_due),
+-      subtotal: money(depositCents),
+-      vat: zero,
+-      wht: zero,
+-      total: money(depositCents),
+-    });
+-    rows.push({
+-      label: rowLabel(lang, 'BALANCE', { pct: balancePct, party: artistName }),
+-      due: dateOnly(f.balance_due),
+-      subtotal: money(balanceCents),
+-      vat: zero,
+-      wht: zero,
+-      total: money(balanceCents),
+-    });
+-
+-    const subtotalCents = bookingFeeCents + depositCents + balanceCents;
+-    totals = { subtotal: money(subtotalCents), vat: zero, wht: zero, grand: money(subtotalCents) };
+-  }
+-
+-  const ctx = {
+-    contractDate: f.contract_date || new Date().toISOString().split('T')[0],
+-    companyName: f.company_name || '[COMPANY NAME]',
+-    companyAddress: f.company_address || '[COMPANY ADDRESS]',
+-    companyVat: f.company_vat || '[VAT]',
+-    artistName,
+-    agencyName,
+-    agencyAddress: f.agency_address || '[AGENCY ADDRESS]',
+-    agencyTaxId: f.agency_rut || '[TAX ID]',
+-    eventName: f.event_name || '[EVENT NAME]',
+-    venue: f.venue || '[VENUE]',
+-    country: f.country || '[COUNTRY]',
+-    dateOfShow: f.date_of_show || '[DATE]',
+-    timing: f.timing || 'TBA',
+-    billingRequirements: f.billing_requirements || 'A-Z',
+-    billingPosition: f.billing_position || 'A-Z',
+-    whtRate: f.wht_rate ?? 0,
+-    rows,
+-    totals,
+-    paymentClauses: buildPaymentClauses(lang, {
+-      depositPct,
+-      balancePct,
+-      depositMonth: f.deposit_month,
+-      artistName,
+-      templateKey,
+-    }),
+-    contractNotes: f.contract_notes || '',
+-    companySignatory: f.company_signatory || '[SIGNATORY NAME]',
+-    agencySignatory: f.agency_signatory || 'Luis Honrado',
+-  };
+-
+-  return { ctx, lang };
+-}
+ 
+ /** Admin smoke test: render every template variant with representative data. */
+ async function runSmokeTest(base44, body) {
+@@ -456,14 +365,14 @@ async function runSmokeTest(base44, body) {
+     };
+ 
+     const built = buildScheduleContext({ f, breakdown: null, templateKey: key });
+-    const { html, footerHtml } = renderContractDocument(key, built.ctx);
+-    const pdfBytes = await htmlToPdf(html, { footerHtml });
++    const { html, footerHtml, headerHtml } = renderContractDocument(key, built.ctx);
++    const pdfBytes = await htmlToPdf(html, { footerHtml, headerHtml, sandbox: true });
+     const file = new File(
+       [new Blob([pdfBytes], { type: 'application/pdf' })],
+       `smoketest_${key}.pdf`,
+       { type: 'application/pdf' },
+     );
+-    const { file_url } = await base44.asServiceRole.integrations.Core.UploadFile({ file });
++    const { file_uri: file_url } = await base44.asServiceRole.integrations.Core.UploadPrivateFile({ file });
+     results.push({ template_key: key, bytes: pdfBytes.byteLength, file_url });
+   }
+ 

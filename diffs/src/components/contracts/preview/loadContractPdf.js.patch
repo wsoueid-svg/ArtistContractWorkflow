@@ -1,0 +1,35 @@
+diff --git a/src/components/contracts/preview/loadContractPdf.js b/src/components/contracts/preview/loadContractPdf.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..eef66785ab1d9657ac49d86995d79697c8b2902e
+--- /dev/null
++++ b/src/components/contracts/preview/loadContractPdf.js
+@@ -0,0 +1,28 @@
++import { base44 } from '@/api/base44Client';
++
++export default async function loadContractPdf(contractId, showId, signal, variant = 'original') {
++  if (![contractId, showId].some(id => /^[a-f0-9]{24}$/i.test(id || ''))) throw new Error('Contract unavailable');
++  let contract, show, document;
++  if (contractId) contract = await base44.entities.Contract.get(contractId);
++  else { show = await base44.entities.Show.get(showId); if (!show.contract_id) throw new Error('Contract unavailable'); contract = await base44.entities.Contract.get(show.contract_id); }
++  if (contract.show_id) {
++    const { data } = await base44.functions.invoke('getContractRevisionView', { show_id: contract.show_id, contract_id: contract.id });
++    contract = data.contract; document = data.document;
++  } else {
++    const user = await base44.auth.me();
++    if (user.is_active === false) throw new Error('Active account required');
++  }
++  const source = document?.source_snapshot;
++  const artist = contract.snapshot_artist_name || source?.fields?.artist_name || (await base44.entities.Artist.get(contract.artist_id)).name || 'Artist';
++  const event = contract.snapshot_event_name || source?.fields?.event_name || show?.event_name || contract.title || 'Contract';
++  const clean = value => String(value).normalize('NFKC').replace(/[<>:"/\\|?*\x00-\x1F]/g, '-').replace(/\s+/g, ' ').replace(/[. ]+$/g, '').slice(0, 80);
++  const metadata = { id: contract.id, title: contract.title, artist, event, revision: contract.version_number || 1, status: contract.status, show_id: contract.show_id, needs_resend: contract.needs_resend };
++  const filename = `${clean(artist)} - ${clean(event)} - Revision ${metadata.revision}.pdf`;
++  const {data: access} = await base44.functions.invoke('contractFileAccess', {contract_id:contract.id, variant});
++  if (!access.url) return { contract: metadata, filename, unavailable: true };
++  const response = await fetch(access.url, { signal });
++  if (!response.ok) throw new Error('PDF unavailable');
++  const bytes = await response.arrayBuffer();
++  if (new TextDecoder().decode(bytes.slice(0, 5)) !== '%PDF-') throw new Error('Invalid PDF');
++  return { contract: metadata, filename, file: new File([bytes], filename, { type: 'application/pdf' }) };
++}
+\ No newline at end of file

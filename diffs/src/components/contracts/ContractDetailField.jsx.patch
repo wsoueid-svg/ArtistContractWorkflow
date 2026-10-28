@@ -1,0 +1,16 @@
+diff --git a/src/components/contracts/ContractDetailField.jsx b/src/components/contracts/ContractDetailField.jsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..1d9df226d1961ec4aeb1e1e49974388844203b1d
+--- /dev/null
++++ b/src/components/contracts/ContractDetailField.jsx
+@@ -0,0 +1,9 @@
++import { Input } from '@/components/ui/input';
++import { Label } from '@/components/ui/label';
++
++export default function ContractDetailField({ label, name, value, onChange, type = 'text', placeholder, required = false }) {
++  return <div className="space-y-2" data-contract-field={name}>
++    <Label htmlFor={`contract-field-${name}`} className="text-sm">{label}{required && ' *'}</Label>
++    <Input id={`contract-field-${name}`} name={name} type={type} value={value ?? ''} required={required} placeholder={placeholder} onChange={event => onChange(name, event.target.value)} className="min-h-11" />
++  </div>;
++}
+\ No newline at end of file

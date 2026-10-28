@@ -1,0 +1,67 @@
+import { useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { base44 } from '@/api/base44Client';
+import useMyDeals from '@/hooks/useMyDeals';
+import { resolveAnalogStaffScope } from '@/lib/analogStaffScope';
+import { CONTRACT_STATUS_META } from '@/lib/dealStatus';
+import { bookingFeeStatus } from '@/lib/bookingFeeInvoice';
+
+const bookingOwns = (show, id) => Boolean(id && (show.responsible_agent_ids || []).includes(id));
+const logisticsOwns = (show, id, userId) => Boolean((id && ((show.logistics_agent_ids || []).includes(id) || show.logistics_agent_id === id)) || show.created_by_id === userId);
+
+export default function useDeskScope(deskMode) {
+  const deals = useMyDeals();
+  const { user, myAgent, shows, contracts, agents, artistMap } = deals;
+  const scope = useMemo(() => resolveAnalogStaffScope(user, myAgent), [user, myAgent]);
+  const orgMode = scope.isAdmin && deskMode === 'org';
+  const [agentId, setAgentId] = useState('all');
+  const selectedAgent = useMemo(() => agentId === 'all' ? null : agents.find(agent => agent.id === agentId), [agents, agentId]);
+
+  const { data: deskBundle } = useQuery({
+    queryKey: ['desk-show-bundle', myAgent?.id], enabled: Boolean(myAgent?.id && !orgMode),
+    queryFn: () => base44.functions.invoke('getShowsForOrg', { agent_id: myAgent.id, include_leaderboard: false }).then(response => response.data),
+  });
+  const { data: commissionReport } = useQuery({
+    queryKey: ['agent-commission-report', 'desk', orgMode ? 'all' : myAgent?.id], enabled: Boolean(orgMode || (deskMode === 'booking' && scope.isBooker && myAgent?.id)), retry: false,
+    queryFn: () => base44.functions.invoke('agentCommissionReport', orgMode ? {} : { agent_id: myAgent.id }).then(response => response.data),
+  });
+  const { data: orgTasks = [] } = useQuery({ queryKey: ['org-open-tasks'], queryFn: () => base44.entities.Task.filter({ status: { $in: ['todo', 'in_progress'] } }, 'due_date', 300), enabled: orgMode, staleTime: 60000 });
+
+  const scopedShows = useMemo(() => {
+    if (orgMode) return selectedAgent ? shows.filter(show => bookingOwns(show, selectedAgent.id) || logisticsOwns(show, selectedAgent.id)) : shows;
+    if (deskMode === 'booking') return shows.filter(show => bookingOwns(show, myAgent?.id));
+    return shows.filter(show => logisticsOwns(show, myAgent?.id, user?.id));
+  }, [orgMode, selectedAgent, shows, deskMode, myAgent, user]);
+  const showIds = useMemo(() => new Set(scopedShows.map(show => show.id)), [scopedShows]);
+  const scopedContracts = useMemo(() => contracts.filter(contract => showIds.has(contract.show_id)), [contracts, showIds]);
+  const scopedTasks = orgMode ? orgTasks.filter(task => !task.show_id || showIds.has(task.show_id)) : deals.tasks;
+  const bundleInvoices = deskBundle?.invoice_summaries || [];
+  const invoiceByShow = useMemo(() => {
+    const map = { ...deals.invoiceByShow };
+    bundleInvoices.forEach(invoice => { if (invoice.show_id) map[invoice.show_id] = invoice; });
+    return map;
+  }, [deals.invoiceByShow, bundleInvoices]);
+  const contractByShow = useMemo(() => { const map = {}; scopedContracts.forEach(contract => { if (!map[contract.show_id]) map[contract.show_id] = contract; }); return map; }, [scopedContracts]);
+
+  const heroItems = useMemo(() => [...scopedShows.filter(show => show.last_modified_at).map(show => ({ kind: 'show', id: show.id, at: show.last_modified_at, primary: `${artistMap[show.artist_id]?.name || 'Artist'} · ${show.event_name || 'Show'}`, secondary: [show.venue, show.city].filter(Boolean).join(', ') || '—', contextLabel: `Show · ${show.status || '—'}`, contextClassName: 'bg-slate-100 text-slate-600', to: `/analogshowdetail?id=${show.id}` })), ...scopedContracts.filter(contract => contract.last_modified_at).map(contract => { const meta = CONTRACT_STATUS_META[contract.status] || CONTRACT_STATUS_META.none; return { kind: 'contract', id: contract.id, at: contract.last_modified_at, primary: contract.snapshot_artist_name || artistMap[contract.artist_id]?.name || contract.title || 'Contract', secondary: contract.snapshot_event_name || contract.title || '—', contextLabel: `Contract · ${meta.label}`, contextClassName: meta.className, to: contract.show_id ? `/showdetail?id=${encodeURIComponent(contract.show_id)}&tab=contract` : '/contracts' }; })].sort((a, b) => String(b.at).localeCompare(String(a.at))).slice(0, 5), [scopedShows, scopedContracts, artistMap]);
+
+  const personalLogisticsUrgency = useMemo(() => {
+    const ownLogisticsShows = shows.filter(show => logisticsOwns(show, myAgent?.id, user?.id) && !['cancelled', 'completed'].includes(show.status));
+    const contractMap = Object.fromEntries(contracts.filter(contract => contract.show_id).map(contract => [contract.show_id, contract]));
+    const pending = ownLogisticsShows.filter(show => !contractMap[show.id]?.status || ['READY', 'RETURNED'].includes(contractMap[show.id]?.status)).length;
+    return deals.confThreads.length + pending;
+  }, [shows, contracts, myAgent, user, deals.confThreads]);
+
+  const kpis = useMemo(() => {
+    const open = scopedShows.filter(show => !['cancelled', 'completed'].includes(show.status));
+    const toDispatch = open.filter(show => !contractByShow[show.id]?.status || ['READY', 'RETURNED'].includes(contractByShow[show.id]?.status)).length;
+    const overdue = scopedShows.filter(show => bookingFeeStatus(invoiceByShow[show.id])?.isOverdue).length;
+    const summaries = commissionReport?.agent_summaries || [];
+    const own = summaries.find(item => item.agentId === myAgent?.id) || summaries[0];
+    const now = new Date(), q = Math.floor(now.getMonth() / 3), qStart = `${now.getFullYear()}-${String(q * 3 + 1).padStart(2, '0')}`;
+    const quarterRows = (commissionReport?.rows || []).filter(row => row.month >= qStart && row.month <= `${now.getFullYear()}-${String(q * 3 + 3).padStart(2, '0')}`);
+    return { conf: deals.confThreads.length, toDispatch, overdue, tasks: scopedTasks.length, shows: open.length, accruedCents: orgMode ? quarterRows.reduce((sum, row) => sum + (row.accruedBaseEurCents || 0), 0) : own?.accruedBaseEurCents || 0, realizedCents: orgMode ? quarterRows.reduce((sum, row) => sum + (row.realizedBaseEurCents || 0), 0) : own?.realizedBaseEurCents || 0, attainment: own?.attainment ?? null };
+  }, [scopedShows, contractByShow, invoiceByShow, scopedTasks, deals.confThreads, commissionReport, myAgent, orgMode]);
+
+  return { ...deals, ...scope, orgMode, agentId, setAgentId, scopedShows, scopedContracts, scopedTasks, heroItems, kpis, invoiceByShow, contractByShow, canViewInvoices: deals.canViewInvoices || scope.isBooker, logisticsUrgency: personalLogisticsUrgency };
+}

@@ -1,0 +1,8 @@
+import { AccessError } from './assertShowAccess.ts';
+export const nextContractVersion = current => current ? Number(current.version_number || 1) + (current.contract_file_url ? 1 : 0) : 1;
+export async function revisionContext(base44, show, draft) {
+  if (!draft.parent_draft_id) return {};
+  const parent = await base44.asServiceRole.entities.ContractDraft.get(draft.parent_draft_id);
+  if (parent.show_id !== show.id || parent.status !== 'generated') throw new AccessError('Revision source is unavailable', 409);
+  return { comparison_blocks: parent.blocks, comparison_fields: parent.source_snapshot.fields, comparison_version: parent.target_contract_version || 1, source_contract_id: parent.contract_id };
+}

@@ -1,0 +1,27 @@
+diff --git a/src/components/contracts/preview/ContractPdfViewer.jsx b/src/components/contracts/preview/ContractPdfViewer.jsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..298c268ce76b66d4c066a099c7bf1cb7581e25d9
+--- /dev/null
++++ b/src/components/contracts/preview/ContractPdfViewer.jsx
+@@ -0,0 +1,20 @@
++import { useRef, useState } from 'react';
++import ContractPdfZoom from '@/components/contracts/preview/ContractPdfZoom';
++
++export default function ContractPdfViewer({ url, title }) {
++  const [zoom, setZoom] = useState(100), viewport = useRef(null);
++  const changeZoom = value => {
++    setZoom(value);
++    if (value === 100) viewport.current?.scrollTo({ left: 0, top: 0 });
++  };
++  return <section className="overflow-hidden rounded-lg border border-border bg-muted" aria-label="Generated PDF">
++    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-card px-4 py-3 text-sm"><span className="font-medium">Generated PDF</span><span className="text-muted-foreground">Original document • read-only</span></div>
++    <ContractPdfZoom zoom={zoom} onChange={changeZoom} />
++    <div ref={viewport} className="h-[70dvh] min-h-96 overflow-auto" role="region" aria-label="Scrollable PDF preview" tabIndex={0} style={{ '--pdf-zoom': zoom / 100 }}>
++      <div className="h-[calc(max(70dvh,24rem)*var(--pdf-zoom))] w-[calc(100%*var(--pdf-zoom))] sm:h-[70dvh] sm:min-h-96 sm:w-full">
++        <iframe src={`${url}#view=FitH`} title={`PDF preview: ${title}`} className="block h-[70dvh] min-h-96 w-[calc(100%/var(--pdf-zoom))] origin-top-left scale-[var(--pdf-zoom)] border-0 bg-muted sm:w-full sm:scale-100" />
++      </div>
++    </div>
++    <p className="border-t border-border bg-card px-4 py-3 text-sm text-muted-foreground">If your browser cannot display the PDF here, use Download PDF to view it on your device.</p>
++  </section>;
++}
+\ No newline at end of file

@@ -1,0 +1,19 @@
+diff --git a/src/components/contract-lab/contractErrors.js b/src/components/contract-lab/contractErrors.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..bc867ceb25df6ed13eae6212a5072591d7171ef2
+--- /dev/null
++++ b/src/components/contract-lab/contractErrors.js
+@@ -0,0 +1,12 @@
++export default function contractError(error) {
++  const message=error?.response?.data?.error || error?.message || String(error || 'Could not complete this action.');
++  if(/source changed|Show deal changed|economics.*changed/i.test(message))return 'Review refreshed terms and save again. The Show deal changed; your wording is retained.';
++  if(/signed/i.test(message))return 'Signed, locked. This document cannot be edited or regenerated.';
++  if(/dispatching|dispatch lock/i.test(message))return 'Dispatch is in progress. Wait for it to finish before editing this revision.';
++  if(/another tab|stale|newer revision|revision changed|current contract changed|no longer current/i.test(message))return 'A newer server copy exists. Your browser changes are retained; compare the copies before choosing which to keep.';
++  if(/\bgeneration is in progress\b|\bdraft is already generating\b/i.test(message))return 'PDF generation is in progress. Wait before trying again.';
++  if(/Master wording changed|Master content changed/i.test(message))return 'The master wording changed. Return to the form and review a refreshed document before saving again.';
++  if(/locked|immutable|latest issued|already been/i.test(message))return 'This issued revision is locked. Create an amendment from the current contract to make changes.';
++  if(/not approved|Save first/i.test(message))return 'Save your changes to the server for approval before generating a PDF.';
++  return message;
++}
+\ No newline at end of file

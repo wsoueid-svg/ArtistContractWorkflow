@@ -1,0 +1,79 @@
+import React from 'react';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { ArrowLeft, Route as RouteIcon, UserRound } from 'lucide-react';
+import { usePortal } from '@/lib/portal/PortalContext';
+import { formatShowDate } from '@/lib/portal/timezone';
+import PortalShowCard from '@/components/portal/PortalShowCard';
+import PortalSection, { PortalRow } from '@/components/portal/PortalSection';
+
+/** Shows belonging to one tour. */
+export default function PortalTourDetail() {
+  const { tourId } = useParams();
+  const { tours, shows } = usePortal();
+  const [searchParams] = useSearchParams();
+  const artist = searchParams.get('artist');
+  const search = artist ? `?artist=${artist}` : '';
+
+  const tour = tours.find((t) => t.id === tourId);
+  const tourShows = shows.filter((s) => s.tour_id === tourId);
+
+  if (!tour) {
+    return (
+      <div className="rounded-2xl border border-slate-200 bg-white p-6 text-center">
+        <p className="text-sm font-semibold text-slate-900">Tour not found</p>
+        <Link to={`/portal/tours${search}`} className="mt-3 inline-block text-xs font-semibold text-yellow-600">
+          Back to tours
+        </Link>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <Link
+        to={`/portal/tours${search}`}
+        className="inline-flex min-h-[44px] items-center gap-1.5 text-xs font-semibold text-slate-500"
+      >
+        <ArrowLeft className="h-4 w-4" aria-hidden="true" /> Tours
+      </Link>
+
+      <div className="rounded-2xl bg-slate-900 p-4">
+        <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-yellow-400">Tour</p>
+        <h1 className="mt-1 text-xl font-bold text-white">{tour.name}</h1>
+        <p className="mt-1 text-xs text-slate-400">
+          {formatShowDate(tour.start_date, { short: true })}
+          {tour.end_date ? ` — ${formatShowDate(tour.end_date, { short: true })}` : ''}
+        </p>
+      </div>
+
+      {(tour.tour_manager || tour.general_notes) && (
+        <PortalSection icon={UserRound} title="Tour Info">
+          <PortalRow label="Tour Manager" value={tour.tour_manager} />
+          <PortalRow
+            label="Contact"
+            value={tour.tour_manager_contact
+              ? <a href={`tel:${tour.tour_manager_contact}`} className="text-yellow-600 underline">{tour.tour_manager_contact}</a>
+              : null}
+          />
+          {tour.general_notes && (
+            <p className="whitespace-pre-wrap pt-2 text-sm text-slate-700">{tour.general_notes}</p>
+          )}
+        </PortalSection>
+      )}
+
+      <div className="space-y-2">
+        <p className="px-1 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
+          Shows · {tourShows.length}
+        </p>
+        {tourShows.length === 0 ? (
+          <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center">
+            <RouteIcon className="mx-auto h-6 w-6 text-slate-300" aria-hidden="true" />
+            <p className="mt-3 text-xs text-slate-500">No shows linked to this tour yet.</p>
+          </div>
+        ) : (
+          tourShows.map((show) => <PortalShowCard key={show.id} show={show} search={search} />)
+        )}
+      </div>
+    </div>
+  );
+}

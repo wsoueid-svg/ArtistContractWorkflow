@@ -1,0 +1,38 @@
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.54';
+import { draftAccess } from '../../shared/contractDocument.ts';
+import { currentContract, assertContractMutable } from '../../shared/contractLifecycle.ts';
+import { validateRedlineFile } from '../../shared/contractRedlineFile.ts';
+export default async function(req) {
+  try {
+    const base44=createClientFromRequest(req),user=await base44.auth.me().catch(e=>e.status===401?null:Promise.reject(e));
+    if(!user)return Response.json({error:'Unauthorized'},{status:401});
+    const body=req.headers.get('content-type')?.includes('multipart/form-data')?Object.fromEntries(await req.formData()):await req.json().catch(()=>({}));
+    if(!body.show_id)return Response.json({error:'Show is required'},{status:400});
+    const show=await draftAccess(base44,user,body.show_id),svc=base44.asServiceRole.entities,action=body.action||'list';
+    if(action==='list') {
+      const page=await svc.ContractRedline.filter({show_id:show.id},{sort:'-created_date',limit:20,...(body.cursor?{cursor:body.cursor}:{})});
+      return Response.json(page);
+    }
+    if(action==='upload') {
+      const contract=await currentContract(base44,show);assertContractMutable(contract,true);
+      if(!contract||contract.id!==body.contract_id||!contract.contract_file_url)return Response.json({error:'Select the current generated contract before attaching a redline.'},{status:409});
+      const file=await validateRedlineFile(body.file);
+      const {file_uri}=await base44.asServiceRole.integrations.Core.UploadPrivateFile({file});
+      const fresh=await draftAccess(base44,user,show.id),latest=await currentContract(base44,fresh);assertContractMutable(latest,true);
+      if(latest?.id!==contract.id)return Response.json({error:'The contract changed during upload. Reopen the current revision.'},{status:409});
+      const record=await svc.ContractRedline.create({show_id:show.id,contract_id:contract.id,version_number:contract.version_number||1,file_uri,file_name:file.name,file_mime:file.type,file_size:file.size,uploaded_by_id:user.id,uploaded_by_name:user.full_name||'Staff',review_status:'pending',review_notes:'',review_revision:0});
+      return Response.json({record});
+    }
+    if(!['review','file'].includes(action))return Response.json({error:'Unsupported redline action'},{status:400});
+    if(!body.redline_id)return Response.json({error:'Redline is required'},{status:400});
+    const record=await svc.ContractRedline.get(body.redline_id).catch(e=>e.status===404?null:Promise.reject(e));
+    if(!record||record.show_id!==show.id)return Response.json({error:'Redline not found for this show'},{status:404});
+    if(action==='file')return Response.json(await base44.asServiceRole.integrations.Core.CreateFileSignedUrl({file_uri:record.file_uri,expires_in:300}));
+    const current=await currentContract(base44,show);assertContractMutable(current,true);
+    if(!['pending','reviewed','incorporated','declined'].includes(body.review_status)||typeof body.review_notes!=='string'||body.review_notes.length>8000)return Response.json({error:'Choose a review status and notes up to 8,000 characters.'},{status:422});
+    const patch={review_status:body.review_status,review_notes:body.review_notes,reviewed_by_id:user.id,reviewed_by_name:user.full_name||'Staff',reviewed_at:new Date().toISOString(),review_revision:Number(record.review_revision||0)+1};
+    const result=await svc.ContractRedline.updateMany({id:record.id,show_id:show.id,review_revision:body.expected_review_revision},{$set:patch});
+    if(result.updated!==1)return Response.json({error:'Another person reviewed this file. Reload the list before saving again.'},{status:409});
+    return Response.json({record:{...record,...patch}});
+  }catch(error){return Response.json({error:error.message},{status:error.status||500});}
+}

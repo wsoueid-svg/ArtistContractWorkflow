@@ -1,0 +1,104 @@
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
+import { waitUntil } from 'base44:runtime';
+import { canDispatchContracts } from '../../shared/assertShowAccess.ts';
+
+/**
+ * Contract signature actions, each written to the immutable ContractAuditLog.
+ *  - action 'signed' (default): native e-sign (metadata lock only — the PDF is never altered).
+ *  - action 'manual_signed': manual signature override on a SENT/RETURNED contract.
+ *  - action 'revert_signed': undo a signature, returning the contract to RETURNED.
+ * All three actions are allowed for the show's assigned logistics agents,
+ * the show creator, and Admin/CFO/Finance (same gate as contract dispatch).
+ */
+Deno.serve(async (req) => {
+  try {
+    const base44 = createClientFromRequest(req);
+    const user = await base44.auth.me();
+    if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+
+    const { contract_id, action, notes } = await req.json();
+    if (!contract_id) return Response.json({ error: 'contract_id required' }, { status: 400 });
+    const signAction = action || 'signed';
+    if (!['signed', 'manual_signed', 'revert_signed'].includes(signAction)) {
+      return Response.json({ error: 'Unsupported action' }, { status: 400 });
+    }
+
+    const contract = await base44.asServiceRole.entities.Contract.get(contract_id).catch(() => null);
+    if (!contract) return Response.json({ error: 'Contract not found' }, { status: 404 });
+
+    // All signature actions share one gate: show creator, assigned logistics agents, or Admin/Finance.
+    const show = contract.show_id ? await base44.asServiceRole.entities.Show.get(contract.show_id).catch(() => null) : null;
+    if (!await canDispatchContracts(base44, user, show)) {
+      return Response.json({ error: 'Only the show creator, its assigned logistics agents, or Admin/Finance can change this signature.' }, { status: 403 });
+    }
+
+    if (signAction === 'manual_signed' && !['SENT', 'RETURNED'].includes(contract.status)) {
+      return Response.json({ error: `Only a sent or returned contract can be marked as signed (current: ${contract.status}).` }, { status: 409 });
+    }
+    if (signAction === 'revert_signed' && contract.status !== 'SIGNED') {
+      return Response.json({ error: 'Only a signed contract can be reverted.' }, { status: 409 });
+    }
+    if (signAction !== 'revert_signed' && !contract.contract_file_url) {
+      return Response.json({ error: 'No contract PDF to sign. Generate one first.' }, { status: 400 });
+    }
+
+    let contractHash = contract.contract_hash || 'n/a';
+    if (signAction !== 'revert_signed') {
+      const pdfBuffer = await (await fetch(contract.contract_file_url)).arrayBuffer();
+      const hashBuffer = await crypto.subtle.digest('SHA-256', pdfBuffer);
+      contractHash = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+
+    const ipAddress = req.headers.get('cf-connecting-ip')
+      || req.headers.get('x-real-ip')
+      || req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+      || 'unknown';
+    const now = new Date().toISOString();
+
+    await base44.asServiceRole.entities.ContractAuditLog.create({
+      contract_id: contract.id,
+      user_id: user.id,
+      user_email: user.email,
+      user_name: user.full_name,
+      ip_address: ipAddress,
+      contract_hash: contractHash,
+      action: signAction === 'revert_signed' ? 'revoked' : 'signed',
+      signature_method: signAction === 'signed' ? 'e_sign' : signAction,
+      signed_at: now,
+      notes: notes || '',
+    });
+
+    const updateData = signAction === 'revert_signed'
+      ? {
+          status: 'RETURNED',
+          e_signed_at: null,
+          e_signed_by_user_id: null,
+          e_signed_by_name: null,
+          signed_date: null,
+          last_modified_by_user_id: user.id,
+          last_modified_at: now,
+        }
+      : {
+          status: 'SIGNED',
+          contract_hash: contractHash,
+          e_signed_at: now,
+          e_signed_by_user_id: user.id,
+          e_signed_by_name: user.full_name,
+          signed_date: now.split('T')[0],
+          last_modified_by_user_id: user.id,
+          last_modified_at: now,
+        };
+    await base44.asServiceRole.entities.Contract.update(contract.id, updateData);
+
+    if (contract.show_id) {
+      waitUntil(
+        base44.asServiceRole.functions.invoke('syncAnalogAdvancingTasks', { show_id: contract.show_id })
+          .catch((error) => console.error('Analog advancing sync failed after signature change:', error))
+      );
+    }
+
+    return Response.json({ success: true, contract_id: contract.id, action: signAction, status: updateData.status, at: now, by: user.full_name, contract_hash: contractHash });
+  } catch (error) {
+    return Response.json({ error: error.message }, { status: 500 });
+  }
+});

@@ -1,0 +1,16 @@
+import { ArrowLeft, Loader2 } from 'lucide-react';
+import contractPreviewUrl from '@/components/contracts/contractPreviewUrl';
+import { Link } from 'react-router-dom';
+import { Button } from '@/components/ui/button';
+import { formatTime } from '@/components/contract-lab/documentText';
+import { getContractTemplateMeta } from '@/lib/contractTemplateMeta';
+export default function DocumentToolbar({editor,onBack,onGenerate,generating,generationError,issues,readOnly}) {
+  const doc=editor.doc,meta=getContractTemplateMeta(doc.source_snapshot?.template||{template_key:doc.template_key}),saveFirst=editor.dirty||!doc.id||doc.status==='editing';
+  const state=editor.dirty?(editor.localAt?'Saved in this browser':'Unsaved changes'):(doc.id?'Saved to server':'Unsaved changes');
+  const blocked=generating||editor.saving||!!editor.recovery||!!editor.comparison||doc.master_changed;
+  const label=editor.saving?'Saving…':generating?'Generating…':editor.frozen?'Open PDF':saveFirst?'Save':'Generate PDF';
+  const primary=editor.lockReason?<Button disabled>{/Signed/i.test(editor.lockReason)?'Signed, locked':'In progress, locked'}</Button>:editor.frozen?<Button asChild disabled={!doc.pdf_url}><Link to={contractPreviewUrl(doc.contract_id,doc.show_id)}>Open PDF</Link></Button>:<Button data-testid="document-primary-action" disabled={blocked||(!saveFirst&&issues.length>0)} onClick={saveFirst?editor.save:onGenerate}>{(generating||editor.saving)&&<Loader2 className="h-4 w-4 animate-spin"/>}{label}</Button>;
+  return <><header className="document-header"><div className="flex min-w-0 items-start gap-3"><Button variant="ghost" size="icon" aria-label={readOnly?'Back to revision history':'Back to form'} onClick={()=>onBack(3)}><ArrowLeft className="h-4 w-4"/></Button><div className="min-w-0 flex-1"><h2 className="pr-10 text-sm font-semibold">{doc.source_snapshot?.template?.name||meta.brand} <span className="font-normal text-muted-foreground">• {meta.language}</span></h2><p className="mt-1 text-xs text-muted-foreground">{doc.source_snapshot?.legalEntity?.name} • Revision {doc.target_contract_version||1}{readOnly&&' • Read-only snapshot'}</p>{!editor.frozen&&<p className="mt-2 text-xs text-muted-foreground">Review wording, then Save to approve this draft. Generate PDF is the next step; neither action sends email.</p>}<p role="status" className="mt-2 text-xs">{readOnly?'Saved revision, locked':state}{!editor.dirty&&doc.approved_by_name&&` • approved by ${doc.approved_by_name} at ${formatTime(doc.approved_at)}`}{editor.dirty&&editor.localAt&&` • ${formatTime(new Date(editor.localAt).toISOString())}`}</p></div><div className="hidden shrink-0 pr-10 sm:block">{primary}</div></div>
+    {doc.source_refreshed&&!editor.frozen&&<p className="mt-2 text-sm text-muted-foreground">Review refreshed terms and save again. Show values were refreshed; your wording is retained.</p>}{doc.master_changed&&<p className="mt-2 text-sm text-destructive">Master wording changed. Return to the form to refresh this document.</p>}{(editor.error||generationError)&&<p role="alert" className="mt-2 text-sm text-destructive">{editor.error||generationError}</p>}
+  </header><div className="document-mobile-action sm:hidden"><p className="text-xs text-muted-foreground">Revision {doc.target_contract_version||1} • {readOnly?'Read-only':state}</p>{primary}</div></>;
+}

@@ -1,0 +1,21 @@
+import { useEffect, useRef, useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { COUNTRIES } from '@/lib/geoData';
+
+export default function ContractShowDetails({ details, fields }) {
+  const [venue, setVenue] = useState(fields.venue || ''), [country, setCountry] = useState(fields.country || '');
+  const panel = useRef(null);
+  useEffect(() => { panel.current?.scrollIntoView({ block: 'start' }); panel.current?.querySelector(`[name="${details.field}"]`)?.focus({ preventScroll: true }); }, [details.field]);
+  return <form ref={panel} className="mb-5 rounded-lg border border-border bg-card p-4 text-card-foreground" aria-label="Correct show details" onSubmit={event => { event.preventDefault(); if (venue.trim() && country) details.save({ venue, country }); }}>
+    <h3 className="text-base font-semibold">Update venue and country</h3>
+    <p className="mt-1 text-sm text-muted-foreground">Saves to the show and refreshes this draft, keeping your clause edits.</p>
+    <fieldset disabled={details.saving} className="mt-4 space-y-4">
+      <div className="space-y-1.5"><Label htmlFor="contract-show-venue">Venue</Label><Input id="contract-show-venue" name="venue" required value={venue} onChange={event => setVenue(event.target.value)} /></div>
+      <div className="space-y-1.5"><Label htmlFor="contract-show-country">Country</Label><select id="contract-show-country" name="country" required value={country} onChange={event => setCountry(event.target.value)} className="min-h-11 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground"><option value="">Select country</option>{country && !COUNTRIES.includes(country) && <option value={country}>{country}</option>}{COUNTRIES.map(value => <option key={value} value={value}>{value}</option>)}</select></div>
+      {details.error && <p role="alert" className="text-sm text-destructive">{details.error}</p>}
+      <div className="flex flex-wrap gap-2"><Button type="submit" disabled={!venue.trim() || !country}>{details.saving ? 'Updating draft…' : 'Save & refresh draft'}</Button><Button type="button" variant="outline" onClick={details.close}>Cancel</Button></div>
+    </fieldset>
+  </form>;
+}

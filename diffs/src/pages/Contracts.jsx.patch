@@ -1,0 +1,109 @@
+diff --git a/src/pages/Contracts.jsx b/src/pages/Contracts.jsx
+index 4c4122fbc827fe6484a4298098b9eda9400bf99b..8de8a3c32bc81f963061d465eb87194fd6de11de 100644
+--- a/src/pages/Contracts.jsx
++++ b/src/pages/Contracts.jsx
+@@ -1,4 +1,5 @@
+ import React, { useState } from 'react';
++import contractPreviewUrl from '@/components/contracts/contractPreviewUrl';
+ import { base44 } from '@/api/base44Client';
+ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+ import { Button } from '@/components/ui/button';
+@@ -8,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
+ import { Plus, Search, FileText, ExternalLink, List, Table, Eye, FolderOpen } from 'lucide-react';
+ import { toast } from 'sonner';
+ import ContractForm from '../components/contracts/ContractForm';
++import { saveContractRecord, deleteContractRecord } from '@/components/contracts/contractRecordApi';
+ import ContractAlerts from '../components/contracts/ContractAlerts';
+ import StageBadge from '../components/shared/StageBadge';
+ import SkeletonBlock from '../components/shared/SkeletonBlock';
+@@ -35,7 +37,7 @@ export default function Contracts() {
+   });
+ 
+   const createMutation = useMutation({
+-    mutationFn: (data) => base44.entities.Contract.create(data),
++    mutationFn: (data) => saveContractRecord(data),
+     onSuccess: () => {
+       queryClient.invalidateQueries({ queryKey: ['contracts'] });
+       setShowForm(false);
+@@ -46,7 +48,7 @@ export default function Contracts() {
+   });
+ 
+   const updateMutation = useMutation({
+-    mutationFn: ({ id, data }) => base44.entities.Contract.update(id, data),
++    mutationFn: ({ id, data }) => saveContractRecord(data, id),
+     onSuccess: () => {
+       queryClient.invalidateQueries({ queryKey: ['contracts'] });
+       setShowForm(false);
+@@ -57,9 +59,10 @@ export default function Contracts() {
+   });
+ 
+   const deleteMutation = useMutation({
+-    mutationFn: (id) => base44.entities.Contract.delete(id),
++    mutationFn: (id) => deleteContractRecord(id),
+     onSuccess: () => {
+       queryClient.invalidateQueries({ queryKey: ['contracts'] });
++      setShowForm(false); setEditingContract(null);
+       toast.success('Contract deleted.');
+     },
+     onError: () => toast.error('Could not delete the contract. Please try again.'),
+@@ -67,9 +70,9 @@ export default function Contracts() {
+ 
+   const handleSubmit = (data) => {
+     if (editingContract) {
+-      updateMutation.mutate({ id: editingContract.id, data });
++      return updateMutation.mutateAsync({ id: editingContract.id, data });
+     } else {
+-      createMutation.mutate(data);
++      return createMutation.mutateAsync(data);
+     }
+   };
+ 
+@@ -164,7 +167,7 @@ export default function Contracts() {
+               </option>
+             ))}
+           </select>
+-          {['all', 'draft', 'sent', 'signed', 'paid'].map((status) => (
++          {['all', 'draft', 'READY', 'DISPATCHING', 'SENT', 'RETURNED', 'SIGNED'].map((status) => (
+             <Button
+               key={status}
+               variant={filterStatus === status ? 'default' : 'outline'}
+@@ -191,11 +194,7 @@ export default function Contracts() {
+               artists={artists}
+               contacts={contacts}
+               onSubmit={handleSubmit}
+-              onDelete={(id) => {
+-                deleteMutation.mutate(id);
+-                setShowForm(false);
+-                setEditingContract(null);
+-              }}
++              onDelete={(id) => deleteMutation.mutateAsync(id)}
+               onCancel={() => {
+                 setShowForm(false);
+                 setEditingContract(null);
+@@ -273,7 +272,7 @@ export default function Contracts() {
+                             Edit
+                           </Button>
+                           {contract.contract_file_url && (
+-                            <a href={contract.contract_file_url} target="_blank" rel="noopener noreferrer">
++                            <a href={contractPreviewUrl(contract.id)} target="_blank" rel="noopener noreferrer">
+                               <Button size="sm" variant="ghost" className="h-8 px-2 hover:bg-yellow-100">
+                                 <Eye className="w-4 h-4" />
+                               </Button>
+@@ -363,7 +362,7 @@ export default function Contracts() {
+                         <div className="flex gap-2 mt-4 flex-wrap">
+                           {contract.contract_file_url && (
+                             <a
+-                              href={contract.contract_file_url}
++                              href={contractPreviewUrl(contract.id)}
+                               target="_blank"
+                               rel="noopener noreferrer"
+                               onClick={(e) => e.stopPropagation()}
+@@ -374,7 +373,7 @@ export default function Contracts() {
+                           )}
+                           {contract.signed_contract_url && (
+                             <a
+-                              href={contract.signed_contract_url}
++                              href={`${contractPreviewUrl(contract.id)}&variant=signed`}
+                               target="_blank"
+                               rel="noopener noreferrer"
+                               onClick={(e) => e.stopPropagation()}

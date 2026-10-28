@@ -1,0 +1,49 @@
+import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import en from '../locales/en';
+import es from '../locales/es';
+import { base44 } from '@/api/base44Client';
+
+const translations = { en, es };
+
+const LanguageContext = createContext(null);
+
+export function LanguageProvider({ children, initialLocale = 'en' }) {
+  const [locale, setLocaleState] = useState(initialLocale);
+
+  // Keep in sync if initialLocale changes (e.g., after auth resolves)
+  useEffect(() => {
+    if (initialLocale && (initialLocale === 'en' || initialLocale === 'es')) {
+      setLocaleState(initialLocale);
+    }
+  }, [initialLocale]);
+
+  const setLocale = useCallback(async (newLocale) => {
+    if (newLocale !== 'en' && newLocale !== 'es') return;
+    // Optimistic update
+    setLocaleState(newLocale);
+    // Persist to user profile
+    try {
+      await base44.auth.updateMe({ preferred_language: newLocale });
+    } catch (e) {
+      // Non-fatal — preference still applied for this session
+      console.warn('Failed to persist language preference:', e);
+    }
+  }, []);
+
+  const t = useCallback((key, fallback) => {
+    const dict = translations[locale] || translations.en;
+    return dict[key] ?? translations.en[key] ?? fallback ?? key;
+  }, [locale]);
+
+  return (
+    <LanguageContext.Provider value={{ locale, setLocale, t }}>
+      {children}
+    </LanguageContext.Provider>
+  );
+}
+
+export function useLanguage() {
+  const ctx = useContext(LanguageContext);
+  if (!ctx) throw new Error('useLanguage must be used within a LanguageProvider');
+  return ctx;
+}

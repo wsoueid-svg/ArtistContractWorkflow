@@ -1,0 +1,22 @@
+diff --git a/src/pages/Artists.jsx b/src/pages/Artists.jsx
+index 7745d058420b9c5f7eaa0fa0a3ba8edbdf9ea4eb..a4f18e067662f63617933b6061f885eebc525ded 100644
+--- a/src/pages/Artists.jsx
++++ b/src/pages/Artists.jsx
+@@ -88,7 +88,7 @@ export default function Artists() {
+           console.error('Analog match check failed:', e);
+         }
+       }
+-      createMutation.mutate({ ...data, org: activeOrg });
++      return createMutation.mutateAsync({ ...data, org: activeOrg, created_by_org_id: activeOrg });
+     }
+   };
+ 
+@@ -118,7 +118,7 @@ export default function Artists() {
+   };
+ 
+   const handleDeclineMatch = () => {
+-    createMutation.mutate({ ...matchData.formData, org: 'elevate' });
++    createMutation.mutate({ ...matchData.formData, org: 'elevate', created_by_org_id: 'elevate' });
+     setMatchData(null);
+     setShowForm(false);
+     setEditingArtist(null);

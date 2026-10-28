@@ -1,0 +1,41 @@
+diff --git a/base44/functions/manageContractRecord/entry.ts b/base44/functions/manageContractRecord/entry.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..eafa57441be18924b823d30b62b575fecd829ae3
+--- /dev/null
++++ b/base44/functions/manageContractRecord/entry.ts
+@@ -0,0 +1,34 @@
++import { createClientFromRequest } from 'npm:@base44/sdk@0.8.54';
++import { assertLegacyDraft, draftRecordPatch } from '../../shared/contractRecordChanges.ts';
++export default async function(req) {
++  try {
++    const base44=createClientFromRequest(req),user=await base44.auth.me().catch(e=>e.status===401?null:Promise.reject(e));
++    if(!user||user.is_active===false)return Response.json({error:'Active account required'},{status:401});
++    const body=await req.json().catch(()=>({})),svc=base44.asServiceRole.entities;
++    if(!['admin','user'].includes(user.role))return Response.json({error:'Staff access required'},{status:403});
++    if(user.role!=='admin' && !(user.org_access||[]).includes(user.active_org))return Response.json({error:'Choose an authorized organization first.'},{status:403});
++    if(!['save','delete'].includes(body.action))return Response.json({error:'Unsupported contract action'},{status:400});
++    const prior=body.id?await base44.entities.Contract.get(body.id):null;
++    if(prior) {
++      if(!(user.role==='admin'||user.is_cfo===true))return Response.json({error:'Only Admin/CFO can manage existing contract drafts.'},{status:403});
++      assertLegacyDraft(prior);
++      if(!body.expected_updated_date||prior.updated_date!==body.expected_updated_date)return Response.json({error:'Contract changed. Reopen before saving.'},{status:409});
++    }else if(body.action==='delete')return Response.json({error:'Contract is required'},{status:400});
++    if(body.data?.show_id)return Response.json({error:'Use the show contract workflow for show agreements.'},{status:409});
++    if(body.action==='delete') {
++      // Reserve this exact draft before deleting; lifecycle actions cannot claim it.
++      const claim=await svc.Contract.updateMany({id:prior.id,status:'draft',updated_date:prior.updated_date},{$set:{generation_lock:'delete-'+crypto.randomUUID()}});
++      if(claim.updated!==1)return Response.json({error:'Contract changed before deletion.'},{status:409});
++      await svc.Contract.delete(prior.id);
++      return Response.json({success:true});
++    }
++    const patch=draftRecordPatch(body.data||{},prior);
++    await base44.entities.Artist.get(patch.artist_id||prior.artist_id);
++    if(patch.contact_id)await base44.entities.Contact.get(patch.contact_id);
++    const stamp={last_modified_by_user_id:user.id,last_modified_at:new Date().toISOString()};
++    if(!prior)return Response.json({record:await svc.Contract.create({...patch,...stamp,created_by_org_id:user.active_org||'analog',version_number:1})});
++    const result=await svc.Contract.updateMany({id:prior.id,status:'draft',updated_date:prior.updated_date},{$set:{...patch,...stamp}});
++    if(result.updated!==1)return Response.json({error:'Contract changed before saving.'},{status:409});
++    return Response.json({record:await svc.Contract.get(prior.id)});
++  }catch(error){return Response.json({error:error.message},{status:error.status||500});}
++}
+\ No newline at end of file

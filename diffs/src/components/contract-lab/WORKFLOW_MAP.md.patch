@@ -1,0 +1,49 @@
+diff --git a/src/components/contract-lab/WORKFLOW_MAP.md b/src/components/contract-lab/WORKFLOW_MAP.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..cec9f3d4d85e896ad9e2e8fe40a24151ad64ed88
+--- /dev/null
++++ b/src/components/contract-lab/WORKFLOW_MAP.md
+@@ -0,0 +1,42 @@
++# Unified show contract journey • dependency and regression map
++
++## Scope and boundaries
++Dashboard contract links and Show contract workspaces converge on the existing org-aware /showdetail?id=…&tab=contract route. The direct /analogshowdetail route remains supported. The Contracts library and its standalone creation form remain unchanged. No schema, permissions, organization membership, fee calculations, lifecycle transitions, or workflow definitions change.
++
++## Dependency map
++- Entry: MyShowsContractCard, RecentContractsCard, useDeskScope contract activity links, dashboardSummary contract actions. Non-contract dashboard links stay unchanged.
++- Routing: pages.config maps ShowDetail to OrgAwareShowDetail. AnalogShowDetail already stores tab in the URL; ShowDetail must also honor and preserve it. Both reuse AnalogContractTab as the contract workspace without changing other tabs.
++- Setup: ContractFillForm retains template-selection defaults, promoter linking and the same getContractDraft/build call; focused setup components replace the four screens dominated by read-only inputs. Show-source corrections open the relevant existing show tab separately so unsaved input stays open.
++- Editing: ContractDocumentEditor/useContractDraft retain protected blocks, save/approval, recovery, stale-tab comparison, validation and amendment ancestry. Formatting and clause controls become contextual rather than a wall of controls.
++- Read APIs: getContractRevisionView/getContractDraft use draftAccess/assertShowAccess/canDispatchContracts. Current revision, organization checks and owner/staff checks are unchanged.
++- Saves: saveContractDraft keeps compare-and-swap revision/lock tokens, canonical protected blocks and approval semantics. A saved draft is approved, not sent.
++- Generation: generateSmartContract/generateApprovedContract keep lifecycle reservations, source/hash checks, private PDF upload and show.contract_id binding. Preview remains /contract-preview with an explicit return to the contract tab.
++- Sending: GenerateContractButton -> ContractDispatchSlideOver -> dispatchContract uses the existing per-user Gmail connector, READY-only claims, idempotency and uncertain-send protection. Sending UI remains disabled with clear guidance if Gmail is not connected. No live email is necessary for verification.
++- Signing/history: ContractSignatureControl/signContract, ContractHistory and ContractRevisionAction remain authoritative. Signed/historical documents are immutable. Uploaded issued PDFs without canonical draft snapshots cannot be cloned in the editor.
++- Side effects retained: Contract Milestones workflow on SENT/RETURNED/SIGNED triggers booking-fee draft and advancing-task synchronization; exchange-rate workflow remains intact. No verification should send email to real people or manufacture milestones on existing records.
++- Refresh: invalidateShowQueries plus contract-draft/contract/my-deals-shows/desk-show-bundle/analog-show-finance-context refreshes keep dashboard, show, preview and finance context consistent after successful actions.
++
++## Standalone review
++Read-only inventory at implementation start: 2 contracts total, 0 without a show_id. This does not establish that standalone agreements are unused in the intended product. The library supports management, label, sponsorship, merchandise and other agreements, private file attachments, renewal alerts and legacy draft editing. Recommendation: retain this separate record-management path until representative non-show agreements and their intended issue/signature lifecycle are reviewed with the owner. Do not migrate, delete or redirect standalone creation on this evidence alone.
++
++## Regression checklist and release boundaries
++- Drive Dashboard contract row -> correct Show -> Contract tab, including browser return and both organization-aware Show variants.
++- Verify empty/loading/error/current revision states and start/continue/amend/locked next actions.
++- On disposable records only, link a promoter, confirm persistence, choose template, complete setup, open document, save via the UI, and read the resulting draft.
++- Verify contextual formatting/clause controls, returning to setup without losing edits, and saved-draft resume/recovery.
++- Generate disposable PDF if the renderer is available, verify private access and preview return, preserve the original when starting a revision.
++- Verify dispatch panel and missing-Gmail guidance without sending real mail. Successful external delivery is not a passing check without an authorized mailbox and a safe recipient.
++- Review signing/history guards from source; other-user organization/permission checks require a separate identity and cannot be claimed from builder-only verification.
++- Check show overview/deal/operations and non-contract dashboard cards remain accessible; no record deletion/migration or standalone behavior changes.
++- Check mobile and desktop overflow, readable labels, accessible controls and build output.
++
++## Delivery verification evidence
++- PASS: production build; dashboardSummary authenticated invocation returned 200 after the link and canonical SENT-status adjustments.
++- PASS: actual My Shows/Contracts and Recent Contracts card clicks opened the selected Show with tab=contract under the builder's Analog organization.
++- PASS: new-workspace next action rendered, setup opened, CRM search selection linked the disposable show and the SDK read confirmed contract_contact_id persistence.
++- PASS: template selection and document review completed in the mobile check; formatting expanded, and the contextual clause menu was available. Mobile setup width stayed within its dialog; desktop setup and workspace were visually captured.
++- NOT AUTOMATICALLY VERIFIED: draft Save persistence and PDF generation. A check addressed the hidden desktop Save instead of the mobile Save; the follow-up stopped with its template selection incomplete. These are incomplete automated interactions, not evidence of a broken save or generator. No source was altered to accommodate the test driver.
++- NOT ATTEMPTED: real Gmail delivery, signature state changes, amendment persistence, multi-user authorization, and the Elevate variant of the shared workspace. Existing backend lifecycle/security/dispatch logic was preserved.
++- Cleanup: all disposable Artist/Contact/Show records created in the checks were deleted in the same browser scripts. No draft or generated Contract record was created by these checks. No real emails were sent.
++
++Remaining acceptance checks must use the existing UI and disposable records; this evidence does not claim the full contract lifecycle passed.
+\ No newline at end of file

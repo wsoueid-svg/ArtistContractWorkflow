@@ -1,0 +1,84 @@
+export type VatTreatment = 'standard' | 'reverse_charge' | 'zero_rate';
+
+const EU = new Set(['AT','BE','BG','HR','CY','CZ','DE','DK','EE','ES','FI','FR','GR','HU','IE','IT','LT','LU','LV','MT','NL','PL','PT','RO','SE','SI','SK']);
+const CANARY_PREFIXES = ['35', '38'];
+const EXTRA_PENINSULAR_PREFIXES = ['35', '38', '51', '52'];
+
+const clean = (value: unknown) => String(value || '').trim();
+const upper = (value: unknown) => clean(value).toUpperCase();
+const postalPrefix = (value: unknown) => clean(value).replace(/\s/g, '').slice(0, 2);
+
+function countryCode(value: unknown) {
+  const v = upper(value);
+  const names: Record<string, string> = {
+    SPAIN: 'ES', ESPAÑA: 'ES', PANAMA: 'PA', PANAMÁ: 'PA',
+    PORTUGAL: 'PT', FRANCE: 'FR', FRANCIA: 'FR', ITALY: 'IT', ITALIA: 'IT',
+    GERMANY: 'DE', ALEMANIA: 'DE', NETHERLANDS: 'NL', 'UNITED KINGDOM': 'GB', UK: 'GB',
+  };
+  return names[v] || (v.length === 2 ? v : v.slice(0, 2));
+}
+
+function defaultRate(legalEntity: any) {
+  const configured = (legalEntity?.tax_rates || []).find((rate: any) => rate?.is_default);
+  return Math.max(0, Number(configured?.rate || 0));
+}
+
+function isCanaryOrigin(legalEntity: any) {
+  const region = upper(legalEntity?.tax_region || legalEntity?.region);
+  const address = legalEntity?.registered_address || {};
+  const text = upper([legalEntity?.name, legalEntity?.short_name, legalEntity?.country, address.city, address.country].filter(Boolean).join(' '));
+  return region === 'CANARY_ISLANDS' || CANARY_PREFIXES.includes(postalPrefix(address.postal_code)) || /TENERIFE|LAS PALMAS|CANARY|CANARIAS/.test(text);
+}
+
+function destinationLocation(contact: any) {
+  const billing = contact?.billing_address || {};
+  const postal = billing.postal_code || contact?.postal_code || '';
+  const text = upper([billing.city, billing.country, contact?.city, contact?.country, contact?.region].filter(Boolean).join(' '));
+  const prefix = postalPrefix(postal);
+  return {
+    country: countryCode(billing.country || contact?.country),
+    canary: CANARY_PREFIXES.includes(prefix) || /TENERIFE|LAS PALMAS|CANARY|CANARIAS/.test(text),
+    extraPeninsular: EXTRA_PENINSULAR_PREFIXES.includes(prefix) || /CEUTA|MELILLA|TENERIFE|LAS PALMAS|CANARY|CANARIAS/.test(text),
+  };
+}
+
+export function calculateInvoiceTaxes({ legalEntity, contact, taxableAmountCents = 0 }: { legalEntity: any; contact: any; taxableAmountCents?: number }) {
+  const origin = countryCode(legalEntity?.country_code || legalEntity?.country);
+  const destination = destinationLocation(contact);
+  const rate = defaultRate(legalEntity);
+  const originCanary = origin === 'ES' && isCanaryOrigin(legalEntity);
+  let vatTreatment: VatTreatment = 'zero_rate';
+  let vatRate = 0;
+  let reason = 'Export outside the billing entity tax territory';
+
+  if (origin === 'ES' && destination.country === 'ES') {
+    if (originCanary && destination.canary) {
+      vatTreatment = 'standard';
+      vatRate = rate;
+      reason = 'Local Canary Islands supply — entity default IGIC rate';
+    } else if (originCanary || destination.extraPeninsular) {
+      reason = 'Inter-territorial Spanish operation — zero-rate export';
+    } else {
+      vatTreatment = 'standard';
+      vatRate = rate;
+      reason = 'Domestic mainland Spain supply';
+    }
+  } else if (origin === destination.country && origin) {
+    vatTreatment = 'standard';
+    vatRate = rate;
+    reason = 'Domestic supply in the billing entity territory';
+  } else if (EU.has(origin) && EU.has(destination.country)) {
+    if (clean(contact?.vat_tax_id)) {
+      vatTreatment = 'reverse_charge';
+      reason = 'Intra-EU B2B reverse charge';
+    } else {
+      vatTreatment = 'standard';
+      vatRate = rate;
+      reason = 'Intra-EU client without VAT ID — origin tax fallback';
+    }
+  }
+
+  const base = Math.max(0, Math.round(Number(taxableAmountCents || 0)));
+  const vatAmountCents = Math.round(base * vatRate / 100);
+  return { vat_treatment: vatTreatment, vat_rate: vatRate, vat_amount_cents: vatAmountCents, reason, origin_country_code: origin, destination_country_code: destination.country };
+}
